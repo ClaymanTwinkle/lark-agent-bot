@@ -1,0 +1,134 @@
+name: Release
+
+# Push a tag like v0.1.0 (or v0.2.0-beta.1 for a pre-release) to publish:
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Produces lark-connect-<tag>-<os>-<arch>.tar.gz|.zip plus checksums.txt on
+# the GitHub Release. These names are what `lark-connect update`, the
+# /upgrade chat command, and the npm installer download, so keep them in sync
+# with the Makefile `release-all` target.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)build, e.g. v0.1.0'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  github-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      - name: Validate tag
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "Tag '$TAG' is not a semver tag like v1.2.3 or v1.2.3-beta.1"
+            exit 1
+          fi
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Build web assets
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build release archives
+        run: make release-all VERSION="$TAG"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s nullglob
+          assets=(dist/*.tar.gz dist/*.zip dist/checksums.txt)
+          prerelease=()
+          if [[ "$TAG" == *-* ]]; then
+            prerelease=(--prerelease)
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" \
+              --title "$TAG" \
+              --generate-notes \
+              --verify-tag \
+              "${prerelease[@]}"
+          fi
+
+  npm:
+    needs: github-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        working-directory: npm
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::notice::NPM_TOKEN secret is not set; skipping npm publish."
+            exit 0
+          fi
+          version="${TAG#v}"
+          npm version "$version" --no-git-tag-version --allow-same-version
+          dist_tag=latest
+          if [[ "$version" == *-* ]]; then
+            dist_tag=beta
+          fi
+          if npm view "lark-connect@$version" version >/dev/null 2>&1; then
+            echo "lark-connect@$version is already on npm; skipping."
+            exit 0
+          fi
+          npm publish --access public --provenance --tag "$dist_tag"

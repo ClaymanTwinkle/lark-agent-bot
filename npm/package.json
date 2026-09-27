@@ -1,0 +1,35 @@
+{
+  "name": "lark-connect",
+  "version": "0.1.0",
+  "description": "Bridge local AI coding agents (Claude Code, Codex, Cursor, Gemini CLI, ...) to Feishu / Lark",
+  "keywords": [
+    "feishu",
+    "lark",
+    "claude-code",
+    "codex",
+    "ai-coding",
+    "chatbot",
+    "bridge"
+  ],
+  "homepage": "https://github.com/ClaymanTwinkle/lark-connect",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ClaymanTwinkle/lark-connect.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ClaymanTwinkle/lark-connect/issues"
+  },
+  "license": "MIT",
+  "author": "ClaymanTwinkle",
+  "bin": {
+    "lark-connect": "run.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": [
+    "install.js",
+    "run.js",
+    "README.md"
+  ]
+}
