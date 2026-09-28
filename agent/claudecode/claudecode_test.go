@@ -153,6 +153,9 @@ func TestNormalizePermissionMode(t *testing.T) {
 		{"edit", "acceptEdits"},
 		// plan
 		{"plan", "plan"},
+		// Claude Code's user-facing name for default
+		{"manual", "default"},
+		{"Manual", "default"},
 		// default fallback
 		{"", "default"},
 		{"unknown", "default"},
@@ -162,43 +165,6 @@ func TestNormalizePermissionMode(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("normalizePermissionMode(%q) = %q, want %q", tt.input, got, tt.want)
 		}
-	}
-}
-
-func TestClaudeSessionSetLiveMode(t *testing.T) {
-	cs := &claudeSession{}
-	cs.setPermissionMode("default")
-	if cs.autoApprove.Load() || cs.acceptEditsOnly.Load() || cs.dontAsk.Load() {
-		t.Fatal("expected default mode flags to be off")
-	}
-
-	if !cs.SetLiveMode("acceptEdits") {
-		t.Fatal("SetLiveMode(acceptEdits) = false, want true")
-	}
-	if !cs.acceptEditsOnly.Load() || cs.autoApprove.Load() || cs.dontAsk.Load() {
-		t.Fatal("acceptEdits flags not set correctly")
-	}
-
-	if cs.SetLiveMode("auto") {
-		t.Fatal("SetLiveMode(auto) = true, want false")
-	}
-
-	cs.SetLiveMode("dontAsk")
-	if !cs.dontAsk.Load() || cs.autoApprove.Load() || cs.acceptEditsOnly.Load() {
-		t.Fatal("dontAsk flags not set correctly")
-	}
-
-	cs.SetLiveMode("bypassPermissions")
-	if !cs.autoApprove.Load() || cs.acceptEditsOnly.Load() || cs.dontAsk.Load() {
-		t.Fatal("bypassPermissions alias flags not set correctly")
-	}
-}
-
-func TestClaudeSessionSetLiveMode_AutoSessionRequiresRestart(t *testing.T) {
-	cs := &claudeSession{}
-	cs.setPermissionMode("auto")
-	if cs.SetLiveMode("default") {
-		t.Fatal("SetLiveMode(default) from auto session = true, want false")
 	}
 }
 

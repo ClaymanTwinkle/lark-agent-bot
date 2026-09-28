@@ -25,8 +25,10 @@ import (
 // claudeSession manages a long-running Claude Code process using
 // --input-format stream-json and --permission-prompt-tool stdio.
 //
-// In "auto" mode, permission requests are auto-approved internally
-// (avoiding --dangerously-skip-permissions which fails under root).
+// In "bypassPermissions" mode, permission requests that reach lark-connect
+// are auto-approved here, so the mode also works when the CLI itself cannot
+// run in it (the CLI refuses --dangerously-skip-permissions under root, and
+// only switches to it mid-session when launched with that flag).
 type claudeSession struct {
 	cmd             *exec.Cmd
 	stdin           io.WriteCloser
@@ -42,6 +44,15 @@ type claudeSession struct {
 	cancel          context.CancelFunc
 	done            chan struct{}
 	alive           atomic.Bool
+
+	// modeMu serializes live permission-mode switches (SetLiveMode) so the
+	// CLI's mode and the local auto-approve flags never interleave.
+	modeMu sync.Mutex
+	// ctrlMu guards pendingCtrl: control requests lark-connect sent to the
+	// CLI that still wait for their control_response, keyed by request_id.
+	ctrlMu      sync.Mutex
+	pendingCtrl map[string]chan map[string]any
+	ctrlSeq     atomic.Uint64
 
 	// activeModel stores the model id reported by the CLI's init event (e.g.
 	// "claude-opus-4-7[1m]"). It may be empty if the init event hasn't
@@ -653,6 +664,8 @@ func (cs *claudeSession) handleReadLoopLine(line string) {
 		cs.handleResult(raw)
 	case "control_request":
 		cs.handleControlRequest(raw)
+	case "control_response":
+		cs.handleControlResponse(raw)
 	case "control_cancel_request":
 		requestID, _ := raw["request_id"].(string)
 		slog.Debug("claudeSession: permission cancelled", "request_id", requestID)
@@ -1462,13 +1475,113 @@ func (cs *claudeSession) setPermissionMode(mode string) {
 	cs.dontAsk.Store(mode == "dontAsk")
 }
 
+// SetLiveMode switches the running session's permission mode without a
+// restart. The CLI is switched too (set_permission_mode), so modes it
+// enforces itself — it stops asking for tools in acceptEdits,
+// bypassPermissions and dontAsk — take effect in both directions. Returning
+// false makes the engine fall back to restarting the session in the new mode.
 func (cs *claudeSession) SetLiveMode(mode string) bool {
-	current, _ := cs.permissionMode.Load().(string)
-	if mode == "auto" || mode == "plan" || current == "auto" || current == "plan" {
+	mode = normalizePermissionMode(mode)
+	cs.modeMu.Lock()
+	defer cs.modeMu.Unlock()
+	if !cs.Alive() {
+		return false
+	}
+	if mode == cs.permissionModeValue() {
+		return true
+	}
+
+	err := cs.setCLIPermissionMode(mode)
+	if err != nil && mode == "bypassPermissions" {
+		// The CLI accepts bypassPermissions mid-session only when launched
+		// with --dangerously-skip-permissions. Put it in default mode, where
+		// it asks for every tool, and approve those requests here instead.
+		err = cs.setCLIPermissionMode("default")
+	}
+	if err != nil {
+		slog.Warn("claudeSession: live permission mode switch failed", "mode", mode, "error", err)
 		return false
 	}
 	cs.setPermissionMode(mode)
 	return true
+}
+
+func (cs *claudeSession) setCLIPermissionMode(mode string) error {
+	_, err := cs.sendControlRequest(map[string]any{
+		"subtype": "set_permission_mode",
+		"mode":    mode,
+	})
+	return err
+}
+
+// controlRequestTimeout bounds how long a control request sent to the CLI
+// waits for its control_response. The CLI answers set_permission_mode at
+// once without an API call; only a request sent right after spawn waits for
+// the CLI to start (measured 1.2–1.9s on CLI 2.1.283 with plugins loaded),
+// so the timeout mainly guards against a stuck process.
+const controlRequestTimeout = 30 * time.Second
+
+// sendControlRequest writes a control request to the CLI and waits for the
+// matching control_response. It returns the response payload on success,
+// and an error with the CLI's message and error_code when the CLI refuses.
+func (cs *claudeSession) sendControlRequest(request map[string]any) (map[string]any, error) {
+	subtype, _ := request["subtype"].(string)
+	id := fmt.Sprintf("lark_connect_%d", cs.ctrlSeq.Add(1))
+	ch := make(chan map[string]any, 1)
+	cs.ctrlMu.Lock()
+	if cs.pendingCtrl == nil {
+		cs.pendingCtrl = make(map[string]chan map[string]any)
+	}
+	cs.pendingCtrl[id] = ch
+	cs.ctrlMu.Unlock()
+	defer func() {
+		cs.ctrlMu.Lock()
+		delete(cs.pendingCtrl, id)
+		cs.ctrlMu.Unlock()
+	}()
+
+	if err := cs.writeJSON(map[string]any{
+		"type":       "control_request",
+		"request_id": id,
+		"request":    request,
+	}); err != nil {
+		return nil, fmt.Errorf("claudeSession: send %s: %w", subtype, err)
+	}
+
+	timer := time.NewTimer(controlRequestTimeout)
+	defer timer.Stop()
+	select {
+	case resp := <-ch:
+		if s, _ := resp["subtype"].(string); s != "success" {
+			msg, _ := resp["error"].(string)
+			code, _ := resp["error_code"].(string)
+			return nil, fmt.Errorf("claudeSession: %s rejected: %s (%s)", subtype, msg, code)
+		}
+		payload, _ := resp["response"].(map[string]any)
+		return payload, nil
+	case <-timer.C:
+		return nil, fmt.Errorf("claudeSession: %s: no response within %s", subtype, controlRequestTimeout)
+	case <-cs.done:
+		return nil, fmt.Errorf("claudeSession: %s: process exited", subtype)
+	}
+}
+
+// handleControlResponse delivers the CLI's answer to a control request that
+// lark-connect sent (see sendControlRequest).
+func (cs *claudeSession) handleControlResponse(raw map[string]any) {
+	resp, _ := raw["response"].(map[string]any)
+	id, _ := resp["request_id"].(string)
+	cs.ctrlMu.Lock()
+	ch := cs.pendingCtrl[id]
+	cs.ctrlMu.Unlock()
+	if ch == nil {
+		slog.Debug("claudeSession: control response without a pending request", "request_id", id)
+		return
+	}
+	select {
+	case ch <- resp:
+	default:
+	}
 }
 
 func (cs *claudeSession) Events() <-chan core.Event {

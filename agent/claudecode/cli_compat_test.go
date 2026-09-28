@@ -1,8 +1,12 @@
 package claudecode
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
+	"io"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/ClaymanTwinkle/lark-connect/core"
@@ -181,4 +185,151 @@ func TestHandleResultConfiguredWindowBeatsReported(t *testing.T) {
 	if got := cs.GetContextUsage().ContextWindow; got != 300_000 {
 		t.Fatalf("ContextWindow = %d, want configured 300_000", got)
 	}
+}
+
+// fakeModeCLI plays the Claude Code process on the other end of stdin: it
+// answers set_permission_mode control requests the way CLI 2.1.283 does,
+// refusing the modes listed in reject with the given error_code.
+type fakeModeCLI struct {
+	mu     sync.Mutex
+	got    []string
+	reject map[string]string
+}
+
+func (f *fakeModeCLI) requested() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.got...)
+}
+
+func newLiveModeSession(t *testing.T, cli *fakeModeCLI, initial string) *claudeSession {
+	t.Helper()
+	pr, pw := io.Pipe()
+	cs := &claudeSession{stdin: pw, done: make(chan struct{})}
+	cs.alive.Store(true)
+	cs.setPermissionMode(initial)
+	t.Cleanup(func() { _ = pw.Close() })
+
+	go func() {
+		sc := bufio.NewScanner(pr)
+		for sc.Scan() {
+			var msg map[string]any
+			if json.Unmarshal(sc.Bytes(), &msg) != nil {
+				continue
+			}
+			id, _ := msg["request_id"].(string)
+			req, _ := msg["request"].(map[string]any)
+			mode, _ := req["mode"].(string)
+
+			cli.mu.Lock()
+			cli.got = append(cli.got, mode)
+			code, refuse := cli.reject[mode]
+			cli.mu.Unlock()
+
+			resp := map[string]any{"subtype": "success", "request_id": id, "response": map[string]any{"mode": mode}}
+			if refuse {
+				resp = map[string]any{"subtype": "error", "request_id": id, "error": "refused", "error_code": code}
+			}
+			line, _ := json.Marshal(map[string]any{"type": "control_response", "response": resp})
+			cs.handleReadLoopLine(string(line))
+		}
+	}()
+	return cs
+}
+
+func assertModeFlags(t *testing.T, cs *claudeSession, mode string) {
+	t.Helper()
+	if got := cs.permissionModeValue(); got != mode {
+		t.Fatalf("permission mode = %q, want %q", got, mode)
+	}
+	if cs.autoApprove.Load() != (mode == "bypassPermissions") ||
+		cs.acceptEditsOnly.Load() != (mode == "acceptEdits") ||
+		cs.dontAsk.Load() != (mode == "dontAsk") {
+		t.Fatalf("flags for %q: autoApprove=%v acceptEditsOnly=%v dontAsk=%v",
+			mode, cs.autoApprove.Load(), cs.acceptEditsOnly.Load(), cs.dontAsk.Load())
+	}
+}
+
+// Regression: SetLiveMode used to flip only lark-connect's own flags, so a
+// CLI launched in bypassPermissions / acceptEdits / dontAsk kept not asking
+// after a "successful" switch to a stricter mode, and auto / plan needed a
+// restart. The CLI itself must now be switched.
+func TestSetLiveModeSwitchesCLIMode(t *testing.T) {
+	cli := &fakeModeCLI{}
+	cs := newLiveModeSession(t, cli, "bypassPermissions")
+
+	for _, mode := range []string{"default", "acceptEdits", "auto", "plan", "dontAsk"} {
+		if !cs.SetLiveMode(mode) {
+			t.Fatalf("SetLiveMode(%q) = false, want true", mode)
+		}
+		assertModeFlags(t, cs, mode)
+	}
+	want := []string{"default", "acceptEdits", "auto", "plan", "dontAsk"}
+	if got := cli.requested(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("CLI got set_permission_mode %v, want %v", got, want)
+	}
+}
+
+func TestSetLiveModeNormalizesAliases(t *testing.T) {
+	cli := &fakeModeCLI{}
+	cs := newLiveModeSession(t, cli, "acceptEdits")
+
+	if !cs.SetLiveMode("manual") {
+		t.Fatal("SetLiveMode(manual) = false, want true")
+	}
+	assertModeFlags(t, cs, "default")
+	if !cs.SetLiveMode("default") {
+		t.Fatal("SetLiveMode(default) when already default = false, want true")
+	}
+	if got := cli.requested(); !reflect.DeepEqual(got, []string{"default"}) {
+		t.Fatalf("CLI got %v, want a single default switch", got)
+	}
+}
+
+// The CLI refuses bypassPermissions unless launched with
+// --dangerously-skip-permissions; the switch must still work by putting the
+// CLI in default mode and approving locally.
+func TestSetLiveModeBypassFallsBackToLocalApproval(t *testing.T) {
+	cli := &fakeModeCLI{reject: map[string]string{"bypassPermissions": "bypass_not_launched"}}
+	cs := newLiveModeSession(t, cli, "dontAsk")
+
+	if !cs.SetLiveMode("yolo") {
+		t.Fatal("SetLiveMode(yolo) = false, want true")
+	}
+	assertModeFlags(t, cs, "bypassPermissions")
+	want := []string{"bypassPermissions", "default"}
+	if got := cli.requested(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("CLI got %v, want %v", got, want)
+	}
+}
+
+func TestSetLiveModeRefusedKeepsCurrentMode(t *testing.T) {
+	cli := &fakeModeCLI{reject: map[string]string{"auto": "auto_mode_settings"}}
+	cs := newLiveModeSession(t, cli, "default")
+
+	if cs.SetLiveMode("auto") {
+		t.Fatal("SetLiveMode(auto) = true although the CLI refused it")
+	}
+	assertModeFlags(t, cs, "default")
+}
+
+func TestSetLiveModeFailsWhenProcessGone(t *testing.T) {
+	cs := &claudeSession{}
+	cs.setPermissionMode("default")
+	if cs.SetLiveMode("acceptEdits") {
+		t.Fatal("SetLiveMode on a dead session = true, want false")
+	}
+
+	// Alive flag still set but the process exits before answering.
+	pr, pw := io.Pipe()
+	go func() { _, _ = io.Copy(io.Discard, pr) }()
+	t.Cleanup(func() { _ = pw.Close() })
+	cs = &claudeSession{stdin: pw, done: make(chan struct{})}
+	cs.alive.Store(true)
+	cs.setPermissionMode("default")
+	close(cs.done)
+	if cs.SetLiveMode("acceptEdits") {
+		t.Fatal("SetLiveMode after process exit = true, want false")
+	}
+	assertModeFlags(t, cs, "default")
 }

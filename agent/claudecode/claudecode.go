@@ -29,7 +29,7 @@ func init() {
 // and --permission-prompt-tool stdio for bidirectional communication.
 //
 // Permission modes (maps to Claude's --permission-mode):
-//   - "default":           every tool call requires user approval
+//   - "default":           every tool call requires user approval (Claude Code calls it "manual")
 //   - "acceptEdits":       auto-approve file edit tools, ask for others
 //   - "plan":              plan only, no execution until approved
 //   - "auto":              Claude's automatic permission classifier
@@ -363,6 +363,10 @@ func normalizePermissionMode(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "acceptedits", "accept-edits", "accept_edits", "edit":
 		return "acceptEdits"
+	case "manual":
+		// Claude Code's user-facing name for "default"; the CLI still
+		// reports and accepts "default".
+		return "default"
 	case "plan":
 		return "plan"
 	case "auto":
@@ -1025,7 +1029,7 @@ func stringsToAny(in []string) []any {
 // PermissionModes returns all supported permission modes.
 func (a *Agent) PermissionModes() []core.PermissionModeInfo {
 	return []core.PermissionModeInfo{
-		{Key: "default", Name: "Default", NameZh: "默认", Desc: "Ask permission for every tool call", DescZh: "每次工具调用都需确认"},
+		{Key: "default", Name: "Manual", NameZh: "手动", Desc: "Ask permission for every tool call", DescZh: "每次工具调用都需确认"},
 		{Key: "acceptEdits", Name: "Accept Edits", NameZh: "接受编辑", Desc: "Auto-approve file edits, ask for others", DescZh: "自动允许文件编辑，其他需确认"},
 		{Key: "plan", Name: "Plan Mode", NameZh: "计划模式", Desc: "Plan only, no execution until approved", DescZh: "只做规划不执行，审批后再执行"},
 		{Key: "auto", Name: "Auto", NameZh: "自动模式", Desc: "Claude decides when to ask for permission", DescZh: "由 Claude 自动判断何时需要确认"},
