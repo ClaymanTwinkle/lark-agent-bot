@@ -1,6 +1,80 @@
 package core
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
+	"testing"
+)
+
+// fakeGitHub serves a releases API and a /releases/latest redirect page.
+// apiStatus != 200 makes the API fail like GitHub's rate limit does.
+func fakeGitHub(t *testing.T, apiStatus int, apiBody, latestLocation string) (apiURL, pageURL string, pageHits *atomic.Int32) {
+	t.Helper()
+	pageHits = new(atomic.Int32)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/releases", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(apiStatus)
+		_, _ = w.Write([]byte(apiBody))
+	})
+	mux.HandleFunc("/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+		pageHits.Add(1)
+		w.Header().Set("Location", latestLocation)
+		w.WriteHeader(http.StatusFound)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv.URL + "/api/releases", srv.URL + "/releases/latest", pageHits
+}
+
+// Regression: /upgrade failed with "API returned 403" once the shared egress
+// IP used up GitHub's unauthenticated quota. It must fall back to the release
+// page redirect.
+func TestCheckForUpdate_FallsBackWhenAPIRateLimited(t *testing.T) {
+	const loc = "https://github.com/ClaymanTwinkle/lark-connect/releases/tag/v0.2.1"
+	apiURL, pageURL, _ := fakeGitHub(t, http.StatusForbidden, `{"message":"API rate limit exceeded"}`, loc)
+
+	got, err := checkForUpdateFrom("v0.2.0", apiURL, pageURL)
+	if err != nil {
+		t.Fatalf("checkForUpdateFrom: %v", err)
+	}
+	if got == nil || got.TagName != "v0.2.1" {
+		t.Fatalf("release = %+v, want tag v0.2.1", got)
+	}
+	if got.Body != loc {
+		t.Errorf("Body = %q, want release page %q", got.Body, loc)
+	}
+
+	up, err := checkForUpdateFrom("v0.2.1", apiURL, pageURL)
+	if err != nil || up != nil {
+		t.Fatalf("same version via fallback: release = %+v, err = %v, want nil, nil", up, err)
+	}
+}
+
+func TestCheckForUpdate_UsesAPIWhenAvailable(t *testing.T) {
+	body := `[{"tag_name":"v0.2.1","body":"notes"},{"tag_name":"v0.3.0-beta.1"},{"tag_name":"v0.1.0"}]`
+	apiURL, pageURL, pageHits := fakeGitHub(t, http.StatusOK, body, "")
+
+	got, err := checkForUpdateFrom("v0.2.0", apiURL, pageURL)
+	if err != nil {
+		t.Fatalf("checkForUpdateFrom: %v", err)
+	}
+	if got == nil || got.TagName != "v0.3.0-beta.1" {
+		t.Fatalf("release = %+v, want newest tag v0.3.0-beta.1", got)
+	}
+	if n := pageHits.Load(); n != 0 {
+		t.Errorf("fallback page hit %d times, want 0", n)
+	}
+}
+
+func TestCheckForUpdate_ErrorsWhenFallbackHasNoTag(t *testing.T) {
+	apiURL, pageURL, _ := fakeGitHub(t, http.StatusForbidden, `{}`,
+		"https://github.com/ClaymanTwinkle/lark-connect/releases")
+
+	if got, err := checkForUpdateFrom("v0.2.0", apiURL, pageURL); err == nil {
+		t.Fatalf("release = %+v, want an error", got)
+	}
+}
 
 func TestSemverCompare(t *testing.T) {
 	tests := []struct {

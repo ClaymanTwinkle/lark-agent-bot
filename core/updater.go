@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,6 +22,7 @@ import (
 
 const (
 	githubReleasesAPI = "https://api.github.com/repos/ClaymanTwinkle/lark-connect/releases"
+	githubLatestPage  = "https://github.com/ClaymanTwinkle/lark-connect/releases/latest"
 	githubDownload    = "https://github.com/ClaymanTwinkle/lark-connect/releases/download"
 )
 
@@ -34,26 +36,23 @@ type ReleaseInfo struct {
 
 // CheckForUpdate queries GitHub for newer releases.
 func CheckForUpdate(currentVersion string) (*ReleaseInfo, error) {
-	releases, err := fetchReleasesFrom(githubReleasesAPI + "?per_page=20")
+	return checkForUpdateFrom(currentVersion, githubReleasesAPI+"?per_page=20", githubLatestPage)
+}
+
+func checkForUpdateFrom(currentVersion, apiURL, latestPageURL string) (*ReleaseInfo, error) {
+	best, err := newestReleaseFrom(apiURL)
 	if err != nil {
-		return nil, err
-	}
-	if len(releases) == 0 {
-		return nil, nil
-	}
-
-	// Find the newest release by semver comparison
-	var best *ReleaseInfo
-	for i := range releases {
-		r := &releases[i]
-		if r.TagName == "" {
-			continue
+		// The unauthenticated API allows 60 requests/hour per IP, which a
+		// shared egress IP (proxy, VPN, NAT) exhausts easily and then answers
+		// 403. The release page redirect has no such quota; it only lacks the
+		// release notes and skips pre-releases.
+		slog.Warn("updater: releases API failed, falling back to release page redirect", "error", err)
+		tag, pageURL, ferr := latestTagFromRedirect(latestPageURL)
+		if ferr != nil {
+			return nil, fmt.Errorf("check releases: %w (fallback: %v)", err, ferr)
 		}
-		if best == nil || semverCompare(r.TagName, best.TagName) > 0 {
-			best = r
-		}
+		best = &ReleaseInfo{TagName: tag, Body: pageURL}
 	}
-
 	if best == nil {
 		return nil, nil
 	}
@@ -65,6 +64,61 @@ func CheckForUpdate(currentVersion string) (*ReleaseInfo, error) {
 	}
 
 	return best, nil
+}
+
+// newestReleaseFrom returns the highest-versioned release listed by the
+// releases API, or nil when there is none.
+func newestReleaseFrom(apiURL string) (*ReleaseInfo, error) {
+	releases, err := fetchReleasesFrom(apiURL)
+	if err != nil {
+		return nil, err
+	}
+	var best *ReleaseInfo
+	for i := range releases {
+		r := &releases[i]
+		if r.TagName == "" {
+			continue
+		}
+		if best == nil || semverCompare(r.TagName, best.TagName) > 0 {
+			best = r
+		}
+	}
+	return best, nil
+}
+
+// latestTagFromRedirect reads the tag that GitHub's /releases/latest page
+// redirects to (.../releases/tag/<tag>) without following the redirect.
+// It returns the tag and the release page URL.
+func latestTagFromRedirect(pageURL string) (tag, releaseURL string, err error) {
+	client := &http.Client{
+		Timeout: 15 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	req, err := http.NewRequest("GET", pageURL, nil)
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("User-Agent", "lark-connect-updater")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	loc := resp.Header.Get("Location")
+	_, rest, ok := strings.Cut(loc, "/releases/tag/")
+	if !ok {
+		return "", "", fmt.Errorf("no release tag in redirect (HTTP %d, location %q)", resp.StatusCode, loc)
+	}
+	rest, _, _ = strings.Cut(rest, "?")
+	tag, err = url.PathUnescape(strings.TrimSuffix(rest, "/"))
+	if err != nil || tag == "" {
+		return "", "", fmt.Errorf("bad release tag in redirect %q", loc)
+	}
+	return tag, loc, nil
 }
 
 func fetchReleasesFrom(apiURL string) ([]ReleaseInfo, error) {
