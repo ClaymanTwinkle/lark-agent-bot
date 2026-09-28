@@ -48,6 +48,8 @@ config.*.toml
 
 # Lark-Connect runtime state
 .lark-connect/
+# Attachments Codex remote sessions save into the working directory
+.codex-remote-attachments/
 
 # npm / pnpm (for npm package distribution and web admin)
 .npmrc
