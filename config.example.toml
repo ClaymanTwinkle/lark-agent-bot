@@ -900,11 +900,16 @@ mode = "default" # "default" | "acceptEdits" (edit) | "plan" | "auto" | "bypassP
 # append_system_prompt = "Always respond in Chinese and prefer concise answers."
 
 # Optional: specify a model (passed to claude --model) / 可选：指定模型（传递给 claude --model）
-# Aliases always track the latest model of each family: "fable" | "opus" | "sonnet" | "haiku";
-# append "[1m]" (e.g. "opus[1m]") for the 1M-context variant. A full id such as
-# "claude-opus-5-5" pins one specific model.
-# 别名始终指向该系列最新模型："fable" | "opus" | "sonnet" | "haiku"；加 "[1m]"（如 "opus[1m]"）
-# 使用 1M 上下文版本。写完整 id（如 "claude-opus-5-5"）则固定到具体模型。
+# Aliases always track the latest model of each family: "fable" | "opus" | "sonnet" | "haiku".
+# A full id such as "claude-opus-5-5" pins one specific model.
+# Current models already have a 1M context window on Anthropic's API. The "[1m]" suffix
+# (e.g. "opus[1m]") is only needed when ANTHROPIC_BASE_URL points to a relay / proxy, on
+# Bedrock / Vertex / Foundry, or for older models; without it those run at 200K.
+# 别名始终指向该系列最新模型："fable" | "opus" | "sonnet" | "haiku"。
+# 写完整 id（如 "claude-opus-5-5"）则固定到具体模型。
+# 当前模型直连 Anthropic 官方 API 时本身就是 1M 上下文。只有 ANTHROPIC_BASE_URL 指向
+# 中转 / 代理、走 Bedrock / Vertex / Foundry，或使用老模型时，才需要加 "[1m]"
+# （如 "opus[1m]"），否则按 200K 运行。
 # model = "opus"
 
 # Optional: per-project environment variables injected into Claude Code sessions.

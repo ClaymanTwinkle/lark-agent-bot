@@ -439,12 +439,14 @@ func (a *Agent) AvailableModels(ctx context.Context) []core.ModelOption {
 	}
 	// Claude Code aliases that always resolve to the latest model of each
 	// family, so this list does not need a bump on every model release.
+	// No "[1m]" variants: current models are natively 1M on Anthropic's API,
+	// and Claude Code's own /model menu lists them once. Users behind a relay
+	// base URL or on Bedrock/Vertex/Foundry can still switch to e.g.
+	// "opus[1m]" by name.
 	return []core.ModelOption{
 		{Name: "fable", Desc: "Claude Fable (most capable)"},
 		{Name: "opus", Desc: "Claude Opus"},
-		{Name: "opus[1m]", Desc: "Claude Opus (1M context)"},
 		{Name: "sonnet", Desc: "Claude Sonnet (balanced)"},
-		{Name: "sonnet[1m]", Desc: "Claude Sonnet (1M context)"},
 		{Name: "haiku", Desc: "Claude Haiku (fastest)"},
 	}
 }
