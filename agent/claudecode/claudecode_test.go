@@ -1038,6 +1038,7 @@ func TestGetSessionHistory_TimestampsAreLocal(t *testing.T) {
 	// so we don't need a manual restore (which would need errcheck handling).
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 
 	workDir := t.TempDir()
 	projectsBase := filepath.Join(homeDir, ".claude", "projects")

@@ -1219,8 +1219,8 @@ app_secret = "your-feishu-app-secret"
 # =============================================================================
 # Requires: npm install -g @openai/codex
 # 需要安装：npm install -g @openai/codex
-# Codex uses `codex exec --json` under the hood.
-# Codex 底层使用 `codex exec --json` 命令。
+# Codex uses app-server by default, including approval requests and automatic review.
+# Codex 默认使用 app-server，支持权限审批与自动审核。
 
 # [[projects]]
 # name = "my-codex-project"
@@ -1230,15 +1230,21 @@ app_secret = "your-feishu-app-secret"
 #
 # [projects.agent.options]
 # work_dir = "/path/to/project"
-# mode = "suggest"  # "suggest" | "auto-edit" | "full-auto" | "yolo"
-# backend = "app_server"  # Enable Feishu approval cards / 启用飞书审批卡片（默认 exec 不支持审批）
-# approvals_reviewer = "auto_review"  # app_server only: Codex reviews permission requests / 仅 app_server：由 Codex 自动审核权限请求
+# backend = "app_server"  # Default / 默认
+# mode = "default"  # "default" | "auto-review" | "read-only" | "full-access"
 #
 # Mode options / 模式说明:
-# - "suggest":   read-only sandbox (default) / 只读沙箱（默认）
-# - "auto-edit": same as full-auto / 与 full-auto 相同
-# - "full-auto": workspace-write; app_server requests approval beyond sandbox / 工作区可写，app_server 越界时申请审批
-# - "yolo":      bypass all approvals and sandbox (dangerous) / 跳过所有审批和沙箱（危险）
+# - "default": workspace sandbox, user reviews additional access / 工作区沙箱，额外权限由用户审批
+# - "auto-review": workspace sandbox, automatically approve or deny permission requests / 工作区沙箱，自动审核权限请求
+# - "read-only": read-only sandbox, user reviews additional access / 只读沙箱，额外权限由用户审批
+# - "full-access": no sandbox or approval prompts / 完全访问权限，不受沙箱限制，不请求审批
+# Modes set sandbox, approval policy and reviewer together; no approvals_reviewer override.
+# 模式同时决定沙箱、审批策略和审核者，不再支持独立的 approvals_reviewer 配置。
+# Removed modes (suggest, auto-edit, full-auto, yolo and aliases) are rejected.
+# 旧模式名（suggest、auto-edit、full-auto、yolo 及其别名）会报错，不做兼容转换。
+# Optional backend="exec" supports only explicit read-only or full-access.
+# exec cannot request approvals; read-only operations requiring extra access fail.
+# 可选 exec 后端仅支持显式设置 read-only 或 full-access；无法申请审批，需要额外权限时直接失败。
 #
 # Optional: specify a model / 可选：指定模型
 # model = "o3"

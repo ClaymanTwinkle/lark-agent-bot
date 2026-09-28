@@ -2,6 +2,7 @@ package kimi
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -146,15 +147,15 @@ func TestAgentStartSession(t *testing.T) {
 }
 
 func TestAgentMemoryAndSkill(t *testing.T) {
-	a := &Agent{workDir: "/tmp/my-project", activeIdx: -1}
+	a := &Agent{workDir: t.TempDir(), activeIdx: -1}
 
-	assert.Equal(t, "/tmp/my-project/AGENTS.md", a.ProjectMemoryFile())
+	assert.Equal(t, filepath.Join(a.workDir, "AGENTS.md"), a.ProjectMemoryFile())
 	assert.NotEmpty(t, a.GlobalMemoryFile())
 
 	skillDirs := a.SkillDirs()
 	require.Len(t, skillDirs, 2)
-	assert.Contains(t, skillDirs[0], ".kimi/skills")
-	assert.Contains(t, skillDirs[1], ".kimi/skills")
+	assert.Contains(t, skillDirs[0], filepath.Join(".kimi", "skills"))
+	assert.Contains(t, skillDirs[1], filepath.Join(".kimi", "skills"))
 }
 
 func TestAgentAvailableModels(t *testing.T) {
@@ -171,6 +172,7 @@ func TestAgentAvailableModels(t *testing.T) {
 func TestListKimiSessions_BothFlavors(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	workDir := t.TempDir()
 
@@ -183,8 +185,9 @@ func TestListKimiSessions_BothFlavors(t *testing.T) {
 	// Kimi Code CLI session in the same workDir.
 	modernDir := filepath.Join(home, ".kimi-code", "sessions", "wd_proj_ab12", "session_modern-1")
 	require.NoError(t, os.MkdirAll(modernDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(modernDir, "state.json"),
-		[]byte(`{"title":"modern chat","workDir":"`+workDir+`"}`), 0o644))
+	state, err := json.Marshal(map[string]string{"title": "modern chat", "workDir": workDir})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(modernDir, "state.json"), state, 0o644))
 	// Kimi Code stores the transcript at agents/main/wire.jsonl (no
 	// context.jsonl). Include tool/assistant events that must NOT be counted.
 	require.NoError(t, os.MkdirAll(filepath.Join(modernDir, "agents", "main"), 0o755))
@@ -245,13 +248,15 @@ func TestListKimiSessions_BothFlavors(t *testing.T) {
 func TestParseKimiSessionDir_WireJSONLMessageCount(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	workDir := t.TempDir()
 	sessionID := "session_wire-1"
 	sessionDir := filepath.Join(home, ".kimi-code", "sessions", "wd_proj_ab12", sessionID)
 	require.NoError(t, os.MkdirAll(filepath.Join(sessionDir, "agents", "main"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "state.json"),
-		[]byte(`{"title":"wire chat","workDir":"`+workDir+`"}`), 0o644))
+	state, err := json.Marshal(map[string]string{"title": "wire chat", "workDir": workDir})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "state.json"), state, 0o644))
 
 	// Simulate a wire transcript: two user turns, some assistant/tool noise,
 	// punctuated by a non-append event that must be skipped.

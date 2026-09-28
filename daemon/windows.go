@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -48,17 +50,8 @@ func (m *schtasksManager) Install(cfg Config) error {
 	}
 
 	scriptPath := windowsTaskScriptPath()
-	// 0644 has weak semantics on Windows; the file ACL is what matters.
-	// We still write 0600 so the file's POSIX bits do not advertise read
-	// access, and rely on the user's own profile ACLs for primary defense
-	// (the script lives under %USERPROFILE%\.lark-connect by default).
-	// WriteFile only applies perm on create, so Chmod the existing file
-	// after writing to harden reinstalls of pre-existing 0644 scripts.
-	if err := os.WriteFile(scriptPath, []byte(buildWindowsTaskScript(cfg)), 0600); err != nil {
-		return fmt.Errorf("write task script: %w", err)
-	}
-	if err := os.Chmod(scriptPath, 0600); err != nil {
-		return fmt.Errorf("chmod task script: %w", err)
+	if err := writePrivateWindowsScript(scriptPath, buildWindowsTaskScript(cfg)); err != nil {
+		return err
 	}
 
 	if err := stopWindowsTask(); err != nil {
@@ -80,6 +73,38 @@ func (m *schtasksManager) Install(cfg Config) error {
 
 	if err := m.Start(); err != nil {
 		return fmt.Errorf("start task: %w", err)
+	}
+	return nil
+}
+
+// Chmod cannot restrict readers on Windows. Protect the DACL before writing
+// captured environment values, including when upgrading an existing script.
+func writePrivateWindowsScript(path, content string) error {
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		return fmt.Errorf("task script user: %w", err)
+	}
+	sd, err := windows.SecurityDescriptorFromString("D:P(A;;FA;;;" + user.User.Sid.String() + ")")
+	if err != nil {
+		return fmt.Errorf("task script security descriptor: %w", err)
+	}
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		return fmt.Errorf("task script DACL: %w", err)
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("open task script: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close task script: %w", err)
+	}
+	if err := windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil); err != nil {
+		return fmt.Errorf("restrict task script ACL: %w", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return fmt.Errorf("write task script: %w", err)
 	}
 	return nil
 }

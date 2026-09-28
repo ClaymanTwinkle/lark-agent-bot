@@ -192,6 +192,18 @@ func (i *I18n) SetLang(lang Language) {
 type MsgKey string
 
 const (
+	// Permission presets and validation.
+	MsgModeInvalid                MsgKey = "mode_invalid"
+	MsgPermissionDefaultName      MsgKey = "permission_default_name"
+	MsgPermissionDefaultDesc      MsgKey = "permission_default_desc"
+	MsgPermissionAutoReviewName   MsgKey = "permission_auto_review_name"
+	MsgPermissionAutoReviewDesc   MsgKey = "permission_auto_review_desc"
+	MsgPermissionReadOnlyName     MsgKey = "permission_read_only_name"
+	MsgPermissionReadOnlyDesc     MsgKey = "permission_read_only_desc"
+	MsgPermissionReadOnlyExecDesc MsgKey = "permission_read_only_exec_desc"
+	MsgPermissionFullAccessName   MsgKey = "permission_full_access_name"
+	MsgPermissionFullAccessDesc   MsgKey = "permission_full_access_desc"
+
 	MsgStarting                  MsgKey = "starting"
 	MsgThinking                  MsgKey = "thinking"
 	MsgTool                      MsgKey = "tool"
@@ -973,6 +985,76 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "🔔 全域安靜模式已關閉 — 所有會話將恢復推送思考和工具調用進度訊息。",
 		LangJapanese:           "🔔 グローバル静音モード OFF — 全セッションで思考とツール進捗を表示します。",
 		LangSpanish:            "🔔 Modo silencioso global desactivado — todas las sesiones mostrarán los mensajes de progreso.",
+	},
+	MsgModeInvalid: {
+		LangEnglish:            "Unsupported permission mode: `%s`.",
+		LangChinese:            "不支持的权限模式：`%s`。",
+		LangTraditionalChinese: "不支援的權限模式：`%s`。",
+		LangJapanese:           "未対応の権限モード: `%s`。",
+		LangSpanish:            "Modo de permisos no admitido: `%s`.",
+	},
+	MsgPermissionDefaultName: {
+		LangEnglish:            "Default permissions",
+		LangChinese:            "默认权限",
+		LangTraditionalChinese: "預設權限",
+		LangJapanese:           "デフォルトの権限",
+		LangSpanish:            "Permisos predeterminados",
+	},
+	MsgPermissionDefaultDesc: {
+		LangEnglish:            "Work inside the workspace sandbox; ask you to approve additional access.",
+		LangChinese:            "在工作区沙箱内操作，需要额外权限时由你审批。",
+		LangTraditionalChinese: "在工作區沙箱內操作，需要額外權限時由你審批。",
+		LangJapanese:           "ワークスペースのサンドボックス内で作業し、追加のアクセスはユーザーが承認します。",
+		LangSpanish:            "Trabaja dentro del entorno aislado; tú apruebas el acceso adicional.",
+	},
+	MsgPermissionAutoReviewName: {
+		LangEnglish:            "Auto-review",
+		LangChinese:            "自动审核",
+		LangTraditionalChinese: "自動審核",
+		LangJapanese:           "自動レビュー",
+		LangSpanish:            "Revisión automática",
+	},
+	MsgPermissionAutoReviewDesc: {
+		LangEnglish:            "Keep the workspace sandbox; automatically review permission requests, which may be approved or denied.",
+		LangChinese:            "保留工作区沙箱，自动审核权限请求，可以允许或拒绝。",
+		LangTraditionalChinese: "保留工作區沙箱，自動審核權限請求，可以允許或拒絕。",
+		LangJapanese:           "サンドボックスを維持し、権限リクエストを自動で承認または拒否します。",
+		LangSpanish:            "Mantiene el entorno aislado y revisa automáticamente las solicitudes para aprobarlas o rechazarlas.",
+	},
+	MsgPermissionReadOnlyName: {
+		LangEnglish:            "Read-only",
+		LangChinese:            "只读",
+		LangTraditionalChinese: "唯讀",
+		LangJapanese:           "読み取り専用",
+		LangSpanish:            "Solo lectura",
+	},
+	MsgPermissionReadOnlyDesc: {
+		LangEnglish:            "Read-only sandbox; ask you to approve operations outside that boundary.",
+		LangChinese:            "只读沙箱，超出只读权限的操作由你审批。",
+		LangTraditionalChinese: "唯讀沙箱，超出唯讀權限的操作由你審批。",
+		LangJapanese:           "読み取り専用サンドボックスの範囲を超える操作はユーザーが承認します。",
+		LangSpanish:            "Entorno de solo lectura; tú apruebas las operaciones que excedan ese límite.",
+	},
+	MsgPermissionReadOnlyExecDesc: {
+		LangEnglish:            "Read-only sandbox; operations requiring approval fail because this backend cannot request it.",
+		LangChinese:            "只读沙箱；此后端无法申请审批，需要额外权限的操作会失败。",
+		LangTraditionalChinese: "唯讀沙箱；此後端無法申請審批，需要額外權限的操作會失敗。",
+		LangJapanese:           "読み取り専用です。このバックエンドは承認を要求できないため、追加権限が必要な操作は失敗します。",
+		LangSpanish:            "Solo lectura; este motor no puede solicitar aprobación y las operaciones que la requieran fallan.",
+	},
+	MsgPermissionFullAccessName: {
+		LangEnglish:            "Full access",
+		LangChinese:            "完全访问权限",
+		LangTraditionalChinese: "完整存取權限",
+		LangJapanese:           "フルアクセス",
+		LangSpanish:            "Acceso completo",
+	},
+	MsgPermissionFullAccessDesc: {
+		LangEnglish:            "Access the computer without sandbox restrictions or approval prompts.",
+		LangChinese:            "不受沙箱限制访问计算机，不请求审批。",
+		LangTraditionalChinese: "不受沙箱限制存取電腦，不請求審批。",
+		LangJapanese:           "サンドボックスの制限や承認要求なしでコンピューターにアクセスします。",
+		LangSpanish:            "Accede al equipo sin restricciones del entorno aislado ni solicitudes de aprobación.",
 	},
 	MsgModeChanged: {
 		LangEnglish:            "🔄 Permission mode switched to **%s**. New sessions will use this mode.",

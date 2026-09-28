@@ -1,13 +1,14 @@
 package acp
 
 import (
+	"os"
 	"testing"
 
 	"github.com/ClaymanTwinkle/lark-connect/core"
 )
 
 func TestNew_DisplayNameDefault(t *testing.T) {
-	a, err := New(map[string]any{"command": "true"})
+	a, err := New(map[string]any{"command": os.Args[0]})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,7 +20,7 @@ func TestNew_DisplayNameDefault(t *testing.T) {
 
 func TestNew_DisplayNameCustom(t *testing.T) {
 	a, err := New(map[string]any{
-		"command":      "true",
+		"command":      os.Args[0],
 		"display_name": "Copilot ACP",
 	})
 	if err != nil {
@@ -33,7 +34,7 @@ func TestNew_DisplayNameCustom(t *testing.T) {
 
 func TestWorkspaceAgentOptions(t *testing.T) {
 	a, err := New(map[string]any{
-		"command":      "true",
+		"command":      os.Args[0],
 		"args":         []any{"--acp", "--stdio"},
 		"env":          map[string]any{"FOO": "bar", "COPILOT_VALUE": "a=b"},
 		"auth_method":  "cursor_login",
@@ -52,8 +53,8 @@ func TestWorkspaceAgentOptions(t *testing.T) {
 	}
 	opts := snapshotter.WorkspaceAgentOptions()
 
-	if got, _ := opts["cmd"].(string); got != "true" {
-		t.Fatalf("cmd = %q, want true", got)
+	if got, _ := opts["cmd"].(string); got != os.Args[0] {
+		t.Fatalf("cmd = %q, want %q", got, os.Args[0])
 	}
 	gotArgs, _ := opts["args"].([]string)
 	if len(gotArgs) != 2 || gotArgs[0] != "--acp" || gotArgs[1] != "--stdio" {

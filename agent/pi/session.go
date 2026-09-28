@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -128,7 +129,7 @@ func newPiSession(ctx context.Context, cmd string, extraArgs []string, workDir, 
 		thinking:  thinking,
 		rpc:       rpc,
 		extraEnv:  extraEnv,
-		attachDir: filepath.Join(workDir, ".lark-connect", "attachments", fmt.Sprintf("pi_%d", time.Now().UnixNano())),
+		attachDir: filepath.Join(workDir, ".lark-connect", "attachments", "pi_"+rand.Text()),
 		events:    make(chan core.Event, 64),
 		ctx:       ctx,
 		cancel:    cancel,

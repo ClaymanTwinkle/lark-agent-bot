@@ -1555,6 +1555,25 @@ func TestCUJ_C5_StopKeepsSameSession(t *testing.T) {
 
 // CUJ-C6 · /mode switches permission mode; verified via i18n reply text.
 func TestCUJ_C6_ModeSwitchAcknowledged(t *testing.T) {
+	t.Run("StrictModesRejectAliasesAndRestoreDefault", func(t *testing.T) {
+		p := &workspacePickerPlatform{stubPlatformEngine: stubPlatformEngine{n: "test"}}
+		e := NewEngine("test", &strictModeJourneyAgent{}, []Platform{p}, filepath.Join(t.TempDir(), "sessions.json"), LangEnglish)
+		send := func(command, want string) {
+			t.Helper()
+			p.clearSent()
+			e.ReceiveMessage(p, &Message{SessionKey: "test:c6:user", Platform: "test", UserID: "user", Content: command, ReplyCtx: "ctx"})
+			if got := strings.Join(p.getSent(), "\n"); !strings.Contains(got, want) {
+				t.Fatalf("%s: got %q, want %q", command, got, want)
+			}
+		}
+		send("/mode", "▶ **Default permissions**")
+		send("/mode auto-review", e.i18n.Tf(MsgModeChanged, "Auto-review"))
+		send("/mode full-auto", e.i18n.Tf(MsgModeInvalid, "full-auto"))
+		send("/mode", "▶ **Auto-review**")
+		send("/mode default", e.i18n.Tf(MsgModeChanged, "Default permissions"))
+		send("/mode", "▶ **Default permissions**")
+	})
+
 	env := newCUJEnv(t)
 	env.userSends("c6", "hi")
 	env.waitFor("turn1", 2*time.Second, func() bool { return len(env.plat.getSent()) >= 1 })

@@ -11,6 +11,7 @@ func TestSkillDirs_IncludesCursorAndClaudePaths(t *testing.T) {
 	workDir := filepath.Join(tmp, "workspace")
 
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	a := &Agent{workDir: workDir}
 	got := a.SkillDirs()
@@ -36,6 +37,7 @@ func TestSkillDirs_CursorBeforeClaude(t *testing.T) {
 	workDir := filepath.Join(tmp, "workspace")
 
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	a := &Agent{workDir: workDir}
 	got := a.SkillDirs()

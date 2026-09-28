@@ -101,9 +101,10 @@ func TestParseDaemonInstallArgs_NoCaptureSecretsFlagAndEnvCombine(t *testing.T) 
 }
 
 func TestParseDaemonInstallArgs_WorkDirOverridesConfig(t *testing.T) {
+	overrideDir := t.TempDir()
 	cfg, force, err := parseDaemonInstallArgs([]string{
 		"--config", "/tmp/example/config.toml",
-		"--work-dir", "/tmp/override",
+		"--work-dir", overrideDir,
 		"--force",
 	})
 	if err != nil {
@@ -113,7 +114,7 @@ func TestParseDaemonInstallArgs_WorkDirOverridesConfig(t *testing.T) {
 		t.Fatalf("force = false, want true")
 	}
 
-	want := filepath.Clean("/tmp/override")
+	want := overrideDir
 	if cfg.WorkDir != want {
 		t.Fatalf("cfg.WorkDir = %q, want %q", cfg.WorkDir, want)
 	}

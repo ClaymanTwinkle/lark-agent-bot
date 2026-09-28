@@ -259,6 +259,7 @@ func TestBuildReplyFooter_LegacyAllSegments(t *testing.T) {
 func TestCompactReplyFooterPath_HomeRelativeDeepPathStaysFull(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 
 	shortPath := filepath.Join(homeDir, "codes", "lark-connect")
 	if got, want := compactReplyFooterPath(shortPath), "~/codes/lark-connect"; got != want {

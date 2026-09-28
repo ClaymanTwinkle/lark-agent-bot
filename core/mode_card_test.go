@@ -2,10 +2,79 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+type strictModeJourneyAgent struct{ modeJourneyAgent }
+
+func (a *strictModeJourneyAgent) ValidateMode(mode string) error {
+	for _, item := range a.PermissionModes() {
+		if item.Key == mode {
+			return nil
+		}
+	}
+	return fmt.Errorf("unsupported permission mode %q", mode)
+}
+
+func (a *strictModeJourneyAgent) PermissionModes() []PermissionModeInfo {
+	return []PermissionModeInfo{
+		{Key: "default", NameKey: MsgPermissionDefaultName, DescKey: MsgPermissionDefaultDesc},
+		{Key: "auto-review", NameKey: MsgPermissionAutoReviewName, DescKey: MsgPermissionAutoReviewDesc},
+		{Key: "read-only", NameKey: MsgPermissionReadOnlyName, DescKey: MsgPermissionReadOnlyDesc},
+		{Key: "full-access", NameKey: MsgPermissionFullAccessName, DescKey: MsgPermissionFullAccessDesc},
+	}
+}
+
+func TestModeCard_RejectsObsoleteActionWithoutClosingSession(t *testing.T) {
+	p := &stubPlatformEngine{n: "test"}
+	agent := &strictModeJourneyAgent{}
+	e := NewEngine("test", agent, []Platform{p}, filepath.Join(t.TempDir(), "sessions.json"), LangEnglish)
+	key := "test:group:user"
+	live := &stubLiveModeSession{}
+	state := &interactiveState{agentSession: live, platform: p}
+	e.interactiveStates[key] = state
+	s := e.sessions.GetOrCreateActive(key)
+	s.SetAgentSessionID("kept-thread", "stub")
+	s.AddHistory("user", "keep history")
+	for _, action := range []string{"act:/mode full-auto", "act:/mode auto-edit"} {
+		card := e.handleCardNav(action, key)
+		if !strings.Contains(card.RenderText(), "Unsupported permission mode") {
+			t.Fatalf("missing visible rejection: %s", card.RenderText())
+		}
+		if state.agentSession != live || len(live.modes) != 0 || agent.GetMode() != "default" || s.GetAgentSessionID() != "kept-thread" || len(s.GetHistory(0)) != 1 {
+			t.Fatal("invalid action changed or closed the conversation")
+		}
+	}
+	e.cleanupInteractiveState(key)
+}
+
+func TestPermissionModes_LocalizedCardAndText(t *testing.T) {
+	for _, lang := range []Language{LangEnglish, LangChinese, LangTraditionalChinese, LangJapanese, LangSpanish} {
+		for _, cards := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/cards=%t", lang, cards), func(t *testing.T) {
+				base := &stubPlatformEngine{n: "test"}
+				var p Platform = base
+				if cards {
+					p = &workspacePickerPlatform{stubPlatformEngine: stubPlatformEngine{n: "test"}}
+				}
+				e := NewEngine("test", &strictModeJourneyAgent{}, []Platform{p}, filepath.Join(t.TempDir(), "sessions.json"), lang)
+				e.ReceiveMessage(p, &Message{SessionKey: "test:group:user", Platform: "test", UserID: "user", Content: "/mode", ReplyCtx: "ctx"})
+				output := strings.Join(base.getSent(), "\n")
+				if cards {
+					output = strings.Join(p.(*workspacePickerPlatform).getSent(), "\n")
+				}
+				for _, mode := range (&strictModeJourneyAgent{}).PermissionModes() {
+					if !strings.Contains(output, e.i18n.T(mode.NameKey)) || !strings.Contains(output, e.i18n.T(mode.DescKey)) {
+						t.Fatalf("missing localized mode %s: %s", mode.Key, output)
+					}
+				}
+			})
+		}
+	}
+}
 
 type modeJourneyAgent struct {
 	stubModelModeAgent

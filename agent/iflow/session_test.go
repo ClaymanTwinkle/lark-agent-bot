@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -359,6 +360,9 @@ func TestIFlowSessionDefaultToolTimeout(t *testing.T) {
 }
 
 func TestIFlowSessionPendingToolTimeoutClearsBusyState(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("creack/pty does not implement Windows terminals; native read-loop timeout is tested separately")
+	}
 	oldTimeout := iflowPendingToolTimeout
 	oldDefaultTimeout := iflowPendingToolTimeoutDefaultMode
 	iflowPendingToolTimeout = 80 * time.Millisecond
@@ -368,6 +372,7 @@ func TestIFlowSessionPendingToolTimeoutClearsBusyState(t *testing.T) {
 
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 
 	workDir := filepath.Join(t.TempDir(), "work")
 	if err := os.MkdirAll(workDir, 0o755); err != nil {

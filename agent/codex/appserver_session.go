@@ -143,17 +143,16 @@ type appServerRequestUserInputAnswer struct {
 }
 
 type appServerSession struct {
-	url               string
-	workDir           string
-	model             string
-	effort            string
-	mode              string
-	approvalsReviewer string
-	baseURL           string
-	modelProvider     string
-	extraEnv          []string
-	codexHome         string
-	promptPreamble    string
+	url            string
+	workDir        string
+	model          string
+	effort         string
+	mode           string
+	baseURL        string
+	modelProvider  string
+	extraEnv       []string
+	codexHome      string
+	promptPreamble string
 
 	events chan core.Event
 
@@ -194,26 +193,29 @@ const (
 	appServerUsageRefreshTimeout = 1500 * time.Millisecond
 )
 
-func newAppServerSession(ctx context.Context, url, workDir, model, effort, mode, resumeID, baseURL, modelProvider string, extraEnv []string, codexHome string, systemPrompt string, appendPrompt string, approvalsReviewer string) (*appServerSession, error) {
+func newAppServerSession(ctx context.Context, url, workDir, model, effort, mode, resumeID, baseURL, modelProvider string, extraEnv []string, codexHome string, systemPrompt string, appendPrompt string) (*appServerSession, error) {
+	if err := validateMode(mode, "app_server"); err != nil {
+		return nil, err
+	}
+	mode = normalizeMode(mode)
 	sessionCtx, cancel := context.WithCancel(ctx)
 	s := &appServerSession{
-		url:               url,
-		workDir:           workDir,
-		model:             model,
-		effort:            effort,
-		mode:              mode,
-		approvalsReviewer: approvalsReviewer,
-		baseURL:           baseURL,
-		modelProvider:     modelProvider,
-		extraEnv:          append([]string(nil), extraEnv...),
-		codexHome:         strings.TrimSpace(codexHome),
-		promptPreamble:    buildCodexPromptPreamble(systemPrompt, appendPrompt),
-		events:            make(chan core.Event, 128),
-		ctx:               sessionCtx,
-		cancel:            cancel,
-		pending:           make(map[int64]chan rpcResponseEnvelope),
-		pendingApprovals:  make(map[string]chan core.PermissionResult),
-		preambleSent:      resumeID != "" && resumeID != core.ContinueSession,
+		url:              url,
+		workDir:          workDir,
+		model:            model,
+		effort:           effort,
+		mode:             mode,
+		baseURL:          baseURL,
+		modelProvider:    modelProvider,
+		extraEnv:         append([]string(nil), extraEnv...),
+		codexHome:        strings.TrimSpace(codexHome),
+		promptPreamble:   buildCodexPromptPreamble(systemPrompt, appendPrompt),
+		events:           make(chan core.Event, 128),
+		ctx:              sessionCtx,
+		cancel:           cancel,
+		pending:          make(map[int64]chan rpcResponseEnvelope),
+		pendingApprovals: make(map[string]chan core.PermissionResult),
+		preambleSent:     resumeID != "" && resumeID != core.ContinueSession,
 	}
 	s.alive.Store(true)
 
@@ -392,9 +394,7 @@ func (s *appServerSession) threadRequestParams() map[string]any {
 	if model := s.GetModel(); model != "" {
 		params["model"] = model
 	}
-	if s.approvalsReviewer != "" {
-		params["approvalsReviewer"] = s.approvalsReviewer
-	}
+	params["approvalsReviewer"] = modeSettings(s.mode).reviewer
 	if approval, sandbox := appServerModeSettings(s.mode); approval != "" {
 		params["approvalPolicy"] = approval
 		if sandbox != "" {
@@ -405,8 +405,9 @@ func (s *appServerSession) threadRequestParams() map[string]any {
 }
 
 func (s *appServerSession) verifyApprovalsReviewer(actual string) error {
-	if s.approvalsReviewer != "" && actual != s.approvalsReviewer {
-		return fmt.Errorf("codex app-server: approvals reviewer %q was not applied (got %q)", s.approvalsReviewer, actual)
+	want := modeSettings(s.mode).reviewer
+	if actual != want {
+		return fmt.Errorf("codex app-server: mode %q requires approvals reviewer %q (got %q)", s.mode, want, actual)
 	}
 	if actual != "" {
 		slog.Info("codex app-server approval reviewer", "reviewer", actual)
@@ -415,16 +416,8 @@ func (s *appServerSession) verifyApprovalsReviewer(actual string) error {
 }
 
 func appServerModeSettings(mode string) (approval string, sandbox string) {
-	switch normalizeMode(mode) {
-	case "auto-edit", "full-auto":
-		// Unlike exec, app-server can relay approval requests to the user.
-		// Keep protected paths and network access behind that approval flow.
-		return "on-request", "workspace-write"
-	case "yolo":
-		return "never", "danger-full-access"
-	default:
-		return "on-request", "read-only"
-	}
+	settings := modeSettings(mode)
+	return settings.approval, settings.sandbox
 }
 
 func (s *appServerSession) applyThreadRuntimeState(workDir, model string, effort *string) {
@@ -531,9 +524,7 @@ func (s *appServerSession) Send(prompt string, messageID string, images []core.I
 		"threadId": threadID,
 		"input":    input,
 	}
-	if s.approvalsReviewer != "" {
-		params["approvalsReviewer"] = s.approvalsReviewer
-	}
+	params["approvalsReviewer"] = modeSettings(s.mode).reviewer
 	if model := s.GetModel(); model != "" {
 		params["model"] = model
 	}

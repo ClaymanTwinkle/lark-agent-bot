@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-connect/internal/testutil"
 )
 
 func TestSlugify(t *testing.T) {
@@ -59,7 +60,9 @@ func TestNormalizeMode(t *testing.T) {
 }
 
 func TestSession_ContinueSessionTreatedAsFresh(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 
 	s, err := newAntigravitySession(context.Background(), "echo", nil, "/tmp", "", "default", core.ContinueSession, nil, 0)
 	if err != nil {
@@ -164,7 +167,9 @@ func TestAntigravitySession_ResumePassesConversationID(t *testing.T) {
 }
 
 func TestDefaultModeCreatesPermissionBridge(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 
 	s, err := newAntigravitySession(context.Background(), "echo", nil, "/tmp", "", "default", "", nil, 0)
 	if err != nil {
@@ -183,7 +188,9 @@ func TestDefaultModeCreatesPermissionBridge(t *testing.T) {
 func TestNonDefaultModesDoNotCreatePermissionBridge(t *testing.T) {
 	for _, mode := range []string{"yolo", "plan"} {
 		t.Run(mode, func(t *testing.T) {
-			t.Setenv("HOME", t.TempDir())
+			homeDir := t.TempDir()
+			t.Setenv("HOME", homeDir)
+			t.Setenv("USERPROFILE", homeDir)
 
 			s, err := newAntigravitySession(context.Background(), "echo", nil, "/tmp", "", mode, "", nil, 0)
 			if err != nil {
@@ -214,15 +221,12 @@ func TestRespondPermissionRequiresDefaultMode(t *testing.T) {
 func TestSendDoesNotHoldStdinOpen(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 
 	workDir := t.TempDir()
-	cmdPath := filepath.Join(t.TempDir(), "fake-agy.sh")
-	script := "#!/bin/sh\ncat >/dev/null\nprintf 'done\\n'\n"
-	if err := os.WriteFile(cmdPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("WriteFile fake agy: %v", err)
-	}
+	cmdPath := testutil.NewCLI(t, testutil.CLI{WaitEOF: true, Output: "done\n"})
 
-	s, err := newAntigravitySession(context.Background(), cmdPath, nil, workDir, "", "default", "", nil, 2*time.Second)
+	s, err := newAntigravitySession(context.Background(), cmdPath, nil, workDir, "", "default", "", nil, 10*time.Second)
 	if err != nil {
 		t.Fatalf("newAntigravitySession: %v", err)
 	}
@@ -232,12 +236,14 @@ func TestSendDoesNotHoldStdinOpen(t *testing.T) {
 		t.Fatalf("Send: %v", err)
 	}
 
-	deadline := time.After(3 * time.Second)
+	deadline := time.After(15 * time.Second)
 	var text strings.Builder
 	for {
 		select {
 		case ev := <-s.Events():
 			switch ev.Type {
+			case core.EventError:
+				t.Fatal(ev.Error)
 			case core.EventPermissionRequest:
 				t.Fatal("unexpected permission request from unstructured stdout")
 			case core.EventText:

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -252,7 +253,12 @@ func runHookCommand(
 	timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(timeoutCtx, "sh", "-c", command)
+	shell, err := permissionHookShell()
+	if err != nil {
+		return ccHookDecision{}, fmt.Errorf("hook shell: %w", err)
+	}
+	cmd := exec.CommandContext(timeoutCtx, shell, "-c", command)
+	cmd.WaitDelay = time.Second
 	cmd.Stdin = bytes.NewReader(stdinJSON)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -266,6 +272,30 @@ func runHookCommand(
 	}
 
 	return parseHookOutput(stdout.Bytes())
+}
+
+// Git for Windows normally adds only Git's cmd directory to PATH. Locate its
+// shell explicitly so hooks keep their POSIX syntax on Windows as well.
+func permissionHookShell() (string, error) {
+	if runtime.GOOS == "windows" {
+		if path := os.Getenv("CLAUDE_CODE_GIT_BASH_PATH"); path != "" {
+			return exec.LookPath(path)
+		}
+	}
+	if path, err := exec.LookPath("sh"); err == nil {
+		return path, nil
+	}
+	if runtime.GOOS == "windows" {
+		if git, err := exec.LookPath("git.exe"); err == nil {
+			root := filepath.Dir(filepath.Dir(git))
+			for _, path := range []string{filepath.Join(root, "bin", "bash.exe"), filepath.Join(root, "usr", "bin", "sh.exe")} {
+				if shell, err := exec.LookPath(path); err == nil {
+					return shell, nil
+				}
+			}
+		}
+	}
+	return "", fmt.Errorf("POSIX shell not found; install sh or configure CLAUDE_CODE_GIT_BASH_PATH on Windows")
 }
 
 // parseHookOutput parses hook stdout into a decision.

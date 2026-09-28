@@ -1432,6 +1432,7 @@ func TestProcessInteractiveEvents_AddsDoneReactionAfterNormalReply(t *testing.T)
 func TestProcessInteractiveEvents_DoesNotAppendReplyFooterWhenDisabled(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 
 	agent := &stubReplyFooterAgent{
 		stubModelModeAgent: stubModelModeAgent{
@@ -1556,6 +1557,7 @@ func TestProcessInteractiveEvents_ReplyFooterPrefersSessionRuntimeState(t *testi
 func TestProcessInteractiveEvents_SuppressesReplyFooterWhenOnlyWorkDir(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 
 	agent := &stubWorkDirAgent{workDir: homeDir}
 	p := &stubPlatformEngine{n: "telegram"}
@@ -4800,7 +4802,7 @@ func TestCmdModel_MultiWorkspacePersistsWorkspaceModelForRecreatedAgent(t *testi
 			mode:  "default",
 		},
 	}
-	e := NewEngine("test", globalAgent, []Platform{p}, "", LangEnglish)
+	e := NewEngine("test", globalAgent, []Platform{p}, filepath.Join(t.TempDir(), "sessions.json"), LangEnglish)
 	e.SetProjectStateStore(NewProjectStateStore(filepath.Join(t.TempDir(), "projects", "test.state.json")))
 	e.SetMultiWorkspace(t.TempDir(), filepath.Join(t.TempDir(), "bindings.json"))
 
@@ -4900,7 +4902,7 @@ func TestGetOrCreateWorkspaceAgent_InheritsActiveProvider(t *testing.T) {
 			active: "azure",
 		},
 	}
-	e := NewEngine("test", globalAgent, []Platform{&stubPlatformEngine{n: "plain"}}, "", LangEnglish)
+	e := NewEngine("test", globalAgent, []Platform{&stubPlatformEngine{n: "plain"}}, filepath.Join(t.TempDir(), "sessions.json"), LangEnglish)
 	e.SetMultiWorkspace(t.TempDir(), filepath.Join(t.TempDir(), "bindings.json"))
 
 	wsAgentRaw, _, err := e.getOrCreateWorkspaceAgent(normalizeWorkspacePath(t.TempDir()))
@@ -4962,7 +4964,7 @@ func TestGetOrCreateWorkspaceAgent_InheritsSnapshotOptions(t *testing.T) {
 		runAsUser: "fallback-user",
 		runAsEnv:  []string{"FALLBACK_ONLY"},
 	}
-	e := NewEngine("test", globalAgent, []Platform{&stubPlatformEngine{n: "plain"}}, "", LangEnglish)
+	e := NewEngine("test", globalAgent, []Platform{&stubPlatformEngine{n: "plain"}}, filepath.Join(t.TempDir(), "sessions.json"), LangEnglish)
 	e.SetMultiWorkspace(t.TempDir(), filepath.Join(t.TempDir(), "bindings.json"))
 
 	workspace := normalizeWorkspacePath(t.TempDir())

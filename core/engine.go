@@ -10337,21 +10337,15 @@ func (e *Engine) cmdMode(p Platform, msg *Message, args []string) {
 						suffix = " (current)"
 					}
 				}
-				if zhLike {
-					sb.WriteString(fmt.Sprintf("**%s**%s — %s\n", m.NameZh, suffix, m.DescZh))
-				} else {
-					sb.WriteString(fmt.Sprintf("**%s**%s — %s\n", m.Name, suffix, m.Desc))
-				}
+				name, desc := e.permissionModeText(m)
+				sb.WriteString(fmt.Sprintf("**%s**%s — %s\n", name, suffix, desc))
 			}
 			sb.WriteString(e.modeUsageText(modes))
 
 			var buttons [][]ButtonOption
 			var row []ButtonOption
 			for _, m := range modes {
-				label := m.Name
-				if zhLike {
-					label = m.NameZh
-				}
+				label, _ := e.permissionModeText(m)
 				row = append(row, ButtonOption{Text: label, Data: "cmd:/mode " + m.Key})
 				if len(row) >= 2 {
 					buttons = append(buttons, row)
@@ -10369,18 +10363,17 @@ func (e *Engine) cmdMode(p Platform, msg *Message, args []string) {
 	}
 
 	target := strings.ToLower(args[0])
+	if reason := e.modeValidationMessage(switcher, target); reason != "" {
+		e.reply(p, msg.ReplyCtx, reason)
+		return
+	}
 	newMode, appliedLive := e.setSessionMode(switcher, msg.SessionKey, target)
 
 	modes := switcher.PermissionModes()
 	displayName := newMode
-	zhLike := e.i18n.IsZhLike()
 	for _, m := range modes {
 		if m.Key == newMode {
-			if zhLike {
-				displayName = m.NameZh
-			} else {
-				displayName = m.Name
-			}
+			displayName, _ = e.permissionModeText(m)
 			break
 		}
 	}
@@ -10402,6 +10395,12 @@ func (e *Engine) modeUsageText(modes []PermissionModeInfo) string {
 // Both text commands and card actions must update the workspace's agent and
 // preserve its conversation. Recreate only the process if live updates are unsupported.
 func (e *Engine) setSessionMode(switcher ModeSwitcher, sessionKey, target string) (string, bool) {
+	if validator, ok := switcher.(ModeValidator); ok {
+		if err := validator.ValidateMode(target); err != nil {
+			slog.Warn("permission mode rejected", "error", err)
+			return switcher.GetMode(), false
+		}
+	}
 	switcher.SetMode(target)
 	mode := switcher.GetMode()
 	live := e.applyLiveModeChange(sessionKey, mode)
@@ -12412,6 +12411,15 @@ func (e *Engine) handleCardNav(action string, sessionKey string) *Card {
 		return e.handleModelCardAction(args, sessionKey)
 	}
 
+	if prefix == "act" && cmd == "/mode" {
+		agent, _ := e.sessionContextForKey(sessionKey)
+		if switcher, ok := agent.(ModeSwitcher); ok {
+			if reason := e.modeValidationMessage(switcher, args); reason != "" {
+				return e.simpleCard(e.i18n.T(MsgCardTitleMode), "violet", reason)
+			}
+		}
+	}
+
 	if prefix == "act" {
 		e.executeCardAction(cmd, args, sessionKey)
 	}
@@ -13456,7 +13464,6 @@ func (e *Engine) renderModeCard(sessionKey string) *Card {
 
 	current := switcher.GetMode()
 	modes := switcher.PermissionModes()
-	zhLike := e.i18n.IsZhLike()
 
 	var sb strings.Builder
 	for _, m := range modes {
@@ -13464,20 +13471,14 @@ func (e *Engine) renderModeCard(sessionKey string) *Card {
 		if m.Key == current {
 			marker = "▶"
 		}
-		if zhLike {
-			sb.WriteString(fmt.Sprintf("%s **%s** — %s\n", marker, m.NameZh, m.DescZh))
-		} else {
-			sb.WriteString(fmt.Sprintf("%s **%s** — %s\n", marker, m.Name, m.Desc))
-		}
+		name, desc := e.permissionModeText(m)
+		sb.WriteString(fmt.Sprintf("%s **%s** — %s\n", marker, name, desc))
 	}
 
 	var opts []CardSelectOption
 	initVal := ""
 	for _, m := range modes {
-		label := m.Name
-		if zhLike {
-			label = m.NameZh
-		}
+		label, _ := e.permissionModeText(m)
 		val := "act:/mode " + m.Key
 		opts = append(opts, CardSelectOption{Text: label, Value: val})
 		if m.Key == current {

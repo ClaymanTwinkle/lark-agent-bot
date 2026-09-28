@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-connect/internal/testutil"
 )
 
 type errWriter struct{}
@@ -21,30 +21,12 @@ func (errWriter) Write(_ []byte) (int, error) {
 	return 0, errors.New("write failed")
 }
 
-// writeFakeModelsBin writes a temporary shell script that acts as a fake CLI.
+// writeFakeModelsBin writes a native subprocess fixture that acts as a fake CLI.
 // When invoked with "models", it prints lines to stdout.
-// When exitCode != 0, the script exits immediately with that code.
+// When exitCode != 0, the fixture exits immediately with that code.
 func writeFakeModelsBin(t *testing.T, lines []string, exitCode int) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	name := filepath.Join(tmpDir, "fake-opencode")
-
-	var body strings.Builder
-	body.WriteString("#!/bin/sh\n")
-	if exitCode != 0 {
-		fmt.Fprintf(&body, "exit %d\n", exitCode)
-	} else {
-		body.WriteString("if [ \"$1\" = \"models\" ]; then\n")
-		for _, line := range lines {
-			fmt.Fprintf(&body, "printf '%%s\\n' '%s'\n", line)
-		}
-		body.WriteString("fi\n")
-	}
-
-	if err := os.WriteFile(name, []byte(body.String()), 0755); err != nil {
-		t.Fatal(err)
-	}
-	return name
+	return testutil.NewCLI(t, testutil.CLI{Args: []string{"models"}, Output: strings.Join(lines, "\n") + "\n", ExitCode: exitCode})
 }
 
 func TestWriteProviderSignaturePart_PropagatesWriterError(t *testing.T) {
@@ -112,61 +94,12 @@ func writePersistentModelCacheWithSnapshot(t *testing.T, cachePath string, snaps
 
 func writeBlockingModelsBin(t *testing.T, gatePath string, lines []string) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	name := filepath.Join(tmpDir, "fake-opencode")
-
-	var body strings.Builder
-	body.WriteString("#!/bin/sh\n")
-	body.WriteString("if [ \"$1\" = \"models\" ]; then\n")
-	if gatePath != "" {
-		fmt.Fprintf(&body, "  while [ ! -f '%s' ]; do\n", gatePath)
-		body.WriteString("    sleep 0.01\n")
-		body.WriteString("  done\n")
-	}
-	for _, line := range lines {
-		fmt.Fprintf(&body, "  printf '%%s\\n' '%s'\n", line)
-	}
-	body.WriteString("fi\n")
-
-	if err := os.WriteFile(name, []byte(body.String()), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return name
+	return testutil.NewCLI(t, testutil.CLI{Args: []string{"models"}, Output: strings.Join(lines, "\n") + "\n", GatePath: gatePath})
 }
 
 func writeCountingModelsBin(t *testing.T, countPath, gatePath string, lines []string, requireEnvKey string, exitCode int) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	name := filepath.Join(tmpDir, "fake-opencode")
-
-	var body strings.Builder
-	body.WriteString("#!/bin/sh\n")
-	body.WriteString("if [ \"$1\" = \"models\" ]; then\n")
-	if countPath != "" {
-		fmt.Fprintf(&body, "  count=0\n  if [ -f '%s' ]; then count=$(cat '%s'); fi\n", countPath, countPath)
-		fmt.Fprintf(&body, "  count=$((count + 1))\n  printf '%%s' \"$count\" > '%s'\n", countPath)
-	}
-	if gatePath != "" {
-		fmt.Fprintf(&body, "  while [ ! -f '%s' ]; do\n", gatePath)
-		body.WriteString("    sleep 0.01\n")
-		body.WriteString("  done\n")
-	}
-	if requireEnvKey != "" {
-		fmt.Fprintf(&body, "  if [ -z \"$%s\" ]; then exit 0; fi\n", requireEnvKey)
-	}
-	if exitCode != 0 {
-		fmt.Fprintf(&body, "  exit %d\n", exitCode)
-	} else {
-		for _, line := range lines {
-			fmt.Fprintf(&body, "  printf '%%s\\n' '%s'\n", line)
-		}
-	}
-	body.WriteString("fi\n")
-
-	if err := os.WriteFile(name, []byte(body.String()), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return name
+	return testutil.NewCLI(t, testutil.CLI{Args: []string{"models"}, Output: strings.Join(lines, "\n") + "\n", GatePath: gatePath, CountPath: countPath, RequireEnv: requireEnvKey, ExitCode: exitCode})
 }
 
 func waitForModelsInPersistentCache(t *testing.T, cachePath string, want []string) {
@@ -547,12 +480,7 @@ func TestAvailableModels_ConfiguredFallbackUsesSnapshot(t *testing.T) {
 // TestAvailableModels_CustomCmdUsedForDiscovery verifies that a.cmd (not the
 // literal string "opencode") is used when running the models sub-command.
 func TestAvailableModels_CustomCmdUsedForDiscovery(t *testing.T) {
-	tmpDir := t.TempDir()
-	customBin := filepath.Join(tmpDir, "my-ai-cli")
-	script := "#!/bin/sh\nif [ \"$1\" = \"models\" ]; then\nprintf '%s\\n' 'custom/model-a'\nfi\n"
-	if err := os.WriteFile(customBin, []byte(script), 0755); err != nil {
-		t.Fatal(err)
-	}
+	customBin := writeFakeModelsBin(t, []string{"custom/model-a"}, 0)
 
 	a := &Agent{cmd: customBin, activeIdx: -1}
 	got := a.AvailableModels(context.Background())
@@ -1171,34 +1099,16 @@ func TestAvailableModels_IgnoresPersistentCacheForWorkDirMismatch(t *testing.T) 
 
 // ---------- DeleteSession tests ----------
 
-// writeFakeDeleteBin writes a temporary shell script that acts as a fake opencode CLI.
+// writeFakeDeleteBin writes a native subprocess fixture that acts as a fake opencode CLI.
 // When invoked with "session delete <id>", it either succeeds (exitCode=0) or fails.
-// If wantID is non-empty the script validates the session ID matches.
+// If wantID is non-empty the fixture validates the session ID matches.
 func writeFakeDeleteBin(t *testing.T, wantID string, exitCode int, stderr string) string {
 	t.Helper()
-	tmpDir := t.TempDir()
-	name := filepath.Join(tmpDir, "fake-opencode")
-
-	var body strings.Builder
-	body.WriteString("#!/bin/sh\n")
-	body.WriteString("if [ \"$1\" = \"session\" ] && [ \"$2\" = \"delete\" ]; then\n")
+	args := []string{"session", "delete"}
 	if wantID != "" {
-		fmt.Fprintf(&body, "  if [ \"$3\" != \"%s\" ]; then\n", wantID)
-		fmt.Fprintf(&body, "    printf 'unexpected session id: %%s\\n' \"$3\" >&2\n")
-		body.WriteString("    exit 1\n")
-		body.WriteString("  fi\n")
+		args = append(args, wantID)
 	}
-	if stderr != "" {
-		fmt.Fprintf(&body, "  printf '%s\\n' >&2\n", stderr)
-	}
-	fmt.Fprintf(&body, "  exit %d\n", exitCode)
-	body.WriteString("fi\n")
-	body.WriteString("exit 0\n")
-
-	if err := os.WriteFile(name, []byte(body.String()), 0755); err != nil {
-		t.Fatal(err)
-	}
-	return name
+	return testutil.NewCLI(t, testutil.CLI{Args: args, ExitCode: exitCode, Stderr: stderr})
 }
 
 // TestDeleteSession_Success verifies that DeleteSession calls

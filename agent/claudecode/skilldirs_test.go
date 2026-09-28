@@ -15,6 +15,7 @@ func TestSkillDirs_UsesClaudeConfigDirAndProjectParents(t *testing.T) {
 	workDir := filepath.Join(repo, "nested", "pkg")
 
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("CLAUDE_CONFIG_DIR", configHome)
 
 	for _, dir := range []string{
@@ -57,6 +58,7 @@ func TestSkillDirs_FallsBackToHomeClaudeDir(t *testing.T) {
 		t.Fatalf("mkdir workdir: %v", err)
 	}
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 
 	a := &Agent{workDir: workDir}
@@ -87,6 +89,7 @@ func TestSkillDirs_IncludesClaudePluginSkillRoots(t *testing.T) {
 		t.Fatalf("mkdir nested asset skills dir: %v", err)
 	}
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("CLAUDE_CONFIG_DIR", configHome)
 
 	a := &Agent{
@@ -126,6 +129,7 @@ func TestSkillDirs_FollowsClaudePluginSymlink(t *testing.T) {
 	pluginSkillsDir := filepath.Join(configHome, "plugins", "cache", "claude-plugins-official", "notion", "0.1.0", "skills")
 
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("CLAUDE_CONFIG_DIR", configHome)
 	for _, dir := range []string{workDir, configHome, filepath.Join(mainClaudePlugins, "cache", "claude-plugins-official", "notion", "0.1.0", "skills")} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {

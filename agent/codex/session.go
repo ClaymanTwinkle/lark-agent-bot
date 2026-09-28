@@ -89,6 +89,10 @@ func prependCodexPromptPreamble(prompt string, preamble string) string {
 }
 
 func newCodexSession(ctx context.Context, cliBin string, cliExtraArgs []string, workDir, model, effort, mode, resumeID, baseURL string, extraEnv []string, modelProvider string, systemPrompt string, appendPrompt string) (*codexSession, error) {
+	if err := validateMode(mode, "exec"); err != nil {
+		return nil, err
+	}
+	mode = normalizeMode(mode)
 	sessionCtx, cancel := context.WithCancel(ctx)
 
 	cs := &codexSession{
@@ -247,19 +251,11 @@ func (cs *codexSession) buildExecArgs(prompt string, imagePaths []string) []stri
 	// — and the user would silently lose their session on every lark-connect
 	// restart / idle reset.
 	//
-	// For real interactive approvals (suggest semantics), users must opt into
-	// the `app_server` backend, which handles execCommandApproval /
-	// applyPatchApproval / permissionsApproval over JSON-RPC.
+	// Modes requiring approval are available only through app_server.
 	switch cs.mode {
-	case "auto-edit", "full-auto":
-		if isResume {
-			args = append(args, "-c", `sandbox_mode="workspace-write"`, "-c", `approval_policy="never"`)
-		} else {
-			args = append(args, "--sandbox", "workspace-write", "-c", `approval_policy="never"`)
-		}
-	case "yolo":
+	case "full-access":
 		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
-	default: // "suggest"
+	default: // read-only; unknown internal values fail closed
 		if isResume {
 			args = append(args, "-c", `sandbox_mode="read-only"`, "-c", `approval_policy="never"`)
 		} else {

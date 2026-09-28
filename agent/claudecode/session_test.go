@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -707,18 +708,19 @@ func TestWriteTempAppendPromptFile_ReadableByOtherUser(t *testing.T) {
 		t.Fatalf("stat: %v", err)
 	}
 	want := os.FileMode(0o644)
-	if info.Mode().Perm() != want {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != want {
 		t.Fatalf("per-spawn prompt file mode = %o, want %o — run_as_user target user would get EACCES (#1429)",
 			info.Mode().Perm(), want)
 	}
 
-	// Non-owner open simulates the spawned agent's read path. On root
-	// the kernel bypasses the mode bits, so this only fails for a
-	// truly 0o000 file. We still assert it to make the regression
-	// observable on systems where the test runs as a non-root user
-	// (CI matrix, dev laptops).
-	if _, err := os.OpenFile(path, os.O_RDONLY, 0); err != nil {
-		t.Fatalf("open O_RDONLY as a non-owner: %v — file is unreadable even for an unprivileged reader", err)
+	// Exercise the read path on every OS. Unix mode bits above check
+	// access for other users; Windows permissions are governed by ACLs.
+	file, err := os.OpenFile(path, os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatalf("open O_RDONLY: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

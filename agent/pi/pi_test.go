@@ -3,7 +3,6 @@ package pi
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-connect/internal/testutil"
 )
 
 // ── normalizeMode ────────────────────────────────────────────
@@ -54,7 +54,7 @@ func TestNew_DefaultValues(t *testing.T) {
 	t.Setenv("PI_CODING_AGENT_DIR", t.TempDir())
 
 	// Use a command that exists on all systems.
-	ag, err := New(map[string]any{"cmd": "echo"})
+	ag, err := New(map[string]any{"cmd": os.Args[0]})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -68,14 +68,14 @@ func TestNew_DefaultValues(t *testing.T) {
 	if a.mode != "default" {
 		t.Errorf("mode = %q, want \"default\"", a.mode)
 	}
-	if a.cmd != "echo" {
-		t.Errorf("cmd = %q, want \"echo\"", a.cmd)
+	if a.cmd != os.Args[0] {
+		t.Errorf("cmd = %q, want %q", a.cmd, os.Args[0])
 	}
 }
 
 func TestNew_CustomOptions(t *testing.T) {
 	ag, err := New(map[string]any{
-		"cmd":      "echo",
+		"cmd":      os.Args[0],
 		"work_dir": "/tmp",
 		"model":    "qwen3.5-plus",
 		"mode":     "yolo",
@@ -536,18 +536,10 @@ func TestPiSessionDir_WindowsPathEncoding(t *testing.T) {
 }
 
 func TestSettingsPath(t *testing.T) {
-	savedEnv := os.Getenv("PI_CODING_AGENT_DIR")
-	defer func() {
-		if savedEnv != "" {
-			_ = os.Setenv("PI_CODING_AGENT_DIR", savedEnv)
-		} else {
-			_ = os.Unsetenv("PI_CODING_AGENT_DIR")
-		}
-	}()
-
-	t.Setenv("PI_CODING_AGENT_DIR", "/custom")
-	if p := settingsPath(); p != "/custom/settings.json" {
-		t.Errorf("settingsPath() = %q, want /custom/settings.json", p)
+	directory := t.TempDir()
+	t.Setenv("PI_CODING_AGENT_DIR", directory)
+	if got, want := settingsPath(), filepath.Join(directory, "settings.json"); got != want {
+		t.Errorf("settingsPath() = %q, want %q", got, want)
 	}
 }
 
@@ -1798,19 +1790,18 @@ func TestHandleMessageEnd_UserRole(t *testing.T) {
 	}
 }
 
-// newFakeRPCSession creates a piSession backed by a shell script that mimics
+// newFakeRPCSession creates a piSession backed by a native subprocess that mimics
 // the Pi RPC protocol: it writes a session event on startup and stays alive
 // reading stdin until killed.
 func newFakeRPCSession(t *testing.T, sessionID, cmd, workDir string) *piSession {
 	t.Helper()
 	var rpcCmd []string
 	if cmd == "" {
-		// Default: use a minimal RPC script
-		script := fmt.Sprintf(
-			`echo '{"type":"session","id":"%s"}' && while IFS= read -r _; do :; done`,
-			sessionID,
-		)
-		rpcCmd = []string{"sh", "-c", script}
+		initial, err := json.Marshal(map[string]string{"type": "session", "id": sessionID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rpcCmd = []string{testutil.NewCLI(t, testutil.CLI{Initial: string(initial), ReadStdin: true})}
 	} else {
 		rpcCmd = strings.Fields(cmd)
 	}
@@ -1866,7 +1857,7 @@ func newFakeRPCSession(t *testing.T, sessionID, cmd, workDir string) *piSession 
 
 // ── piSession lifecycle ──────────────────────────────────────
 
-// newFakeRPCSessionRealistic creates a piSession backed by a fake pi script
+// newFakeRPCSessionRealistic creates a piSession backed by a fake pi process
 // that mimics the *actual* Pi RPC protocol observed in the pi source tree:
 // it pushes a non-session event (extension_ui_request) on stdout first, then
 // reads stdin and replies to {"type":"get_state"} with the canonical
@@ -1881,26 +1872,12 @@ func newFakeRPCSession(t *testing.T, sessionID, cmd, workDir string) *piSession 
 // newPiSession, so callers can observe what the engine sees.
 func newFakeRPCSessionRealistic(t *testing.T, sessionID string) *piSession {
 	t.Helper()
-	// Write the script to a temp file so we don't have to fight shell
-	// quoting inside Go string literals.
-	scriptPath := filepath.Join(t.TempDir(), "fake-pi.sh")
-	// Push a non-session event first, then loop reading stdin. When we see
-	// the get_state probe we respond with a real get_state response.
-	scriptBody := fmt.Sprintf(`#!/bin/sh
-echo '{"type":"extension_ui_request","id":"ext-init","method":"setStatus","statusKey":"plan-mode"}'
-while IFS= read -r line; do
-    case "$line" in
-        *get_state*)
-            cat <<EOF
-{"id":"lark-connect-state-probe","type":"response","command":"get_state","success":true,"data":{"sessionId":"%s","sessionFile":"/tmp/fake.jsonl"}}
-EOF
-            ;;
-    esac
-done
-`, sessionID)
-	if err := os.WriteFile(scriptPath, []byte(scriptBody), 0o755); err != nil {
-		t.Fatalf("write fake script: %v", err)
+	// Push an extension event first, then respond to the get_state probe.
+	response, err := json.Marshal(map[string]any{"id": "lark-connect-state-probe", "type": "response", "command": "get_state", "success": true, "data": map[string]string{"sessionId": sessionID, "sessionFile": filepath.Join(t.TempDir(), "fake.jsonl")}})
+	if err != nil {
+		t.Fatal(err)
 	}
+	scriptPath := testutil.NewCLI(t, testutil.CLI{Initial: `{"type":"extension_ui_request","id":"ext-init","method":"setStatus","statusKey":"plan-mode"}`, ReadStdin: true, ReplyOn: "get_state", Reply: string(response)})
 
 	s, err := newPiSession(context.Background(), scriptPath, nil, t.TempDir(), "", "", "", true, "", nil)
 	if err != nil {
@@ -1929,20 +1906,7 @@ func TestPiSession_RPC_StartupProbe_HandlesFailureResponse(t *testing.T) {
 	// handleEvent must log a warning and leave sessionID empty instead of
 	// panicking or storing junk. rpcReady therefore does not close, and the
 	// constructor returns the standard 30s "did not become ready" error.
-	scriptPath := filepath.Join(t.TempDir(), "fake-pi.sh")
-	scriptBody := `#!/bin/sh
-echo '{"type":"extension_ui_request","id":"ext-init","method":"setStatus","statusKey":"plan-mode"}'
-while IFS= read -r line; do
-    case "$line" in
-        *get_state*)
-            echo '{"id":"lark-connect-state-probe","type":"response","command":"get_state","success":false,"error":"session not available"}'
-            ;;
-    esac
-done
-`
-	if err := os.WriteFile(scriptPath, []byte(scriptBody), 0o755); err != nil {
-		t.Fatalf("write fake script: %v", err)
-	}
+	scriptPath := testutil.NewCLI(t, testutil.CLI{Initial: `{"type":"extension_ui_request","id":"ext-init","method":"setStatus","statusKey":"plan-mode"}`, ReadStdin: true, ReplyOn: "get_state", Reply: `{"id":"lark-connect-state-probe","type":"response","command":"get_state","success":false,"error":"session not available"}`})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -1963,18 +1927,7 @@ func TestPiSession_RPC_StartupProbe_DoesNotCloseOnExtensionUI(t *testing.T) {
 	// without ever responding to get_state. rpcReady must NOT close (the
 	// session id never arrives), and the constructor must time out instead
 	// of returning early with an empty id.
-	scriptPath := filepath.Join(t.TempDir(), "fake-pi.sh")
-	scriptBody := `#!/bin/sh
-i=0
-echo '{"type":"extension_ui_request","id":"e0","method":"setStatus","statusKey":"plan-mode"}'
-while IFS= read -r line; do
-    i=$((i+1))
-    echo "{\"type\":\"extension_ui_request\",\"id\":\"e$i\",\"method\":\"setStatus\",\"statusKey\":\"plan-mode\"}"
-done
-`
-	if err := os.WriteFile(scriptPath, []byte(scriptBody), 0o755); err != nil {
-		t.Fatalf("write fake script: %v", err)
-	}
+	scriptPath := testutil.NewCLI(t, testutil.CLI{Initial: `{"type":"extension_ui_request","id":"ext-init","method":"setStatus","statusKey":"plan-mode"}`, ReadStdin: true, ReplyOn: "get_state", Reply: `{"type":"extension_ui_request","id":"ext-init","method":"setStatus","statusKey":"plan-mode"}`})
 
 	// Bound the wait: if the fix is wrong (rpcReady closed too early on the
 	// extension_ui_request), newPiSession returns within milliseconds with

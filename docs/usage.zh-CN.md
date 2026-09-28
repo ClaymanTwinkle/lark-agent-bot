@@ -81,23 +81,33 @@ reset_on_idle_mins = 60
 | 计划模式 | `plan` | 只规划不执行 |
 | YOLO | `bypassPermissions` / `yolo` | 全部自动通过 |
 
-### Codex 模式
+### Codex 权限模式
 
 | 模式 | 配置值 | 行为 |
 |------|--------|------|
-| 建议 | `suggest` | 只读沙箱 |
-| 自动编辑 | `auto-edit` | 工作区可写，行为同全自动 |
-| 全自动 | `full-auto` | 工作区内自动执行；`app_server` 后端可申请越界审批 |
-| YOLO | `yolo` | 跳过所有审批 |
+| 默认权限 | `default` | 工作区沙箱，需要额外权限时由用户审批 |
+| 自动审核 | `auto-review` | 保留工作区沙箱，由 Codex 自动审核权限请求，可以允许或拒绝 |
+| 只读 | `read-only` | 只读沙箱，超出只读权限的操作由用户审批 |
+| 完全访问权限 | `full-access` | 不受沙箱限制，不请求审批 |
 
-需要在飞书中批准 Git 写入或网络访问时，在 `[projects.agent.options]` 中设置
-`backend = "app_server"` 和 `mode = "full-auto"`，重启服务后生效。
-`.git` 等受保护路径仍受沙箱限制；需要额外权限时机器人会发送审批卡片，批准后继续。
-默认 `exec` 后端不支持交互审批，触及沙箱边界时会失败。
+Codex 默认使用 `backend = "app_server"`、`mode = "default"`。
+每个模式同时决定沙箱、审批策略和审核者。`/mode` 菜单显示相同的选项，
+从自动审核切回默认权限或只读时，会恢复用户审批。
 
-若要由 Codex 自动判断权限请求，在同一配置节添加 `approvals_reviewer = "auto_review"`。
-该设置随项目工作区继承，并用于新建和恢复的会话；仍保留沙箱，自动审核可以允许或拒绝请求。
-设置为 `"user"` 则由飞书审批卡片交给用户决定，省略时继承 Codex 的审核设置。
+```toml
+[projects.agent.options]
+backend = "app_server"
+mode = "auto-review"
+```
+
+新配置不兼容旧模式：`suggest`、`auto-edit`、`full-auto`、`yolo` 及其别名
+均会报错，独立的 `approvals_reviewer` 配置也已移除。请明确选择一个新模式，
+旧值不会静默转换。自动审核仍保留沙箱，可以拒绝请求，不等于完全访问权限。
+
+可选的 `exec` 后端仅支持显式配置 `read-only` 或 `full-access`，菜单也只显示
+这两个模式。它无法申请审批，超出只读沙箱权限的操作会失败；需要审批流程时
+请使用 `app_server`。修改配置文件后需重启服务；通过 `/mode` 切换会保留
+已有会话，在代理进程恢复时应用新权限。
 
 ### Cursor Agent 模式
 

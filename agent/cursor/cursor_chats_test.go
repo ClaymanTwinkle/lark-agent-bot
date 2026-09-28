@@ -30,6 +30,7 @@ func TestCursorChatsBaseDirs_XDGAndLegacy(t *testing.T) {
 func TestListCursorSessions_ConfigCursorPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", "")
 
 	workDir := filepath.Join(home, "project")

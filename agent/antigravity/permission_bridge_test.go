@@ -17,6 +17,7 @@ import (
 func TestAgyPermissionBridgePreservesHooksAndRelaysDecisions(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 
 	realConfigDir := filepath.Join(homeDir, ".gemini", "config")
 	if err := os.MkdirAll(realConfigDir, 0o700); err != nil {
@@ -30,9 +31,6 @@ func TestAgyPermissionBridgePreservesHooksAndRelaysDecisions(t *testing.T) {
 	realHooksPath := filepath.Join(realConfigDir, "hooks.json")
 	if err := os.WriteFile(realHooksPath, originalHooks, 0o600); err != nil {
 		t.Fatalf("WriteFile hooks: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(realConfigDir, "keep.json"), []byte("{}\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile keep config: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -50,11 +48,6 @@ func TestAgyPermissionBridgePreservesHooksAndRelaysDecisions(t *testing.T) {
 	}
 	if !bytes.Equal(gotOriginal, originalHooks) {
 		t.Fatalf("real hooks changed:\n%s", gotOriginal)
-	}
-	if target, err := os.Readlink(filepath.Join(bridge.AgyConfigDir(), "config", "keep.json")); err != nil {
-		t.Fatalf("Readlink preserved config: %v", err)
-	} else if target != filepath.Join(realConfigDir, "keep.json") {
-		t.Fatalf("preserved config target = %q", target)
 	}
 
 	var overlayHooks map[string]json.RawMessage

@@ -13,52 +13,27 @@ import (
 	"github.com/ClaymanTwinkle/lark-connect/core"
 )
 
-func TestAppServerFullAuto_AllowsApprovalForProtectedPaths(t *testing.T) {
-	for _, mode := range []string{"full-auto", "auto-edit"} {
+func TestAppServerApprovalsReviewer_RejectsMissingOrWrongReviewer(t *testing.T) {
+	for _, mode := range []string{"default", "auto-review", "read-only", "full-access"} {
 		s := &appServerSession{mode: mode}
-		params := s.threadRequestParams()
-		if params["approvalPolicy"] != "on-request" || params["sandbox"] != "workspace-write" {
-			t.Errorf("%s must keep workspace sandbox and allow approval requests: %v", mode, params)
+		want := "user"
+		if mode == "auto-review" {
+			want = "auto_review"
 		}
-	}
-}
-
-func TestAppServerApprovalsReviewer_PreservedAndVerified(t *testing.T) {
-	for _, reviewer := range []string{"", "user", "auto_review"} {
-		a := &Agent{backend: "app_server", approvalsReviewer: reviewer}
-		opts := a.WorkspaceAgentOptions()
-		s := &appServerSession{mode: "full-auto", approvalsReviewer: reviewer}
-		params := s.threadRequestParams()
-		if reviewer == "" {
-			if _, ok := params["approvalsReviewer"]; ok {
-				t.Fatal("unset reviewer must inherit Codex settings")
-			}
-			continue
-		}
-		if opts["approvals_reviewer"] != reviewer || params["approvalsReviewer"] != reviewer {
-			t.Fatalf("reviewer lost between workspace configuration and request: %v %v", opts, params)
-		}
-		if err := s.verifyApprovalsReviewer(reviewer); err != nil {
+		if err := s.verifyApprovalsReviewer(want); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.verifyApprovalsReviewer(""); err == nil {
-			t.Fatal("must reject ignored reviewer override")
+		for _, wrong := range []string{"", "unsupported"} {
+			if err := s.verifyApprovalsReviewer(wrong); err == nil {
+				t.Fatalf("%s accepted reviewer %q", mode, wrong)
+			}
 		}
 	}
-	s := &appServerSession{approvalsReviewer: "auto_review"}
-	if err := s.verifyApprovalsReviewer("user"); err == nil {
-		t.Fatal("manual review must not silently replace auto review")
+	if err := (&appServerSession{mode: "auto-review"}).verifyApprovalsReviewer("user"); err == nil {
+		t.Fatal("automatic review silently became manual review")
 	}
-}
-
-func TestNew_RejectsUnsupportedApprovalReviewer(t *testing.T) {
-	for _, opts := range []map[string]any{
-		{"backend": "app_server", "approvals_reviewer": "always_allow"},
-		{"backend": "exec", "approvals_reviewer": "auto_review"},
-	} {
-		if _, err := New(opts); err == nil {
-			t.Fatalf("invalid reviewer configuration accepted: %v", opts)
-		}
+	if err := (&appServerSession{mode: "default"}).verifyApprovalsReviewer("auto_review"); err == nil {
+		t.Fatal("manual review silently became automatic review")
 	}
 }
 

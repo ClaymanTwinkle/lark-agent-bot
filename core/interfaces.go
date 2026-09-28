@@ -607,6 +607,11 @@ type ModeSwitcher interface {
 	PermissionModes() []PermissionModeInfo
 }
 
+// ModeValidator optionally rejects unsupported modes before session teardown.
+type ModeValidator interface {
+	ValidateMode(mode string) error
+}
+
 // WorkspaceAgentOptionSnapshotter is an optional interface for agents that can
 // export reusable constructor options needed to recreate an equivalent agent in
 // a different workspace. Snapshot values should omit work_dir; the caller is
@@ -633,11 +638,13 @@ type StartupWarner interface {
 
 // PermissionModeInfo describes a permission mode for display.
 type PermissionModeInfo struct {
-	Key    string
-	Name   string
-	NameZh string
-	Desc   string
-	DescZh string
+	NameKey MsgKey // Optional localized name, preferred over Name/NameZh.
+	DescKey MsgKey // Optional localized description, preferred over Desc/DescZh.
+	Key     string
+	Name    string
+	NameZh  string
+	Desc    string
+	DescZh  string
 }
 
 // BotCommandInfo represents a command for bot menu registration (e.g. Telegram setMyCommands).

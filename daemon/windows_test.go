@@ -3,6 +3,7 @@
 package daemon
 
 import (
+	"golang.org/x/sys/windows"
 	"os"
 	"strings"
 	"testing"
@@ -150,12 +151,9 @@ func TestBuildWindowsTaskScript_DropsEmptyValue(t *testing.T) {
 	}
 }
 
-// TestSchtasksInstall_TightensExistingScriptFrom0644 covers the upgrade
-// path: os.WriteFile would truncate-in-place and keep the old POSIX
-// mode of a script left by an earlier lark-connect version. While
-// Windows real access is governed by ACLs, the POSIX bits are still
-// expected to reflect intent.
-func TestSchtasksInstall_TightensExistingScriptFrom0644(t *testing.T) {
+// Windows exposes writable files as 0666 regardless of the requested POSIX
+// mode. Verify the actual DACL when upgrading a broadly readable script.
+func TestSchtasksInstall_TightensExistingScriptACL(t *testing.T) {
 	t.Setenv("USERPROFILE", t.TempDir())
 
 	orig := runPowerShell
@@ -169,8 +167,16 @@ func TestSchtasksInstall_TightensExistingScriptFrom0644(t *testing.T) {
 	if err := os.WriteFile(scriptPath, []byte("$env:OLD = 'leftover'\r\n"), 0o644); err != nil {
 		t.Fatalf("seed legacy script: %v", err)
 	}
-	if info, _ := os.Stat(scriptPath); info.Mode().Perm() != 0o644 {
-		t.Fatalf("precondition: seeded file mode = %o, want 0644", info.Mode().Perm())
+	broad, err := windows.SecurityDescriptorFromString("D:P(A;;FA;;;WD)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dacl, _, err := broad.DACL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := windows.SetNamedSecurityInfo(scriptPath, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil); err != nil {
+		t.Fatal(err)
 	}
 
 	mgr := &schtasksManager{}
@@ -185,11 +191,25 @@ func TestSchtasksInstall_TightensExistingScriptFrom0644(t *testing.T) {
 	if err := mgr.Install(cfg); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
-	info, err := os.Stat(scriptPath)
+	sd, err := windows.GetNamedSecurityInfo(scriptPath, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
-		t.Fatalf("stat: %v", err)
+		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("script mode after reinstall = %o, want 0600", info.Mode().Perm())
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "D:P(A;;FA;;;" + user.User.Sid.String() + ")"
+	// Windows may retain the AUTO_INHERITED bookkeeping flag even though
+	// the protected DACL contains only our explicit current-user ACE.
+	if got := strings.Replace(sd.String(), "D:PAI", "D:P", 1); got != want {
+		t.Fatalf("script ACL = %q, want %q", got, want)
+	}
+	content, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), "leftover") || !strings.Contains(string(content), "$env:CUSTOM_TOKEN = 'captured'") {
+		t.Fatalf("script not replaced: %s", content)
 	}
 }

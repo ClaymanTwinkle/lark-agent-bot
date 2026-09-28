@@ -83,25 +83,36 @@ All agents support permission modes switchable at runtime via `/mode`.
 | Plan Mode | `plan` | Claude only plans, no execution |
 | YOLO | `bypassPermissions` / `yolo` | All tools auto-approved |
 
-### Codex Modes
+### Codex Permission Modes
 
-| Mode | Config Value | Behavior |
-|------|-------------|----------|
-| Suggest | `suggest` | Read-only sandbox |
-| Auto Edit | `auto-edit` | Workspace write, same behavior as Full Auto |
-| Full Auto | `full-auto` | Automatic workspace operations; `app_server` can request approval beyond the sandbox |
-| YOLO | `yolo` | Bypass all approvals and sandbox |
+| Mode | Config value | Behavior |
+|------|--------------|----------|
+| Default permissions | `default` | Workspace sandbox; you approve requests for additional access |
+| Auto-review | `auto-review` | Workspace sandbox; Codex automatically reviews requests and can approve or deny them |
+| Read-only | `read-only` | Read-only sandbox; you approve requests for additional access |
+| Full access | `full-access` | No sandbox restrictions or approval prompts |
 
-To approve Git writes or network access in Feishu, set `backend = "app_server"`
-and `mode = "full-auto"` under `[projects.agent.options]`, then restart the service.
-Protected paths such as `.git` remain sandboxed; operations requiring additional
-permissions produce an approval card and continue after approval.
-The default `exec` backend cannot request interactive approvals and fails at sandbox boundaries.
+Codex defaults to `backend = "app_server"` and `mode = "default"`.
+Each mode sets sandbox, approval policy and reviewer together. `/mode` shows the
+same choices and switching away from auto-review restores user review.
 
-To let Codex evaluate permission requests, add `approvals_reviewer = "auto_review"`
-in the same config section. Workspaces inherit it for new and resumed sessions.
-The sandbox remains enabled and automatic review can approve or deny requests.
-Use `"user"` for manual Feishu approvals, or omit it to inherit Codex settings.
+```toml
+[projects.agent.options]
+backend = "app_server"
+mode = "auto-review"
+```
+
+This replaces the old permission configuration: `suggest`, `auto-edit`,
+`full-auto`, `yolo` and their aliases are rejected, as is the separate
+`approvals_reviewer` option. Choose one mode explicitly; no old value is silently
+translated. Automatic review keeps the sandbox and can deny requests; it does
+not grant full access.
+
+The optional `exec` backend only supports explicit `read-only` or `full-access`;
+its menu only lists those two modes. It cannot request approvals, so operations
+outside its read-only sandbox fail. Use `app_server` for approval workflows.
+Changing the config file requires a service restart. Runtime `/mode` changes
+preserve the conversation and take effect when the agent process resumes.
 
 ### Cursor Agent Modes
 
