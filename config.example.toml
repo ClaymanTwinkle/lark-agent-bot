@@ -856,18 +856,26 @@ mode = "default" # "default" | "acceptEdits" (edit) | "plan" | "auto" | "bypassP
 
 # Optional: set reasoning effort level (passed to claude --effort)
 # 可选：设置推理强度等级（传递给 claude --effort）
-# reasoning_effort = "high"  # "low" | "medium" | "high" | "max"
+# reasoning_effort = "xhigh"  # "low" | "medium" | "high" | "xhigh" | "max"
+
+# Optional: context size at which Claude Code auto-compacts (passed to
+# claude --autocompact). Must be between 100000 and 1000000; values outside
+# that range are ignored with a warning.
+# 可选：Claude Code 自动压缩上下文的阈值（传递给 claude --autocompact）。
+# 取值范围 100000–1000000，超出范围会被忽略并记录警告。
+# max_context_tokens = 400000
 
 # Optional: override the context-window size used by the "ctx N%" indicator
-# in IM replies. By default lark-connect infers 200K vs 1M from the model id
-# (anything containing `[1m]` is treated as 1M). Set this when running
-# against a custom router / fine-tuned model whose id does not match
-# Claude Code's naming scheme, or when you want to hard-pin a specific
-# window. <= 0 falls back to the model-id heuristic.
-# 可选：覆盖 IM 回复中"ctx N%"指示符使用的上下文窗口大小。默认情况下，
-# lark-connect 根据模型 id 推断 200K 或 1M（任何包含 `[1m]` 的视为 1M）。
-# 当连接到自定义 router / 微调模型（id 与 Claude Code 命名规范不匹配），
-# 或者想硬编码一个特定窗口时设置此选项。<= 0 退回到按模型 id 推断。
+# in IM replies. By default lark-connect uses the window Claude Code reports
+# in each turn's result (modelUsage.contextWindow); before the first turn
+# completes it infers 200K vs 1M from the model id (anything containing
+# `[1m]` is treated as 1M). Set this when running against a custom router /
+# fine-tuned model that reports no window, or when you want to hard-pin a
+# specific window. <= 0 falls back to the reported / inferred window.
+# 可选：覆盖 IM 回复中"ctx N%"指示符使用的上下文窗口大小。默认使用 Claude Code
+# 在每轮结果中上报的窗口（modelUsage.contextWindow）；第一轮结束前按模型 id
+# 推断 200K 或 1M（任何包含 `[1m]` 的视为 1M）。当连接到不上报窗口的自定义
+# router / 微调模型，或者想硬编码一个特定窗口时设置此选项。<= 0 退回到上报值 / 推断值。
 # context_window_tokens = 200000
 
 # In default/acceptEdits mode, you can pre-approve specific tools:
@@ -891,8 +899,13 @@ mode = "default" # "default" | "acceptEdits" (edit) | "plan" | "auto" | "bypassP
 # 想在不丢弃默认提示的前提下补充指令时用它；可与 system_prompt 同时使用。
 # append_system_prompt = "Always respond in Chinese and prefer concise answers."
 
-# Optional: specify a model / 可选：指定模型
-# model = "claude-sonnet-4-20250514"
+# Optional: specify a model (passed to claude --model) / 可选：指定模型（传递给 claude --model）
+# Aliases always track the latest model of each family: "fable" | "opus" | "sonnet" | "haiku";
+# append "[1m]" (e.g. "opus[1m]") for the 1M-context variant. A full id such as
+# "claude-opus-5-5" pins one specific model.
+# 别名始终指向该系列最新模型："fable" | "opus" | "sonnet" | "haiku"；加 "[1m]"（如 "opus[1m]"）
+# 使用 1M 上下文版本。写完整 id（如 "claude-opus-5-5"）则固定到具体模型。
+# model = "opus"
 
 # Optional: per-project environment variables injected into Claude Code sessions.
 # This allows different projects to use different model providers (Kimi, Mimo, DeepSeek, etc.)
@@ -904,10 +917,10 @@ mode = "default" # "default" | "acceptEdits" (edit) | "plan" | "auto" | "bypassP
 # ANTHROPIC_BASE_URL = "https://api.kimi.com/coding"
 # ANTHROPIC_AUTH_TOKEN = "sk-kimi-xxx"
 # ANTHROPIC_MODEL = "K2.6"
-# ANTHROPIC_REASONING_MODEL = "K2.6"
 # ANTHROPIC_DEFAULT_HAIKU_MODEL = "K2.6"
 # ANTHROPIC_DEFAULT_SONNET_MODEL = "K2.6"
 # ANTHROPIC_DEFAULT_OPUS_MODEL = "K2.6"
+# ANTHROPIC_DEFAULT_FABLE_MODEL = "K2.6"
 
 # Claude Code Router Integration / Claude Code Router 集成
 # Route Claude Code requests through Claude Code Router to use different model providers.
@@ -946,26 +959,33 @@ mode = "default" # "default" | "acceptEdits" (edit) | "plan" | "auto" | "bypassP
 # name = "relay"
 # api_key = "sk-xxx"
 # base_url = "https://api.relay-service.com"
-# model = "claude-sonnet-4-20250514"
+# model = "claude-sonnet-5"
 # # Optional: pre-configure available models shown by /model command (alias - model)
 # # /model switch [alias] switches to the model; omit to auto-fetch from the API.
 # # 可选：预先配置 /model 命令显示的可用模型列表，格式为 alias - model
 # # 使用 /model switch [alias] 切换模型；留空则自动从 API 获取
 # [[projects.agent.providers.models]]
-# model = "claude-sonnet-4-20250514"
-# alias = "sonnet"
+# model = "claude-fable-5-1"
+# alias = "fable"
 # [[projects.agent.providers.models]]
-# model = "claude-opus-4-20250514"
+# model = "claude-opus-5-5"
 # alias = "opus"
 # [[projects.agent.providers.models]]
-# model = "claude-haiku-3-5-20241022"
+# model = "claude-sonnet-5"
+# alias = "sonnet"
+# [[projects.agent.providers.models]]
+# model = "claude-haiku-4-5"
 # alias = "haiku"
 #
 # # Third-party provider with thinking override / 第三方 Provider 并覆盖 thinking 参数
 # # Some providers (e.g. SiliconFlow) don't support Claude's adaptive thinking.
 # # Set thinking = "disabled" to auto-rewrite via a local proxy.
+# # Only use it for non-Claude models: current Claude models (Opus 5.5, Fable 5.x)
+# # reject thinking {type: "disabled"} with HTTP 400.
 # # 部分第三方 Provider（如硅基流动）不支持 Claude 的 adaptive thinking，
 # # 设置 thinking = "disabled" 后 lark-connect 会通过本地代理自动改写请求。
+# # 仅用于非 Claude 模型：当前 Claude 模型（Opus 5.5、Fable 5.x）收到
+# # thinking {type: "disabled"} 会直接返回 HTTP 400。
 # [[projects.agent.providers]]
 # name = "siliconflow"
 # api_key = "sk-xxx"
@@ -1002,11 +1022,14 @@ mode = "default" # "default" | "acceptEdits" (edit) | "plan" | "auto" | "bypassP
 # [[projects.agent.providers]]
 # name = "bedrock"
 # env = { CLAUDE_CODE_USE_BEDROCK = "1", AWS_PROFILE = "bedrock" }
-# # For Bedrock/Vertex/Foundry that don't support adaptive thinking,
-# # add thinking = "disabled" to enable automatic request rewriting.
-# # 对于不支持 adaptive thinking 的 Bedrock/Vertex/Foundry，
-# # 设置 thinking = "disabled" 启用自动请求重写。
-# thinking = "disabled"
+# # Current Claude models on Bedrock/Vertex/Foundry support adaptive thinking, so
+# # no thinking override is needed. Do NOT set thinking = "disabled" here: Opus 5.5
+# # and Fable 5.x reject disabled thinking with HTTP 400. Only add it for an older
+# # deployment that rejects adaptive thinking.
+# # Bedrock/Vertex/Foundry 上的当前 Claude 模型支持 adaptive thinking，无需覆盖。
+# # 不要在这里设置 thinking = "disabled"：Opus 5.5 和 Fable 5.x 收到 disabled
+# # 会返回 HTTP 400。仅当旧部署不接受 adaptive thinking 时才加。
+# # thinking = "disabled"
 
 # Reference normalization and rendering / 本地引用标准化与展示优化
 # Disabled by default. When enabled, lark-connect can normalize Codex / Claude Code

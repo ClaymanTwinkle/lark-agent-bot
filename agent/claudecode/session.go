@@ -77,11 +77,18 @@ type claudeSession struct {
 	transcriptOverride string
 
 	// ctxWindowOverride is the user-configured context window size used by
-	// the "ctx N%" indicator. When <= 0, claudeContextWindow falls back to
-	// a model-name heuristic (200K, 1M for [1m] variants). The Agent sets
+	// the "ctx N%" indicator. When <= 0, the window Claude Code reports is
+	// used, then a model-name heuristic (200K, 1M for [1m] variants). The Agent sets
 	// this from `[projects.agent.options].context_window_tokens` at session
 	// construction time and never mutates it afterwards.
 	ctxWindowOverride int
+
+	// reportedCtxWindow is the context window Claude Code reported in the
+	// latest result event's modelUsage map. It supersedes the model-name
+	// heuristic, which misreads 1M sessions as 200K whenever the model id
+	// lacks the "[1m]" suffix (the transcript's message.model never has it).
+	// Zero until a result event carries a usable value.
+	reportedCtxWindow atomic.Int64
 
 	// gracefulStopTimeout is how long Close() waits for a clean exit
 	// (stdin close → Stop hooks → process exit) before escalating to
@@ -352,9 +359,7 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	if effort != "" {
 		innerArgs = append(innerArgs, "--effort", effort)
 	}
-	if maxContextTokens > 0 {
-		innerArgs = append(innerArgs, "--max-context-tokens", strconv.Itoa(maxContextTokens))
-	}
+	innerArgs = append(innerArgs, autocompactArgs(maxContextTokens)...)
 
 	// outerArgs are understood by both the wrapper and Claude CLI directly.
 	var outerArgs []string
@@ -884,7 +889,7 @@ func tailUsageFromTranscript(path string, windowBytes int64, override int) (usag
 // assistant event with a non-zero prompt. Callers must treat nil as "no exact
 // data" and NOT substitute an estimate.
 func (cs *claudeSession) recoverUsageFromTranscript() *core.ContextUsage {
-	u, _ := tailUsageFromTranscript(cs.transcriptPath(), transcriptRecoveryWindow, cs.ctxWindowOverride)
+	u, _ := tailUsageFromTranscript(cs.transcriptPath(), transcriptRecoveryWindow, cs.ctxWindowHint())
 	if u != nil {
 		slog.Info("claudeSession: recovered context usage from transcript",
 			"used", u.UsedTokens, "input", u.InputTokens,
@@ -981,7 +986,7 @@ func (cs *claudeSession) handleAssistant(raw map[string]any) {
 		used := input + cc + cr
 		if used > 0 {
 			model := cs.GetModel()
-			window := claudeContextWindow(model, cs.ctxWindowOverride)
+			window := claudeContextWindow(model, cs.ctxWindowHint())
 			cs.usageMu.Lock()
 			prevOutput := 0
 			if cs.lastUsage != nil {
@@ -1165,13 +1170,19 @@ func (cs *claudeSession) handleResult(raw map[string]any) {
 		inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens = parseClaudeUsage(usage)
 	}
 
+	// Record the window Claude Code reports for this model before any usage
+	// snapshot below is built, so the transcript path already uses it.
+	if w := modelUsageContextWindow(raw, cs.GetModel()); w > 0 {
+		cs.reportedCtxWindow.Store(int64(w))
+	}
+
 	// Path 2: consult the transcript when the in-process snapshot is absent.
 	cs.usageMu.Lock()
 	haveExact := cs.lastUsage != nil && cs.usageSource == "event"
 	cs.usageMu.Unlock()
 
 	if !haveExact {
-		if u, _ := tailUsageFromTranscript(cs.transcriptPath(), transcriptRecoveryWindow, cs.ctxWindowOverride); u != nil {
+		if u, _ := tailUsageFromTranscript(cs.transcriptPath(), transcriptRecoveryWindow, cs.ctxWindowHint()); u != nil {
 			cs.usageMu.Lock()
 			// A recovered snapshot is a placeholder and a result snapshot is an
 			// aggregate — the transcript's per-call figure supersedes both.
@@ -1183,6 +1194,16 @@ func (cs *claudeSession) handleResult(raw map[string]any) {
 		// usable assistant record yet (the first turn of a fresh session).
 		// Leave lastUsage alone rather than substituting this event's
 		// aggregate — that substitution is what produced the overestimate.
+	}
+
+	// The assistant events of this turn were sized with the heuristic when
+	// no window had been reported yet; correct the snapshot now.
+	if hint := cs.ctxWindowHint(); hint > 0 {
+		cs.usageMu.Lock()
+		if cs.lastUsage != nil {
+			cs.lastUsage.ContextWindow = hint
+		}
+		cs.usageMu.Unlock()
 	}
 
 	if outputTokens > 0 {
@@ -1640,6 +1661,33 @@ func (cs *claudeSession) Close() error {
 	}
 }
 
+// Claude Code's --autocompact accepts only windows in this range; anything
+// else makes the CLI exit at argument parsing.
+const (
+	autocompactMinTokens = 100_000
+	autocompactMaxTokens = 1_000_000
+)
+
+// autocompactArgs maps the max_context_tokens option onto Claude Code's
+// --autocompact flag. The old --max-context-tokens flag was removed from the
+// CLI (it now fails with "unknown option"), and --autocompact is the flag that
+// sets the context size at which the CLI auto-compacts. Out-of-range values are
+// dropped with a warning rather than passed through, because the CLI would
+// refuse to start.
+func autocompactArgs(maxContextTokens int) []string {
+	if maxContextTokens <= 0 {
+		return nil
+	}
+	if maxContextTokens < autocompactMinTokens || maxContextTokens > autocompactMaxTokens {
+		slog.Warn("claudeSession: max_context_tokens out of range for --autocompact; ignoring",
+			"max_context_tokens", maxContextTokens,
+			"min", autocompactMinTokens,
+			"max", autocompactMaxTokens)
+		return nil
+	}
+	return []string{"--autocompact", strconv.Itoa(maxContextTokens)}
+}
+
 // shellJoinArgs joins args into a single string, quoting any arg that
 // contains whitespace so that a shell-style splitter (like my_cli's
 // splitCommandLine) preserves each arg as one token.
@@ -1671,15 +1719,63 @@ func shellJoinArgs(args []string) string {
 	return b.String()
 }
 
+// ctxWindowHint returns the window that replaces the model-name heuristic:
+// the configured context_window_tokens first, then the window Claude Code
+// last reported in a result event. Zero means neither is known.
+func (cs *claudeSession) ctxWindowHint() int {
+	if cs.ctxWindowOverride > 0 {
+		return cs.ctxWindowOverride
+	}
+	return int(cs.reportedCtxWindow.Load())
+}
+
+// modelUsageContextWindow extracts the context window Claude Code reports per
+// model in a result event's modelUsage map ({"<model>": {"contextWindow": N,
+// ...}}). The entry for activeModel wins, compared case-insensitively and
+// ignoring a "[1m]" suffix on either side; otherwise the largest window is
+// used, since sub-agents on a smaller model add extra entries. Returns 0 when
+// no entry carries a positive window (e.g. third-party endpoints).
+func modelUsageContextWindow(raw map[string]any, activeModel string) int {
+	usage, ok := raw["modelUsage"].(map[string]any)
+	if !ok {
+		return 0
+	}
+	want := modelKeyForMatch(activeModel)
+	largest := 0
+	for name, v := range usage {
+		entry, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		w := asInt(entry["contextWindow"])
+		if w <= 0 {
+			continue
+		}
+		if want != "" && modelKeyForMatch(name) == want {
+			return w
+		}
+		if w > largest {
+			largest = w
+		}
+	}
+	return largest
+}
+
+func modelKeyForMatch(model string) string {
+	lower := strings.ToLower(strings.TrimSpace(model))
+	return strings.TrimSuffix(lower, "[1m]")
+}
+
 // claudeContextWindow returns the context window size (tokens) that best
-// matches the given Claude model id. Used as a fallback when the stream-json
-// result event does not carry a modelUsage map. The "[1m]" suffix
-// (case-insensitive) signals the 1M-context variants; everything else
-// defaults to the standard 200k window.
-// override (set from `[projects.agent.options].context_window_tokens`)
-// wins over the model-name heuristic when > 0. This lets operators pin a
-// specific window size for custom routers, fine-tuned models, or non-Claude
-// endpoints whose model id does not match Claude Code's naming scheme.
+// matches the given Claude model id. Used until Claude Code reports the real
+// window via a result event's modelUsage map (see modelUsageContextWindow).
+// The "[1m]" suffix (case-insensitive) signals the 1M-context variants;
+// everything else defaults to the standard 200k window.
+// override (the configured context_window_tokens or the reported window,
+// see ctxWindowHint) wins over the model-name heuristic when > 0. This lets
+// operators pin a specific window size for custom routers, fine-tuned models,
+// or non-Claude endpoints whose model id does not match Claude Code's naming
+// scheme.
 func claudeContextWindow(model string, override int) int {
 	if override > 0 {
 		return override

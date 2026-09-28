@@ -1503,7 +1503,7 @@ type = "claudecode"   # "claudecode", "codex", "cursor", "gemini", "qoder", "ope
 [projects.agent.options]
 work_dir = "/path/to/your/project"
 mode = "default"
-# model = "claude-sonnet-4-20250514"
+# model = "opus"   # Claude Code alias: "fable" | "opus" | "sonnet" | "haiku", or a full id like "claude-opus-5-5"
 
 # --- Choose at least one platform below ---
 

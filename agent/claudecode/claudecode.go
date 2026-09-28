@@ -41,11 +41,11 @@ type Agent struct {
 	configEnv           []string // env vars from [projects.agent.options.env] — persists across SetSessionEnv calls
 	cmdArgsFlag         string   // if set, claude args are passed as a single string via this flag (e.g. "-a")
 	model               string
-	reasoningEffort     string // "low" | "medium" | "high" | "max"
+	reasoningEffort     string // "low" | "medium" | "high" | "xhigh" | "max"
 	mode                string // "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions" | "dontAsk"
 	allowedTools        []string
 	disallowedTools     []string
-	maxContextTokens    int // optional: passed as --max-context-tokens when > 0
+	maxContextTokens    int // optional: passed as --autocompact when within 100k–1M
 	contextWindowTokens int // optional: override the context-window-size heuristic used by the ctx% indicator. When <= 0, fall back to model-name heuristics.
 	providers           []core.ProviderConfig
 	activeIdx           int // -1 = no provider set
@@ -89,22 +89,46 @@ var claudeProviderManagedEnvVars = map[string]struct{}{
 	"CLAUDE_CODE_USE_BEDROCK":                              {},
 	"CLAUDE_CODE_USE_VERTEX":                               {},
 	"CLAUDE_CODE_USE_FOUNDRY":                              {},
+	"CLAUDE_CODE_USE_ANTHROPIC_AWS":                        {},
+	"CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD":               {},
+	"CLAUDE_CODE_USE_MANTLE":                               {},
 	"ANTHROPIC_BASE_URL":                                   {},
 	"ANTHROPIC_BEDROCK_BASE_URL":                           {},
 	"ANTHROPIC_VERTEX_BASE_URL":                            {},
 	"ANTHROPIC_FOUNDRY_BASE_URL":                           {},
+	"ANTHROPIC_AWS_BASE_URL":                               {},
+	"ANTHROPIC_GOOGLE_CLOUD_BASE_URL":                      {},
+	"ANTHROPIC_BEDROCK_MANTLE_BASE_URL":                    {},
 	"ANTHROPIC_FOUNDRY_RESOURCE":                           {},
 	"ANTHROPIC_VERTEX_PROJECT_ID":                          {},
+	"ANTHROPIC_AWS_WORKSPACE_ID":                           {},
+	"ANTHROPIC_GOOGLE_CLOUD_PROJECT":                       {},
+	"ANTHROPIC_GOOGLE_CLOUD_LOCATION":                      {},
+	"ANTHROPIC_GOOGLE_CLOUD_WORKSPACE_ID":                  {},
 	"CLOUD_ML_REGION":                                      {},
 	"ANTHROPIC_API_KEY":                                    {},
 	"ANTHROPIC_AUTH_TOKEN":                                 {},
 	"CLAUDE_CODE_OAUTH_TOKEN":                              {},
 	"AWS_BEARER_TOKEN_BEDROCK":                             {},
 	"ANTHROPIC_FOUNDRY_API_KEY":                            {},
+	"ANTHROPIC_FOUNDRY_AUTH_TOKEN":                         {},
+	"ANTHROPIC_AWS_API_KEY":                                {},
 	"CLAUDE_CODE_SKIP_BEDROCK_AUTH":                        {},
 	"CLAUDE_CODE_SKIP_VERTEX_AUTH":                         {},
 	"CLAUDE_CODE_SKIP_FOUNDRY_AUTH":                        {},
+	"CLAUDE_CODE_SKIP_ANTHROPIC_AWS_AUTH":                  {},
+	"CLAUDE_CODE_SKIP_ANTHROPIC_GOOGLE_CLOUD_AUTH":         {},
+	"CLAUDE_CODE_SKIP_MANTLE_AUTH":                         {},
 	"ANTHROPIC_MODEL":                                      {},
+	"ANTHROPIC_DEFAULT_MODEL":                              {},
+	"ANTHROPIC_DEFAULT_FABLE_MODEL":                        {},
+	"ANTHROPIC_DEFAULT_FABLE_MODEL_DESCRIPTION":            {},
+	"ANTHROPIC_DEFAULT_FABLE_MODEL_NAME":                   {},
+	"ANTHROPIC_DEFAULT_FABLE_MODEL_SUPPORTED_CAPABILITIES": {},
+	"ANTHROPIC_CUSTOM_MODEL_OPTION":                        {},
+	"ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION":            {},
+	"ANTHROPIC_CUSTOM_MODEL_OPTION_NAME":                   {},
+	"ANTHROPIC_CUSTOM_MODEL_OPTION_SUPPORTED_CAPABILITIES": {},
 	"ANTHROPIC_DEFAULT_HAIKU_MODEL":                        {},
 	"ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION":            {},
 	"ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME":                   {},
@@ -325,6 +349,8 @@ func normalizeEffort(raw string) string {
 		return "medium"
 	case "high":
 		return "high"
+	case "xhigh", "x-high", "extra-high", "extra_high":
+		return "xhigh"
 	case "max":
 		return "max"
 	default:
@@ -395,7 +421,7 @@ func (a *Agent) GetReasoningEffort() string {
 }
 
 func (a *Agent) AvailableReasoningEfforts() []string {
-	return []string{"low", "medium", "high", "max"}
+	return []string{"low", "medium", "high", "xhigh", "max"}
 }
 
 func (a *Agent) configuredModels() []core.ModelOption {
@@ -411,11 +437,14 @@ func (a *Agent) AvailableModels(ctx context.Context) []core.ModelOption {
 	if models := a.fetchModelsFromAPI(ctx); len(models) > 0 {
 		return models
 	}
+	// Claude Code aliases that always resolve to the latest model of each
+	// family, so this list does not need a bump on every model release.
 	return []core.ModelOption{
+		{Name: "fable", Desc: "Claude Fable (most capable)"},
+		{Name: "opus", Desc: "Claude Opus"},
+		{Name: "opus[1m]", Desc: "Claude Opus (1M context)"},
 		{Name: "sonnet", Desc: "Claude Sonnet (balanced)"},
 		{Name: "sonnet[1m]", Desc: "Claude Sonnet (1M context)"},
-		{Name: "opus", Desc: "Claude Opus (most capable)"},
-		{Name: "opus[1m]", Desc: "Claude Opus (1M context)"},
 		{Name: "haiku", Desc: "Claude Haiku (fastest)"},
 	}
 }
