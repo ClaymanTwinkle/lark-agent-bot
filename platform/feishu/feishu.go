@@ -136,17 +136,18 @@ type Platform struct {
 	threadIsolation            bool
 	groupChatHistoryShare      bool
 	// noReplyToTrigger: when true, send via Create instead of Im.Message.Reply (no quote to the user's message).
-	noReplyToTrigger bool
-	resolveMentions  bool
-	client           *lark.Client
-	replayClient     *lark.Client
-	replayClientMu   sync.Mutex
-	wsClient         *larkws.Client
-	handler          core.MessageHandler
-	cardNavHandler   core.CardNavigationHandler
-	cancel           context.CancelFunc
-	dedup            *core.MessageDedup
-	botOpenID        string
+	noReplyToTrigger      bool
+	resolveMentions       bool
+	client                *lark.Client
+	replayClient          *lark.Client
+	replayClientMu        sync.Mutex
+	wsClient              *larkws.Client
+	handler               core.MessageHandler
+	cardNavHandler        core.CardNavigationHandler
+	cardNavContextHandler func(string, *core.Message) *core.Card
+	cancel                context.CancelFunc
+	dedup                 *core.MessageDedup
+	botOpenID             string
 	// groupFilterDegraded is true when bot open_id discovery failed at startup
 	// (e.g. transient network/DNS/proxy outage). When true, group chat mention
 	// filtering fails closed (silently drops group messages without @bot) instead
@@ -325,6 +326,10 @@ type feishuRequestFunc func(client *lark.Client, options ...larkcore.RequestOpti
 
 func (p *Platform) SetCardNavigationHandler(h core.CardNavigationHandler) {
 	p.cardNavHandler = h
+}
+
+func (p *Platform) SetCardNavigationContextHandler(h func(string, *core.Message) *core.Card) {
+	p.cardNavContextHandler = h
 }
 
 func New(opts map[string]any) (core.Platform, error) {
@@ -842,9 +847,20 @@ func (p *Platform) onCardAction(event *callback.CardActionTriggerEvent) (*callba
 				},
 			}, nil
 		}
-		if p.cardNavHandler != nil {
+		if p.cardNavHandler != nil || p.cardNavContextHandler != nil {
+			msg := &core.Message{
+				SessionKey: sessionKey,
+				Platform:   p.platformName,
+				UserID:     userID,
+				ReplyCtx:   replyContext{messageID: messageID, chatID: chatID, sessionKey: sessionKey},
+			}
+			p.populateWorkspaceChannelKeys(msg)
 			done := make(chan *core.Card, 1)
 			go func() {
+				if p.cardNavContextHandler != nil {
+					done <- p.cardNavContextHandler(actionVal, msg)
+					return
+				}
 				done <- p.cardNavHandler(actionVal, sessionKey)
 			}()
 

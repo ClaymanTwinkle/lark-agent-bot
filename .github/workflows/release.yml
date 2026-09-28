@@ -102,7 +102,6 @@ jobs:
       id-token: write
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -116,8 +115,11 @@ jobs:
 
       - name: Publish to npm
         working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
+          # setup-node supplies this placeholder when no token is configured.
+          if [ -z "$NODE_AUTH_TOKEN" ] || [ "$NODE_AUTH_TOKEN" = 'XXXXX-XXXXX-XXXXX-XXXXX' ]; then
             echo "::notice::NPM_TOKEN secret is not set; skipping npm publish."
             exit 0
           fi

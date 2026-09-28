@@ -87,10 +87,21 @@ All agents support permission modes switchable at runtime via `/mode`.
 
 | Mode | Config Value | Behavior |
 |------|-------------|----------|
-| Suggest | `suggest` | Only trusted commands run without approval |
-| Auto Edit | `auto-edit` | Model decides when to ask |
-| Full Auto | `full-auto` | Auto-approve with sandbox |
+| Suggest | `suggest` | Read-only sandbox |
+| Auto Edit | `auto-edit` | Workspace write, same behavior as Full Auto |
+| Full Auto | `full-auto` | Automatic workspace operations; `app_server` can request approval beyond the sandbox |
 | YOLO | `yolo` | Bypass all approvals and sandbox |
+
+To approve Git writes or network access in Feishu, set `backend = "app_server"`
+and `mode = "full-auto"` under `[projects.agent.options]`, then restart the service.
+Protected paths such as `.git` remain sandboxed; operations requiring additional
+permissions produce an approval card and continue after approval.
+The default `exec` backend cannot request interactive approvals and fails at sandbox boundaries.
+
+To let Codex evaluate permission requests, add `approvals_reviewer = "auto_review"`
+in the same config section. Workspaces inherit it for new and resumed sessions.
+The sandbox remains enabled and automatic review can approve or deny requests.
+Use `"user"` for manual Feishu approvals, or omit it to inherit Codex settings.
 
 ### Cursor Agent Modes
 
@@ -956,11 +967,21 @@ type = "claudecode"
 
 ```
 /workspace                    Show current binding
+/bind                         Open project picker (multi-workspace mode only)
+/workspace bind               Open project picker
 /workspace bind <name>        Bind local folder
+/workspace available [page]   Browse available project directories
 /workspace init <git-url>     Clone and bind repo
 /workspace unbind             Remove binding
 /workspace list               List all bindings
 ```
+
+In the help menu's System tab, click `/bind` or `/workspace` to choose a project.
+The picker lists visible immediate subdirectories of `base_dir`, with pagination
+and the current binding marked. Directory links are excluded. Selecting a project
+changes only the current chat's binding (or the current topic with thread isolation).
+The current project is pinned first, followed by other projects in name order. Opening the menu, paging, and selecting update the same card; selection returns to page one to show the pinned project.
+`/workspace list` still lists existing bindings; `/bind <bot>` still manages bot relay bindings.
 
 ### How It Works
 

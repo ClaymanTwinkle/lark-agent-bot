@@ -1498,6 +1498,34 @@ func TestCUJ_B11_PrivateVsGroupSessionsIsolated(t *testing.T) {
 // Mode-switching is a per-agent contract; here we assert the engine respects
 // SetLiveMode("bypassPermissions") on the agent session.
 func TestCUJ_C1_YoloModeSkipsPermission(t *testing.T) {
+	t.Run("WorkspaceMenuModeAffectsNextMessage", func(t *testing.T) {
+		e, p, _, _, _, key := newModeCardWorkspaceEngine(t)
+		msg := &Message{SessionKey: key, Platform: "test", ChannelKey: "group", UserID: "user", ReplyCtx: "ctx"}
+		send := func(content string) {
+			copy := *msg
+			copy.Content = content
+			e.ReceiveMessage(p, &copy)
+		}
+		env := &cujEnv{t: t, engine: e, plat: p}
+		waitReply := func(want string) {
+			env.waitFor(want, 3*time.Second, func() bool {
+				return strings.Contains(strings.Join(p.getSent(), "\n"), want)
+			})
+		}
+		// Chat, select a mode in the help card, then chat and inspect history.
+		send("remember this message")
+		waitReply("mode=default")
+		card := e.handleCardNavWithContext("act:/mode yolo", msg)
+		if card == nil || !strings.Contains(card.RenderText(), "▶ **YOLO**") {
+			t.Fatal("menu did not show the selected mode")
+		}
+		send("continue with the selected mode")
+		waitReply("mode=yolo; resumed=cuj-agent-session")
+		send("/history")
+		if got := strings.Join(p.getSent(), "\n"); !strings.Contains(got, "remember this message") {
+			t.Fatalf("history missing after menu selection: %s", got)
+		}
+	})
 	t.Log("CUJ-C1: full coverage via release-gate TestCC_AGENT_01_yolo (integration); " +
 		"core unit-test path: yolo mode is enforced inside Agent.StartSession, not Engine")
 }
@@ -2403,6 +2431,69 @@ func TestCUJ_STREAM1_StreamingResumesAfterPermissionPrompt(t *testing.T) {
 		if strings.Contains(m, postText) {
 			t.Fatalf("post-resolution text was bulk-sent via plain Send (regression: streaming broken after permission prompt). getSent=%#v", plat.getSent())
 		}
+	}
+}
+
+func TestCUJ_H6_ProjectPickerBindsOnlyCurrentChat(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"project A", "项目  B"} {
+		if err := os.Mkdir(filepath.Join(root, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const agentName = "cuj-workspace-picker"
+	RegisterAgent(agentName, func(map[string]any) (Agent, error) {
+		return &namedTestAgent{name: agentName}, nil
+	})
+	p := &workspacePickerPlatform{stubPlatformEngine: stubPlatformEngine{n: "test"}}
+	e := NewEngine("test", &namedTestAgent{name: agentName}, []Platform{p}, filepath.Join(t.TempDir(), "sessions.json"), LangChinese)
+	e.SetMultiWorkspace(root, filepath.Join(t.TempDir(), "bindings.json"))
+	t.Cleanup(func() { e.Stop() })
+	send := func(group, command string) {
+		p.clearSent()
+		e.ReceiveMessage(p, &Message{SessionKey: "test:" + group + ":user", Platform: "test", UserID: "user", Content: command, ReplyCtx: "ctx"})
+	}
+	assertReply := func(want string) {
+		t.Helper()
+		if got := strings.Join(p.getSent(), "\n"); !strings.Contains(got, want) {
+			t.Fatalf("reply = %q, want %q", got, want)
+		}
+	}
+	// Open the old help menu's /bind action, then click its project button.
+	click := func(group, action string) {
+		p.clearSent()
+		card := e.handleCardNavWithContext(action, &Message{SessionKey: "test:" + group + ":user", Platform: "test", UserID: "user"})
+		if card == nil || len(p.getSent()) != 0 {
+			t.Fatal("click must return an in-place update without sending a new reply")
+		}
+		// Record the visible card after the platform applies the update.
+		if err := p.ReplyCard(context.Background(), "ctx", card); err != nil {
+			t.Fatal(err)
+		}
+	}
+	send("group-a", "/bind")
+	assertReply("project A")
+	items := pickerItems(p.lastCard(t))
+	if len(items) != 2 {
+		t.Fatalf("picker items = %+v", items)
+	}
+	click("group-a", items[0].BtnValue)
+	assertReply(e.i18n.Tf(MsgWsBindSuccess, "project A"))
+	send("group-a", "/workspace")
+	assertReply(normalizeWorkspacePath(filepath.Join(root, "project A")))
+	// A second group can choose a name with Unicode and repeated spaces.
+	send("group-b", "/workspace bind")
+	assertReply(e.i18n.T(MsgWsNoBinding))
+	items = pickerItems(p.lastCard(t))
+	click("group-b", items[1].BtnValue)
+	assertReply(e.i18n.Tf(MsgWsBindSuccess, "项目  B"))
+	send("group-b", "/workspace")
+	assertReply(normalizeWorkspacePath(filepath.Join(root, "项目  B")))
+	send("group-a", "/workspace")
+	assertReply(normalizeWorkspacePath(filepath.Join(root, "project A")))
+	send("group-a", "/bind")
+	if got := pickerItems(p.lastCard(t))[0].BtnText; got != e.i18n.T(MsgWsPickerSelected) {
+		t.Fatalf("current project button = %q", got)
 	}
 }
 

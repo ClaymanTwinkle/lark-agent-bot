@@ -645,6 +645,16 @@ const (
 	MsgShowReadFailed      MsgKey = "show_read_failed"
 
 	// Multi-workspace messages
+	MsgBuiltinCmdWorkspace      MsgKey = "workspace"
+	MsgWsPickerDescription      MsgKey = "ws_picker_description"
+	MsgWsPickerTitle            MsgKey = "ws_picker_title"
+	MsgWsPickerRoot             MsgKey = "ws_picker_root"
+	MsgWsPickerCurrent          MsgKey = "ws_picker_current"
+	MsgWsPickerEmpty            MsgKey = "ws_picker_empty"
+	MsgWsPickerSelect           MsgKey = "ws_picker_select"
+	MsgWsPickerSelected         MsgKey = "ws_picker_selected"
+	MsgWsPickerHint             MsgKey = "ws_picker_hint"
+	MsgWsPickerStale            MsgKey = "ws_picker_stale"
 	MsgWsNotEnabled             MsgKey = "ws_not_enabled"
 	MsgWsNoBinding              MsgKey = "ws_no_binding"
 	MsgWsInfo                   MsgKey = "ws_info"
@@ -4006,6 +4016,76 @@ var messages = map[MsgKey]map[Language]string{
 	},
 
 	// Multi-workspace messages
+	MsgBuiltinCmdWorkspace: {
+		LangEnglish:            "Show the current project or choose a workspace",
+		LangChinese:            "查看当前项目或选择工作区",
+		LangTraditionalChinese: "查看目前專案或選擇工作區",
+		LangJapanese:           "現在のプロジェクトを表示、またはワークスペースを選択",
+		LangSpanish:            "Ver el proyecto actual o elegir un espacio de trabajo",
+	},
+	MsgWsPickerDescription: {
+		LangEnglish:            "Choose a project to bind to this chat",
+		LangChinese:            "选择项目并绑定当前聊天",
+		LangTraditionalChinese: "選擇專案並綁定目前聊天",
+		LangJapanese:           "このチャットに紐づけるプロジェクトを選択",
+		LangSpanish:            "Elegir un proyecto para vincular a este chat",
+	},
+	MsgWsPickerTitle: {
+		LangEnglish:            "Choose project (%d) · %d/%d",
+		LangChinese:            "选择项目（%d）· %d/%d",
+		LangTraditionalChinese: "選擇專案（%d）· %d/%d",
+		LangJapanese:           "プロジェクトを選択 (%d) · %d/%d",
+		LangSpanish:            "Elegir proyecto (%d) · %d/%d",
+	},
+	MsgWsPickerRoot: {
+		LangEnglish:            "Project root: `%s`",
+		LangChinese:            "项目根目录：`%s`",
+		LangTraditionalChinese: "專案根目錄：`%s`",
+		LangJapanese:           "プロジェクトの親フォルダー: `%s`",
+		LangSpanish:            "Carpeta de proyectos: `%s`",
+	},
+	MsgWsPickerCurrent: {
+		LangEnglish:            "Currently bound: `%s`",
+		LangChinese:            "当前绑定：`%s`",
+		LangTraditionalChinese: "目前綁定：`%s`",
+		LangJapanese:           "現在の紐づけ先: `%s`",
+		LangSpanish:            "Vinculado actualmente: `%s`",
+	},
+	MsgWsPickerEmpty: {
+		LangEnglish:            "No project directories found under this root.",
+		LangChinese:            "此根目录下暂无可选的项目文件夹。",
+		LangTraditionalChinese: "此根目錄下暫無可選的專案資料夾。",
+		LangJapanese:           "この親フォルダーに選択可能なプロジェクトがありません。",
+		LangSpanish:            "No hay carpetas de proyectos disponibles aquí.",
+	},
+	MsgWsPickerSelect: {
+		LangEnglish:            "Bind",
+		LangChinese:            "绑定",
+		LangTraditionalChinese: "綁定",
+		LangJapanese:           "紐づける",
+		LangSpanish:            "Vincular",
+	},
+	MsgWsPickerSelected: {
+		LangEnglish:            "Current",
+		LangChinese:            "当前项目",
+		LangTraditionalChinese: "目前專案",
+		LangJapanese:           "現在のプロジェクト",
+		LangSpanish:            "Actual",
+	},
+	MsgWsPickerHint: {
+		LangEnglish:            "Select a project for this chat. Text command: /workspace bind <folder>. /workspace available [page] lists folders; /bind <bot> still manages bot relay bindings.",
+		LangChinese:            "选择后绑定当前聊天。也可发送 /workspace bind <文件夹名>；/workspace available [页码] 浏览目录。/bind <机器人名> 仍用于机器人中继绑定。",
+		LangTraditionalChinese: "選擇後綁定目前聊天。也可傳送 /workspace bind <資料夾名>；/workspace available [頁碼] 瀏覽目錄。/bind <機器人名> 仍用於機器人中繼綁定。",
+		LangJapanese:           "このチャットのプロジェクトを選択。/workspace bind <フォルダー> でも指定できます。/workspace available [ページ] で一覧、/bind <ボット> でボット間の中継を設定します。",
+		LangSpanish:            "Elija un proyecto para este chat o use /workspace bind <carpeta>. /workspace available [página] muestra carpetas; /bind <bot> mantiene los enlaces entre bots.",
+	},
+	MsgWsPickerStale: {
+		LangEnglish:            "This project is no longer available. Use /bind to refresh the list.",
+		LangChinese:            "该项目已不可选，请发送 /bind 刷新项目列表。",
+		LangTraditionalChinese: "該專案已不可選，請傳送 /bind 重新整理專案列表。",
+		LangJapanese:           "このプロジェクトは選択できません。/bind で一覧を更新してください。",
+		LangSpanish:            "Este proyecto ya no está disponible. Use /bind para actualizar la lista.",
+	},
 	MsgWsNotEnabled: {
 		LangEnglish:            "Workspace commands are only available in multi-workspace mode.",
 		LangChinese:            "工作区命令仅在多工作区模式下可用。",

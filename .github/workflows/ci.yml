@@ -122,6 +122,9 @@ jobs:
       - name: Unit tests
         run: go test -race ./...
 
+      - name: Release workflow regression tests
+        run: node --test tests/workflows/*.test.cjs
+
       - name: Smoke tests
         run: go test -tags=smoke,no_web ./tests/e2e/...
 

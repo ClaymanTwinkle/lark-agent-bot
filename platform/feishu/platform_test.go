@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"strconv"
@@ -352,6 +353,36 @@ func TestInteractivePlatform_CardActionActWithoutCardResponseDoesNotWarn(t *test
 	logs := buf.String()
 	if strings.Contains(logs, "level=WARN") && strings.Contains(logs, "card nav returned nil, ignoring") {
 		t.Fatalf("unexpected warning logs: %s", logs)
+	}
+}
+
+func TestCardAction_ContextPreservesClickerAndWorkspaceScope(t *testing.T) {
+	for _, topic := range []bool{false, true} {
+		t.Run(fmt.Sprint(topic), func(t *testing.T) {
+			platformAny, err := New(map[string]any{"app_id": "cli_xxx", "app_secret": "secret", "enable_feishu_card": true, "thread_isolation": topic})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ip := platformAny.(*interactivePlatform)
+			sessionKey, channelKey := "feishu:oc_chat:original-user", "oc_chat"
+			if topic {
+				sessionKey, channelKey = "feishu:oc_chat:root:om_root", "oc_chat:topic:om_root"
+			}
+			ip.SetCardNavigationContextHandler(func(action string, msg *core.Message) *core.Card {
+				if msg.UserID != "clicker" || msg.ChannelKey != channelKey || msg.SessionKey != sessionKey || msg.Platform != "feishu" {
+					t.Errorf("incorrect card callback context: %+v", msg)
+				}
+				return core.NewCard().Markdown("updated in place").Build()
+			})
+			resp, err := ip.onCardAction(&callback.CardActionTriggerEvent{Event: &callback.CardActionTriggerRequest{
+				Operator: &callback.Operator{OpenID: "clicker"},
+				Action:   &callback.CallBackAction{Value: map[string]any{"action": "nav:/workspace bind", "session_key": sessionKey}},
+				Context:  &callback.Context{OpenChatID: "oc_chat", OpenMessageID: "om_card"},
+			}})
+			if err != nil || resp == nil || resp.Card == nil || resp.Card.Type != "raw" {
+				t.Fatalf("expected original-card update, got %+v, %v", resp, err)
+			}
+		})
 	}
 }
 

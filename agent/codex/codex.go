@@ -34,22 +34,23 @@ func init() {
 //   - "full-auto": --sandbox workspace-write + approval_policy=never
 //   - "yolo":      --dangerously-bypass-approvals-and-sandbox
 type Agent struct {
-	workDir         string
-	model           string
-	reasoningEffort string
-	mode            string // "suggest" | "auto-edit" | "full-auto" | "yolo"
-	backend         string // "exec" | "app_server"
-	appServerURL    string
-	codexHome       string
-	systemPrompt    string
-	appendPrompt    string
-	cmd             string   // CLI binary name, default "codex"
-	cliExtraArgs    []string // extra args parsed from cmd after the binary
-	providers       []core.ProviderConfig
-	activeIdx       int      // -1 = no provider set
-	configEnv       []string // env vars from [projects.agent.options.env] — persists across SetSessionEnv calls
-	sessionEnv      []string
-	mu              sync.RWMutex
+	workDir           string
+	model             string
+	reasoningEffort   string
+	mode              string // "suggest" | "auto-edit" | "full-auto" | "yolo"
+	backend           string // "exec" | "app_server"
+	appServerURL      string
+	approvalsReviewer string
+	codexHome         string
+	systemPrompt      string
+	appendPrompt      string
+	cmd               string   // CLI binary name, default "codex"
+	cliExtraArgs      []string // extra args parsed from cmd after the binary
+	providers         []core.ProviderConfig
+	activeIdx         int      // -1 = no provider set
+	configEnv         []string // env vars from [projects.agent.options.env] — persists across SetSessionEnv calls
+	sessionEnv        []string
+	mu                sync.RWMutex
 }
 
 func New(opts map[string]any) (core.Agent, error) {
@@ -62,11 +63,19 @@ func New(opts map[string]any) (core.Agent, error) {
 	mode, _ := opts["mode"].(string)
 	backend, _ := opts["backend"].(string)
 	appServerURL, _ := opts["app_server_url"].(string)
+	approvalsReviewer, _ := opts["approvals_reviewer"].(string)
+	approvalsReviewer = strings.ToLower(strings.TrimSpace(approvalsReviewer))
+	if approvalsReviewer != "" && approvalsReviewer != "user" && approvalsReviewer != "auto_review" {
+		return nil, fmt.Errorf("codex: approvals_reviewer must be user or auto_review")
+	}
 	codexHome, _ := opts["codex_home"].(string)
 	systemPrompt, _ := opts["system_prompt"].(string)
 	appendPrompt, _ := opts["append_system_prompt"].(string)
 	mode = normalizeMode(mode)
 	backend = normalizeBackend(backend)
+	if approvalsReviewer != "" && backend != "app_server" {
+		return nil, fmt.Errorf("codex: approvals_reviewer requires backend=app_server")
+	}
 	appServerURL = normalizeAppServerURL(appServerURL)
 
 	cmd, cliExtraArgs := core.ParseCmdOpts(opts, "codex")
@@ -93,19 +102,20 @@ func New(opts map[string]any) (core.Agent, error) {
 	}
 
 	return &Agent{
-		workDir:         workDir,
-		model:           model,
-		reasoningEffort: normalizeReasoningEffort(reasoningEffort),
-		mode:            mode,
-		backend:         backend,
-		appServerURL:    appServerURL,
-		codexHome:       strings.TrimSpace(codexHome),
-		systemPrompt:    strings.TrimSpace(systemPrompt),
-		appendPrompt:    strings.TrimSpace(appendPrompt),
-		cmd:             cmd,
-		cliExtraArgs:    cliExtraArgs,
-		configEnv:       configEnv,
-		activeIdx:       -1,
+		workDir:           workDir,
+		model:             model,
+		reasoningEffort:   normalizeReasoningEffort(reasoningEffort),
+		mode:              mode,
+		backend:           backend,
+		appServerURL:      appServerURL,
+		approvalsReviewer: approvalsReviewer,
+		codexHome:         strings.TrimSpace(codexHome),
+		systemPrompt:      strings.TrimSpace(systemPrompt),
+		appendPrompt:      strings.TrimSpace(appendPrompt),
+		cmd:               cmd,
+		cliExtraArgs:      cliExtraArgs,
+		configEnv:         configEnv,
+		activeIdx:         -1,
 	}, nil
 }
 
@@ -491,6 +501,7 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 	reasoningEffort := a.reasoningEffort
 	backend := a.backend
 	appServerURL := a.appServerURL
+	approvalsReviewer := a.approvalsReviewer
 	codexHome := a.codexHome
 	systemPrompt := a.systemPrompt
 	appendPrompt := a.appendPrompt
@@ -524,7 +535,7 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 	}
 
 	if backend == "app_server" {
-		return newAppServerSession(ctx, appServerURL, workDir, model, reasoningEffort, mode, sessionID, baseURL, provName, extraEnv, codexHome, systemPrompt, appendPrompt)
+		return newAppServerSession(ctx, appServerURL, workDir, model, reasoningEffort, mode, sessionID, baseURL, provName, extraEnv, codexHome, systemPrompt, appendPrompt, approvalsReviewer)
 	}
 	if codexHome != "" {
 		extraEnv = append(extraEnv, "CODEX_HOME="+codexHome)
@@ -591,6 +602,9 @@ func (a *Agent) WorkspaceAgentOptions() map[string]any {
 	}
 	if a.appServerURL != "" {
 		opts["app_server_url"] = a.appServerURL
+	}
+	if a.approvalsReviewer != "" {
+		opts["approvals_reviewer"] = a.approvalsReviewer
 	}
 	if a.codexHome != "" {
 		opts["codex_home"] = a.codexHome
@@ -819,7 +833,7 @@ func (a *Agent) activeProviderCodexConfig() (name string, apiKey string, wireAPI
 //     with approval_policy=never. Sandbox tier is what controls access. The
 //     "suggest" label refers to the *intent* (read-only safety) — the CLI does
 //     not pop interactive approval prompts on this backend.
-//   - app_server backend: "suggest" enables real interactive approval requests
+//   - app_server backend: sandboxed modes enable real interactive approval requests
 //     (execCommandApproval / applyPatchApproval / permissionsApproval).
 //
 // Note: auto-edit and full-auto produce the same flags on the exec backend
@@ -828,14 +842,14 @@ func (a *Agent) activeProviderCodexConfig() (name string, apiKey string, wireAPI
 func (a *Agent) PermissionModes() []core.PermissionModeInfo {
 	return []core.PermissionModeInfo{
 		{Key: "suggest", Name: "Suggest", NameZh: "建议",
-			Desc:   "Read-only sandbox; on exec backend no prompts, on app_server backend asks for every tool call",
-			DescZh: "只读沙箱；exec 后端不弹审批，app_server 后端每次工具调用都会询问"},
+			Desc:   "Read-only sandbox; app_server can request approval beyond the sandbox, exec cannot",
+			DescZh: "只读沙箱；app_server 可申请越界审批，exec 不支持审批"},
 		{Key: "auto-edit", Name: "Auto Edit", NameZh: "自动编辑",
-			Desc:   "Workspace-write sandbox, no approval prompts (alias of Full Auto)",
-			DescZh: "工作区可写沙箱，不弹审批（等同于全自动）"},
+			Desc:   "Workspace-write sandbox; app_server requests approval beyond the sandbox (alias of Full Auto)",
+			DescZh: "工作区可写；app_server 越界时申请审批（等同于全自动）"},
 		{Key: "full-auto", Name: "Full Auto", NameZh: "全自动",
-			Desc:   "Workspace-write sandbox, no approval prompts",
-			DescZh: "工作区可写沙箱，不弹审批"},
+			Desc:   "Workspace-write sandbox; app_server requests approval beyond the sandbox, exec cannot",
+			DescZh: "工作区可写；app_server 越界时申请审批，exec 不支持审批"},
 		{Key: "yolo", Name: "YOLO", NameZh: "YOLO 模式",
 			Desc:   "Bypass all approvals and sandbox (DANGEROUS)",
 			DescZh: "跳过所有审批和沙箱（危险）"},

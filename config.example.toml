@@ -1231,11 +1231,13 @@ app_secret = "your-feishu-app-secret"
 # [projects.agent.options]
 # work_dir = "/path/to/project"
 # mode = "suggest"  # "suggest" | "auto-edit" | "full-auto" | "yolo"
+# backend = "app_server"  # Enable Feishu approval cards / 启用飞书审批卡片（默认 exec 不支持审批）
+# approvals_reviewer = "auto_review"  # app_server only: Codex reviews permission requests / 仅 app_server：由 Codex 自动审核权限请求
 #
 # Mode options / 模式说明:
-# - "suggest":   ask permission for every tool call (default, safest) / 每次调用都需确认（默认，最安全）
-# - "auto-edit": auto-approve file edits, ask for shell commands / 文件编辑自动通过，Shell 命令仍需确认
-# - "full-auto": auto-approve everything with workspace sandbox / 全部自动通过，工作区沙箱保护
+# - "suggest":   read-only sandbox (default) / 只读沙箱（默认）
+# - "auto-edit": same as full-auto / 与 full-auto 相同
+# - "full-auto": workspace-write; app_server requests approval beyond sandbox / 工作区可写，app_server 越界时申请审批
 # - "yolo":      bypass all approvals and sandbox (dangerous) / 跳过所有审批和沙箱（危险）
 #
 # Optional: specify a model / 可选：指定模型
@@ -1799,4 +1801,3 @@ app_secret = "your-feishu-app-secret"
 # [[projects.agent.providers]]
 # name = "google"
 # api_key = "your-gemini-api-key"    # GEMINI_API_KEY
-

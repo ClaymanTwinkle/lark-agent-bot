@@ -2488,6 +2488,9 @@ func (e *Engine) initPlatformCapabilities(p Platform) {
 	if nav, ok := p.(CardNavigable); ok {
 		nav.SetCardNavigationHandler(e.handleCardNav)
 	}
+	if nav, ok := p.(ContextCardNavigable); ok {
+		nav.SetCardNavigationContextHandler(e.handleCardNavWithContext)
+	}
 }
 
 // matchBannedWord returns the first banned word found in content, or "".
@@ -7148,7 +7151,7 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 		wsPath := filepath.Join(e.baseDir, wsName)
 
 		// Check if workspace directory exists
-		if _, err := os.Stat(wsPath); os.IsNotExist(err) {
+		if info, err := os.Stat(wsPath); err != nil || !info.IsDir() {
 			e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsBindNotFound, wsName))
 			return false
 		}
@@ -7224,7 +7227,7 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 
 	subCmd := ""
 	if len(args) > 0 {
-		subCmd = matchSubCommand(args[0], []string{"init", "bind", "route", "unbind", "list", "shared"})
+		subCmd = matchSubCommand(args[0], []string{"init", "bind", "route", "unbind", "list", "shared", "available", "select"})
 	}
 
 	switch subCmd {
@@ -7238,10 +7241,20 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 
 	case "bind":
 		if len(args) < 2 {
-			e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsBindUsage))
+			e.replyWorkspacePicker(p, msg, 1)
 			return
 		}
-		bindWorkspace(projectKey, args[1], MsgWsBindSuccess)
+		bindWorkspace(projectKey, strings.Join(args[1:], " "), MsgWsBindSuccess)
+
+	case "available":
+		page := 1
+		if len(args) > 1 {
+			page, _ = strconv.Atoi(args[1])
+		}
+		e.replyWorkspacePicker(p, msg, page)
+
+	case "select":
+		e.selectWorkspaceFromPicker(p, msg, args[1:])
 
 	case "route":
 		if len(args) < 2 {
@@ -9894,7 +9907,15 @@ func (e *Engine) renderHelpGroupCard(groupKey string) *Card {
 		cb.ButtonsEqual(row...)
 	}
 	for _, item := range current.items {
-		cb.ListItem(commandText(item.command), "▶", item.action)
+		text, action := commandText(item.command), item.action
+		if e.multiWorkspace && item.command == "/bind" {
+			text = "**/bind**  " + e.i18n.T(MsgWsPickerDescription)
+			action = "nav:/workspace bind"
+		}
+		if e.multiWorkspace && item.command == "/workspace" {
+			action = "nav:/workspace bind"
+		}
+		cb.ListItem(text, "▶", action)
 	}
 	cb.Note(e.i18n.T(MsgHelpTip))
 	return cb.Build()
@@ -10343,18 +10364,12 @@ func (e *Engine) cmdMode(p Platform, msg *Message, args []string) {
 			e.replyWithButtons(p, msg.ReplyCtx, sb.String(), buttons)
 			return
 		}
-		e.replyWithCard(p, msg.ReplyCtx, e.renderModeCard())
+		e.replyWithCard(p, msg.ReplyCtx, e.renderModeCard(msg.SessionKey))
 		return
 	}
 
 	target := strings.ToLower(args[0])
-	switcher.SetMode(target)
-	newMode := switcher.GetMode()
-	appliedLive := e.applyLiveModeChange(msg.SessionKey, newMode)
-
-	if !appliedLive {
-		e.cleanupInteractiveState(e.interactiveKeyForSessionKey(msg.SessionKey))
-	}
+	newMode, appliedLive := e.setSessionMode(switcher, msg.SessionKey, target)
 
 	modes := switcher.PermissionModes()
 	displayName := newMode
@@ -10382,6 +10397,18 @@ func (e *Engine) modeUsageText(modes []PermissionModeInfo) string {
 		keys = append(keys, "`"+mode.Key+"`")
 	}
 	return e.i18n.Tf(MsgModeUsage, strings.Join(keys, " / "))
+}
+
+// Both text commands and card actions must update the workspace's agent and
+// preserve its conversation. Recreate only the process if live updates are unsupported.
+func (e *Engine) setSessionMode(switcher ModeSwitcher, sessionKey, target string) (string, bool) {
+	switcher.SetMode(target)
+	mode := switcher.GetMode()
+	live := e.applyLiveModeChange(sessionKey, mode)
+	if !live {
+		e.cleanupInteractiveState(e.interactiveKeyForSessionKey(sessionKey))
+	}
+	return mode, live
 }
 
 func (e *Engine) applyLiveModeChange(sessionKey, mode string) bool {
@@ -12397,7 +12424,7 @@ func (e *Engine) handleCardNav(action string, sessionKey string) *Card {
 	case "/reasoning":
 		return e.renderReasoningCard()
 	case "/mode":
-		return e.renderModeCard()
+		return e.renderModeCard(sessionKey)
 	case "/lang":
 		return e.renderLangCard()
 	case "/status":
@@ -12603,22 +12630,12 @@ func (e *Engine) executeCardAction(cmd, args, sessionKey string) {
 		if args == "" {
 			return
 		}
-		switcher, ok := e.agent.(ModeSwitcher)
+		agent, _ := e.sessionContextForKey(sessionKey)
+		switcher, ok := agent.(ModeSwitcher)
 		if !ok {
 			return
 		}
-		newMode := strings.ToLower(args)
-		switcher.SetMode(newMode)
-		if e.applyLiveModeChange(sessionKey, switcher.GetMode()) {
-			e.cleanupInteractiveState(interactiveKey)
-			return
-		}
-		e.cleanupInteractiveState(interactiveKey)
-		// Mode change requires a new session to take effect
-		s := e.sessions.GetOrCreateActive(sessionKey)
-		s.SetAgentSessionID("", "")
-		s.ClearHistory()
-		e.sessions.Save()
+		e.setSessionMode(switcher, sessionKey, strings.ToLower(args))
 
 	case "/lang":
 		if args == "" {
@@ -13430,8 +13447,9 @@ func (e *Engine) renderReasoningCard() *Card {
 	return cb.Build()
 }
 
-func (e *Engine) renderModeCard() *Card {
-	switcher, ok := e.agent.(ModeSwitcher)
+func (e *Engine) renderModeCard(sessionKey string) *Card {
+	agent, _ := e.sessionContextForKey(sessionKey)
+	switcher, ok := agent.(ModeSwitcher)
 	if !ok {
 		return e.simpleCard(e.i18n.T(MsgCardTitleMode), "violet", e.i18n.T(MsgModeNotSupported))
 	}
@@ -16375,6 +16393,10 @@ func (e *Engine) drainRelaySession(agentSession AgentSession, session *Session, 
 // The <project> argument is the project name from config.toml [[projects]].
 // Multiple projects can be bound together for relay.
 func (e *Engine) cmdBind(p Platform, msg *Message, args []string) {
+	if e.multiWorkspace && len(args) == 0 {
+		e.replyWorkspacePicker(p, msg, 1)
+		return
+	}
 	if e.relayManager == nil {
 		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgRelayNotAvailable))
 		return

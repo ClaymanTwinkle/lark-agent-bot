@@ -85,10 +85,19 @@ reset_on_idle_mins = 60
 
 | 模式 | 配置值 | 行为 |
 |------|--------|------|
-| 建议 | `suggest` | 仅受信命令自动执行 |
-| 自动编辑 | `auto-edit` | 模型自行决定 |
-| 全自动 | `full-auto` | 自动通过 + 沙箱保护 |
+| 建议 | `suggest` | 只读沙箱 |
+| 自动编辑 | `auto-edit` | 工作区可写，行为同全自动 |
+| 全自动 | `full-auto` | 工作区内自动执行；`app_server` 后端可申请越界审批 |
 | YOLO | `yolo` | 跳过所有审批 |
+
+需要在飞书中批准 Git 写入或网络访问时，在 `[projects.agent.options]` 中设置
+`backend = "app_server"` 和 `mode = "full-auto"`，重启服务后生效。
+`.git` 等受保护路径仍受沙箱限制；需要额外权限时机器人会发送审批卡片，批准后继续。
+默认 `exec` 后端不支持交互审批，触及沙箱边界时会失败。
+
+若要由 Codex 自动判断权限请求，在同一配置节添加 `approvals_reviewer = "auto_review"`。
+该设置随项目工作区继承，并用于新建和恢复的会话；仍保留沙箱，自动审核可以允许或拒绝请求。
+设置为 `"user"` 则由飞书审批卡片交给用户决定，省略时继承 Codex 的审核设置。
 
 ### Cursor Agent 模式
 
@@ -853,11 +862,20 @@ type = "claudecode"
 
 ```
 /workspace                    查看当前绑定
+/bind                         打开项目选择卡片（仅多工作区模式）
+/workspace bind               打开项目选择卡片
 /workspace bind <名称>        绑定本地文件夹
+/workspace available [页码]   浏览可选项目目录
 /workspace init <git-url>     克隆仓库并绑定
 /workspace unbind             解除绑定
 /workspace list               列出所有绑定
 ```
+
+在帮助菜单的「系统」页点击 `/bind` 或 `/workspace`，即可打开项目选择卡片。
+卡片列出 `base_dir` 下的非隐藏一级目录，支持分页并标记当前绑定；点击「绑定」
+只改变当前聊天（启用话题隔离时为当前话题）的项目。目录链接不会列入选择菜单。
+当前绑定的项目置顶，其他项目按名称排序。打开菜单、翻页和绑定结果均更新同一张卡片；选择后回到第一页显示置顶项目。
+`/workspace list` 仍用于查看已有绑定，`/bind <机器人名>` 仍保留机器人中继绑定功能。
 
 ### 工作原理
 

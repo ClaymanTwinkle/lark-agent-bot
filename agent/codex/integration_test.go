@@ -1,13 +1,65 @@
 package codex
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/ClaymanTwinkle/lark-connect/core"
 )
+
+// Opt-in local account smoke test. Any unexpected permission request is denied.
+func TestIntegration_AppServerResumeAndGo(t *testing.T) {
+	workDir, threadID := os.Getenv("LARK_CODEX_SMOKE_DIR"), os.Getenv("LARK_CODEX_SMOKE_THREAD")
+	if workDir == "" || threadID == "" {
+		t.Skip("local app-server smoke test not requested")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	s, err := newAppServerSession(ctx, "stdio://", workDir, "", "", "full-auto", threadID, "", "", nil, "", "", "", os.Getenv("LARK_CODEX_SMOKE_REVIEWER"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if s.CurrentSessionID() != threadID {
+		t.Fatal("resume changed the thread")
+	}
+	if err := s.Send("这是机器人环境检查，只运行 go version，然后报告版本。不要修改文件，不要提交或推送，不要继续之前的任务。", "smoke-go", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	var reply strings.Builder
+	for {
+		select {
+		case event, ok := <-s.Events():
+			if !ok {
+				t.Fatal("session closed before result")
+			}
+			switch event.Type {
+			case core.EventText:
+				reply.WriteString(event.Content)
+			case core.EventPermissionRequest:
+				_ = s.RespondPermission(event.RequestID, core.PermissionResult{Behavior: "deny"})
+				t.Fatal("unexpected approval needed for go version")
+			case core.EventError:
+				t.Fatal(event.Error)
+			case core.EventResult:
+				reply.WriteString(event.Content)
+				if !strings.Contains(reply.String(), "go1.") {
+					t.Fatalf("Go version missing: %s", reply.String())
+				}
+				t.Log(reply.String())
+				return
+			}
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
+}
 
 // TestIntegration_CodexProviderFlow verifies the full provider config flow:
 // 1. ensureCodexProviderConfig writes correct config.toml

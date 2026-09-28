@@ -310,6 +310,12 @@ type CardNavigable interface {
 	SetCardNavigationHandler(h CardNavigationHandler)
 }
 
+// ContextCardNavigable preserves the clicking user and the platform's opaque
+// workspace scope (including topics) when updating a card in place.
+type ContextCardNavigable interface {
+	SetCardNavigationContextHandler(func(action string, msg *Message) *Card)
+}
+
 // CardRefresher is an optional interface for platforms that can update a
 // previously rendered card in-place after the original callback has returned.
 // This is used when async operations (e.g. delete-mode deletion) need to

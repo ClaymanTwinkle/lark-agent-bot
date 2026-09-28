@@ -13,6 +13,100 @@ import (
 	"github.com/ClaymanTwinkle/lark-connect/core"
 )
 
+func TestAppServerFullAuto_AllowsApprovalForProtectedPaths(t *testing.T) {
+	for _, mode := range []string{"full-auto", "auto-edit"} {
+		s := &appServerSession{mode: mode}
+		params := s.threadRequestParams()
+		if params["approvalPolicy"] != "on-request" || params["sandbox"] != "workspace-write" {
+			t.Errorf("%s must keep workspace sandbox and allow approval requests: %v", mode, params)
+		}
+	}
+}
+
+func TestAppServerApprovalsReviewer_PreservedAndVerified(t *testing.T) {
+	for _, reviewer := range []string{"", "user", "auto_review"} {
+		a := &Agent{backend: "app_server", approvalsReviewer: reviewer}
+		opts := a.WorkspaceAgentOptions()
+		s := &appServerSession{mode: "full-auto", approvalsReviewer: reviewer}
+		params := s.threadRequestParams()
+		if reviewer == "" {
+			if _, ok := params["approvalsReviewer"]; ok {
+				t.Fatal("unset reviewer must inherit Codex settings")
+			}
+			continue
+		}
+		if opts["approvals_reviewer"] != reviewer || params["approvalsReviewer"] != reviewer {
+			t.Fatalf("reviewer lost between workspace configuration and request: %v %v", opts, params)
+		}
+		if err := s.verifyApprovalsReviewer(reviewer); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.verifyApprovalsReviewer(""); err == nil {
+			t.Fatal("must reject ignored reviewer override")
+		}
+	}
+	s := &appServerSession{approvalsReviewer: "auto_review"}
+	if err := s.verifyApprovalsReviewer("user"); err == nil {
+		t.Fatal("manual review must not silently replace auto review")
+	}
+}
+
+func TestNew_RejectsUnsupportedApprovalReviewer(t *testing.T) {
+	for _, opts := range []map[string]any{
+		{"backend": "app_server", "approvals_reviewer": "always_allow"},
+		{"backend": "exec", "approvals_reviewer": "auto_review"},
+	} {
+		if _, err := New(opts); err == nil {
+			t.Fatalf("invalid reviewer configuration accepted: %v", opts)
+		}
+	}
+}
+
+func TestAppServerCommandApproval_WaitsForUserDecision(t *testing.T) {
+	for _, behavior := range []string{"allow", "deny"} {
+		t.Run(behavior, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			stdin := &lockedWriteCloser{}
+			s := &appServerSession{ctx: ctx, events: make(chan core.Event, 4), stdin: stdin,
+				pendingApprovals: make(map[string]chan core.PermissionResult)}
+			s.handleServerRequest(serverRequestProbe(t, `"git-approval"`, "item/commandExecution/requestApproval", map[string]any{
+				"command": "git add -- example.go", "cwd": "/project", "reason": "Write Git index",
+			}))
+			select {
+			case event := <-s.events:
+				if event.Type != core.EventPermissionRequest || !strings.Contains(event.ToolInput, "git add") {
+					t.Fatalf("expected a command approval event: %+v", event)
+				}
+				if stdin.String() != "" {
+					t.Fatal("command approved before user decision")
+				}
+				if err := s.RespondPermission(event.RequestID, core.PermissionResult{Behavior: behavior}); err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("approval request was not forwarded")
+			}
+			line := waitForWrittenJSONLine(t, stdin)
+			want := "decline"
+			if behavior == "allow" {
+				want = "accept"
+			}
+			var response struct {
+				Result struct {
+					Decision string `json:"decision"`
+				} `json:"result"`
+			}
+			if err := json.Unmarshal([]byte(line), &response); err != nil {
+				t.Fatal(err)
+			}
+			if response.Result.Decision != want {
+				t.Fatalf("decision=%q, want %q", response.Result.Decision, want)
+			}
+		})
+	}
+}
+
 func TestAppServerSession_ApplyThreadRuntimeState(t *testing.T) {
 	s := &appServerSession{}
 	effort := "xhigh"
