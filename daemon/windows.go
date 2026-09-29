@@ -164,21 +164,39 @@ func windowsTaskScriptPath() string {
 	return filepath.Join(DefaultDataDir(), windowsScriptName)
 }
 
-func windowsTaskAction(scriptPath string) string {
-	return fmt.Sprintf(`powershell.exe %s`, windowsTaskActionArgs(scriptPath))
+// headlessConsoleSupported reports whether conhost.exe accepts --headless
+// (Windows 10 1809, build 17763, and later).
+var headlessConsoleSupported = func() bool {
+	return windows.RtlGetVersion().BuildNumber >= 17763
 }
 
-func windowsTaskActionArgs(scriptPath string) string {
-	return fmt.Sprintf(`-WindowStyle Hidden -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%s"`, scriptPath)
+// windowsTaskCommand returns the program and arguments the scheduled task
+// runs. lark-connect runs inside that PowerShell's console, so the console
+// must not get a window: on Windows 11, whose default terminal is Windows
+// Terminal, launching powershell.exe directly opens a visible terminal that
+// -WindowStyle Hidden cannot hide, and closing it stops the service.
+// conhost --headless creates the console with no window at all.
+func windowsTaskCommand(scriptPath string) (execute, args string) {
+	psArgs := fmt.Sprintf(`-WindowStyle Hidden -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%s"`, scriptPath)
+	if headlessConsoleSupported() {
+		return "conhost.exe", "--headless powershell.exe " + psArgs
+	}
+	return "powershell.exe", psArgs
+}
+
+func windowsTaskAction(scriptPath string) string {
+	execute, args := windowsTaskCommand(scriptPath)
+	return execute + " " + args
 }
 
 func createWindowsTask(scriptPath string) error {
+	execute, args := windowsTaskCommand(scriptPath)
 	out, err := runPowerShell(fmt.Sprintf(`
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument %s
+$action = New-ScheduledTaskAction -Execute %s -Argument %s
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName %s -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
-`, powerShellLiteral(windowsTaskActionArgs(scriptPath)), powerShellLiteral(windowsTaskName)))
+`, powerShellLiteral(execute), powerShellLiteral(args), powerShellLiteral(windowsTaskName)))
 	if err != nil {
 		return fmt.Errorf("register scheduled task: %s (%w)", out, err)
 	}
@@ -186,18 +204,20 @@ Register-ScheduledTask -TaskName %s -Action $action -Trigger $trigger -Principal
 }
 
 func windowsTaskMatchesAction(scriptPath string) bool {
+	execute, args := windowsTaskCommand(scriptPath)
 	out, err := runPowerShell(fmt.Sprintf(`
 $task = Get-ScheduledTask -TaskName %s -ErrorAction SilentlyContinue
 if ($null -eq $task) { exit 1 }
+$expectedExecute = %s
 $expectedArgs = %s
 foreach ($action in $task.Actions) {
-	if (($action.Execute -ieq 'powershell.exe') -and ($action.Arguments -eq $expectedArgs)) {
+	if (($action.Execute -ieq $expectedExecute) -and ($action.Arguments -eq $expectedArgs)) {
 		Write-Output 'true'
 		exit 0
 	}
 }
 exit 1
-`, powerShellLiteral(windowsTaskName), powerShellLiteral(windowsTaskActionArgs(scriptPath))))
+`, powerShellLiteral(windowsTaskName), powerShellLiteral(execute), powerShellLiteral(args)))
 	return err == nil && strings.EqualFold(strings.TrimSpace(out), "true")
 }
 

@@ -51,10 +51,22 @@ func TestBuildWindowsTaskScript(t *testing.T) {
 	}
 }
 
+func withHeadlessConsole(t *testing.T, supported bool) {
+	t.Helper()
+	orig := headlessConsoleSupported
+	t.Cleanup(func() { headlessConsoleSupported = orig })
+	headlessConsoleSupported = func() bool { return supported }
+}
+
 func TestWindowsTaskActionRunsHidden(t *testing.T) {
+	withHeadlessConsole(t, true)
 	got := windowsTaskAction(`C:\Users\me\.lark-connect\lark-connect-daemon.ps1`)
+	// Regression: powershell.exe launched by the task got a visible Windows
+	// Terminal window on Windows 11; closing it stopped the service.
+	if !strings.HasPrefix(got, `conhost.exe --headless powershell.exe `) {
+		t.Fatalf("windowsTaskAction() = %q, want PowerShell started in a headless console", got)
+	}
 	for _, want := range []string{
-		`powershell.exe`,
 		`-WindowStyle Hidden`,
 		`-NoProfile`,
 		`-NonInteractive`,
@@ -67,7 +79,16 @@ func TestWindowsTaskActionRunsHidden(t *testing.T) {
 	}
 }
 
+func TestWindowsTaskActionWithoutHeadlessConsole(t *testing.T) {
+	withHeadlessConsole(t, false)
+	got := windowsTaskAction(`C:\Users\me\.lark-connect\lark-connect-daemon.ps1`)
+	if !strings.HasPrefix(got, `powershell.exe -WindowStyle Hidden `) {
+		t.Fatalf("windowsTaskAction() = %q, want PowerShell started directly before Windows 10 1809", got)
+	}
+}
+
 func TestWindowsTaskCreateUsesLimitedInteractivePrincipal(t *testing.T) {
+	withHeadlessConsole(t, true)
 	orig := runPowerShell
 	t.Cleanup(func() { runPowerShell = orig })
 
@@ -81,11 +102,10 @@ func TestWindowsTaskCreateUsesLimitedInteractivePrincipal(t *testing.T) {
 		t.Fatalf("createWindowsTask() error = %v", err)
 	}
 	for _, want := range []string{
-		`New-ScheduledTaskAction`,
+		`New-ScheduledTaskAction -Execute 'conhost.exe' -Argument '--headless powershell.exe -WindowStyle Hidden`,
 		`Register-ScheduledTask`,
 		`-LogonType Interactive`,
 		`-RunLevel Limited`,
-		`-WindowStyle Hidden`,
 		`C:\Users\me\.lark-connect\lark-connect-daemon.ps1`,
 	} {
 		if !strings.Contains(script, want) {
@@ -95,6 +115,7 @@ func TestWindowsTaskCreateUsesLimitedInteractivePrincipal(t *testing.T) {
 }
 
 func TestWindowsTaskMatchesActionRequiresExactAction(t *testing.T) {
+	withHeadlessConsole(t, true)
 	orig := runPowerShell
 	t.Cleanup(func() { runPowerShell = orig })
 
@@ -108,8 +129,9 @@ func TestWindowsTaskMatchesActionRequiresExactAction(t *testing.T) {
 		t.Fatal("windowsTaskMatchesAction() = false, want true")
 	}
 	for _, want := range []string{
-		`$expectedArgs = '-WindowStyle Hidden -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\me\.lark-connect\lark-connect-daemon.ps1"'`,
-		`$action.Execute -ieq 'powershell.exe'`,
+		`$expectedExecute = 'conhost.exe'`,
+		`$expectedArgs = '--headless powershell.exe -WindowStyle Hidden -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\me\.lark-connect\lark-connect-daemon.ps1"'`,
+		`$action.Execute -ieq $expectedExecute`,
 		`$action.Arguments -eq $expectedArgs`,
 	} {
 		if !strings.Contains(script, want) {
