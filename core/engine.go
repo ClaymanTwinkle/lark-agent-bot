@@ -444,7 +444,7 @@ type Engine struct {
 	resetOnIdle                time.Duration
 
 	// Reply footer composition flags. The footer renders up to two lines:
-	//   line 1 — model · [effort ·] out/in/cw/cr · ctx%   (gated by showContextIndicator)
+	//   line 1 — model · [effort ·] 5h/week quota · ctx%  (gated by showContextIndicator)
 	//   line 2 — workspace directory                       (gated by showWorkdirIndicator)
 	// replyFooterEnabled is the master toggle: when false, no footer is emitted
 	// regardless of the per-line flags.
@@ -7681,7 +7681,7 @@ func (e *Engine) buildReplyFooter(agent Agent, session AgentSession, workspaceDi
 // RichCardSupporter.BuildRichCard. Layout (skipping any empty line):
 //
 //	line 1: ⏱ <i18n elapsed>                                  (subject to e.replyFooterEnabled)
-//	line 2: model · out N · in N cw N cr N · ctx N%           (subject to e.showContextIndicator)
+//	line 2: model · 5h N% used · week N% used · ctx N%       (subject to e.showContextIndicator)
 //	line 3: <workdir>                                         (subject to e.showWorkdirIndicator)
 //
 // Returns "" when the master replyFooterEnabled toggle is off, or while the
@@ -7705,7 +7705,7 @@ func (e *Engine) composeRichStatusFooter(streaming bool, turnStart time.Time, ag
 		usage := replyFooterSessionContextUsage(session)
 		model := replyFooterModel(session, agent)
 		effort := replyFooterReasoningEffort(session, agent)
-		if line := buildClaudeStatusLineFooter(model, effort, usage); line != "" {
+		if line := buildClaudeStatusLineFooter(model, effort, e.replyFooterQuotaText(session), usage); line != "" {
 			lines = append(lines, line)
 		} else if fallback := e.replyFooterUsageText(session, agent); fallback != "" {
 			// fallback for non-claudecode agents that still expose UsageReporter
@@ -7731,18 +7731,18 @@ func (e *Engine) composeRichStatusFooter(streaming bool, turnStart time.Time, ag
 	return strings.Join(lines, "\n")
 }
 
-// buildClaudeStatusLineFooter renders the rich-card line-2 token-usage detail:
+// buildClaudeStatusLineFooter renders the rich-card line-2 status detail:
 //
-//	claude-opus-4-7[1m] · xhigh · out 168 · in 1 cw 971 cr 40.8k · ctx 4%
+//	claude-opus-4-7[1m] · xhigh · 5h 9% used · week 2% used · ctx 4%
 //
 // Sections (each skipped when its data is missing):
 //   - model: from session GetModel() / agent.Name()
 //   - effort: reasoning_effort (Codex / Claude high/medium/low/xhigh/max)
-//   - token counts: out (output) · in (new input) · cw (cache create) · cr (cache read)
+//   - quota: the session's 5-hour and weekly used % (see replyFooterQuotaText)
 //   - ctx %: UsedTokens / ContextWindow, capped at 100%
 //
 // Returns "" when usage is nil and no model is known.
-func buildClaudeStatusLineFooter(model, effort string, usage *ContextUsage) string {
+func buildClaudeStatusLineFooter(model, effort, quota string, usage *ContextUsage) string {
 	var parts []string
 	if model != "" {
 		parts = append(parts, model)
@@ -7750,23 +7750,10 @@ func buildClaudeStatusLineFooter(model, effort string, usage *ContextUsage) stri
 	if effort != "" {
 		parts = append(parts, effort)
 	}
+	if quota != "" {
+		parts = append(parts, quota)
+	}
 	if usage != nil {
-		var counts []string
-		if usage.OutputTokens > 0 {
-			counts = append(counts, fmt.Sprintf("out %s", formatStatusTokenCount(usage.OutputTokens)))
-		}
-		if usage.InputTokens > 0 {
-			counts = append(counts, fmt.Sprintf("in %s", formatStatusTokenCount(usage.InputTokens)))
-		}
-		if usage.CacheCreationInputTokens > 0 {
-			counts = append(counts, fmt.Sprintf("cw %s", formatStatusTokenCount(usage.CacheCreationInputTokens)))
-		}
-		if usage.CachedInputTokens > 0 {
-			counts = append(counts, fmt.Sprintf("cr %s", formatStatusTokenCount(usage.CachedInputTokens)))
-		}
-		if len(counts) > 0 {
-			parts = append(parts, strings.Join(counts, " "))
-		}
 		if usage.ContextWindow > 0 {
 			used := usage.UsedTokens
 			if used <= 0 && usage.TotalTokens > 0 {
@@ -7782,27 +7769,6 @@ func buildClaudeStatusLineFooter(model, effort string, usage *ContextUsage) stri
 		}
 	}
 	return strings.Join(parts, " · ")
-}
-
-// formatStatusTokenCount renders an integer token count compactly.
-//
-//	< 1000      -> "168"
-//	< 1_000_000 -> "40.8k"
-//	else        -> "1.2M"
-//
-// Negative inputs clamp to zero (defensive against bad token deltas).
-func formatStatusTokenCount(n int) string {
-	if n < 0 {
-		n = 0
-	}
-	switch {
-	case n < 1000:
-		return fmt.Sprintf("%d", n)
-	case n < 1_000_000:
-		return fmt.Sprintf("%.1fk", float64(n)/1000.0)
-	default:
-		return fmt.Sprintf("%.1fM", float64(n)/1_000_000.0)
-	}
 }
 
 // formatElapsed renders a turn elapsed duration with i18n, in the format used
@@ -7920,6 +7886,55 @@ func (e *Engine) replyFooterUsageText(session AgentSession, agent Agent) string 
 	e.replyFooterUsage = replyFooterUsageCache{text: text, fetchedAt: time.Now()}
 	e.replyFooterMu.Unlock()
 	return text
+}
+
+// replyFooterQuotaText renders the subscription quota the session reports as
+// "5h N% used · week N% used". Only the session is asked: it answers from data
+// the agent already streams (Claude Code rate_limit_event, Codex rate-limit
+// notifications), whereas an agent-level UsageReporter may run an expensive
+// probe on every reply.
+func (e *Engine) replyFooterQuotaText(session AgentSession) string {
+	if session == nil || e.i18n == nil {
+		return ""
+	}
+	reporter, ok := session.(UsageReporter)
+	if !ok {
+		return ""
+	}
+	parent := e.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, replyFooterUsageTimeout)
+	defer cancel()
+	report, err := reporter.GetUsage(ctx)
+	if err != nil {
+		return ""
+	}
+	return formatReplyFooterQuota(report, e.i18n)
+}
+
+// formatReplyFooterQuota formats the 5-hour and weekly windows of report.
+// A window is labeled only when its length matches, so a fallback window of
+// another length never shows up as "5h".
+func formatReplyFooterQuota(report *UsageReport, i18n *I18n) string {
+	if report == nil || i18n == nil {
+		return ""
+	}
+	var parts []string
+	primary, secondary := selectUsageWindows(report)
+	for _, w := range []*UsageWindow{primary, secondary} {
+		if w == nil {
+			continue
+		}
+		switch w.WindowSeconds {
+		case 18000:
+			parts = append(parts, i18n.Tf(MsgReplyFooterQuota5h, w.UsedPercent))
+		case 604800:
+			parts = append(parts, i18n.Tf(MsgReplyFooterQuotaWeek, w.UsedPercent))
+		}
+	}
+	return strings.Join(parts, " · ")
 }
 
 func formatReplyFooterUsage(report *UsageReport, i18n *I18n) string {
@@ -8112,9 +8127,9 @@ func (e *Engine) buildClaudeStatusLineFooter(agent Agent, session AgentSession, 
 		}
 
 		// Compose:
-		//   <model id> · [effort:X ·] out N · in N cw N cr N · ctx N%
-		// `·` separates major segments; tokens-in tier (in/cw/cr) groups under
-		// one segment because cw/cr are just cache-tiered variants of input.
+		//   <model id> · [effort:X ·] [5h N% used · week N% used ·] ctx N%
+		// The quota segment shows the subscription windows instead of raw
+		// token counts, and is omitted when the session reports none.
 		// Raw model id is preserved (e.g. "claude-opus-4-7[1m]") for diagnostic
 		// clarity over a prettified display name.
 		var line1Parts []string
@@ -8124,11 +8139,9 @@ func (e *Engine) buildClaudeStatusLineFooter(agent Agent, session AgentSession, 
 		if effort := strings.TrimSpace(replyFooterReasoningEffort(session, agent)); effort != "" {
 			line1Parts = append(line1Parts, "effort:"+effort)
 		}
-		line1Parts = append(line1Parts, fmt.Sprintf("out %s", formatStatusTokenCount(usage.OutputTokens)))
-		line1Parts = append(line1Parts, fmt.Sprintf("in %s cw %s cr %s",
-			formatStatusTokenCount(usage.InputTokens),
-			formatStatusTokenCount(usage.CacheCreationInputTokens),
-			formatStatusTokenCount(usage.CachedInputTokens)))
+		if quota := e.replyFooterQuotaText(session); quota != "" {
+			line1Parts = append(line1Parts, quota)
+		}
 		line1Parts = append(line1Parts, fmt.Sprintf("ctx %d%%", pct))
 		line1 = strings.Join(line1Parts, " · ")
 	}

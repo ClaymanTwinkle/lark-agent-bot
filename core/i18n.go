@@ -344,6 +344,8 @@ const (
 
 	MsgStatusTitle           MsgKey = "status_title"
 	MsgReplyFooterRemaining  MsgKey = "reply_footer_remaining"
+	MsgReplyFooterQuota5h    MsgKey = "reply_footer_quota_5h"
+	MsgReplyFooterQuotaWeek  MsgKey = "reply_footer_quota_week"
 	MsgModelCurrent          MsgKey = "model_current"
 	MsgModelChanged          MsgKey = "model_changed"
 	MsgModelChangeFailed     MsgKey = "model_change_failed"
@@ -2347,6 +2349,20 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "剩餘 %d%%",
 		LangJapanese:           "残り %d%%",
 		LangSpanish:            "%d%% restante",
+	},
+	MsgReplyFooterQuota5h: {
+		LangEnglish:            "5h %d%% used",
+		LangChinese:            "5小时已用 %d%%",
+		LangTraditionalChinese: "5小時已用 %d%%",
+		LangJapanese:           "5時間 %d%% 使用",
+		LangSpanish:            "5h %d%% usado",
+	},
+	MsgReplyFooterQuotaWeek: {
+		LangEnglish:            "week %d%% used",
+		LangChinese:            "本周已用 %d%%",
+		LangTraditionalChinese: "本週已用 %d%%",
+		LangJapanese:           "週 %d%% 使用",
+		LangSpanish:            "semana %d%% usado",
 	},
 	MsgModelCurrent: {
 		LangEnglish:            "Current model: %s",

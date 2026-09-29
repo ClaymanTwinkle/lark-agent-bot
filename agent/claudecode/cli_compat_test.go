@@ -333,3 +333,41 @@ func TestSetLiveModeFailsWhenProcessGone(t *testing.T) {
 	}
 	assertModeFlags(t, cs, "default")
 }
+
+// Claude Code streams the subscription quota as rate_limit_event (captured
+// from CLI 2.1.283); the reply footer reads it through GetUsage instead of
+// probing /usage.
+func TestHandleRateLimitEventFeedsGetUsage(t *testing.T) {
+	cs := &claudeSession{}
+	if _, err := cs.GetUsage(context.Background()); err == nil {
+		t.Fatal("GetUsage before any rate_limit_event should error")
+	}
+
+	cs.handleReadLoopLine(`{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1790658000,"rateLimitType":"five_hour","overageStatus":"rejected","isUsingOverage":false,"unifiedWindows":{"five_hour":{"utilization":0.09,"resetsAt":1790658000},"seven_day":{"utilization":0.02,"resetsAt":1791136800}}},"uuid":"u","session_id":"s"}`)
+
+	report, err := cs.GetUsage(context.Background())
+	if err != nil {
+		t.Fatalf("GetUsage: %v", err)
+	}
+	want := []core.UsageWindow{
+		{Name: "five_hour", UsedPercent: 9, WindowSeconds: 18000, ResetAtUnix: 1790658000},
+		{Name: "seven_day", UsedPercent: 2, WindowSeconds: 604800, ResetAtUnix: 1791136800},
+	}
+	if len(report.Buckets) != 1 || !reflect.DeepEqual(report.Buckets[0].Windows, want) {
+		t.Fatalf("windows = %+v, want %+v", report.Buckets, want)
+	}
+	if !report.Buckets[0].Allowed || report.Buckets[0].LimitReached {
+		t.Fatalf("bucket status = %+v, want allowed", report.Buckets[0])
+	}
+
+	// An event without unifiedWindows updates only the window it names.
+	cs.handleReadLoopLine(`{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","rateLimitType":"five_hour","utilization":1.0,"resetsAt":1790660000}}`)
+	report, _ = cs.GetUsage(context.Background())
+	w := report.Buckets[0].Windows
+	if len(w) != 2 || w[0].UsedPercent != 100 || w[1].UsedPercent != 2 {
+		t.Fatalf("after single-window event windows = %+v", w)
+	}
+	if !report.Buckets[0].LimitReached {
+		t.Fatal("rejected status should mark the limit reached")
+	}
+}

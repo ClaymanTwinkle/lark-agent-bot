@@ -6,33 +6,24 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // newClaudeFooterEngine returns an Engine with all three footer-related flags
 // turned on, suitable for invoking buildClaudeStatusLineFooter as a method.
 func newClaudeFooterEngine() *Engine {
-	e := &Engine{}
+	e := &Engine{i18n: NewI18n(LangEnglish)}
 	e.SetReplyFooterEnabled(true)
 	e.SetShowContextIndicator(true)
 	e.SetShowWorkdirIndicator(true)
 	return e
 }
 
-func TestFormatStatusTokenCount(t *testing.T) {
-	cases := map[int]string{
-		0:     "0",
-		1:     "1",
-		999:   "999",
-		1000:  "1.0k",
-		40800: "40.8k",
-		-5:    "0",
-	}
-	for in, want := range cases {
-		got := formatStatusTokenCount(in)
-		if got != want {
-			t.Errorf("formatStatusTokenCount(%d) = %q, want %q", in, got, want)
-		}
-	}
+func quotaReport(fiveHour, week int) *UsageReport {
+	return &UsageReport{Buckets: []UsageBucket{{Name: "claude", Windows: []UsageWindow{
+		{Name: "five_hour", UsedPercent: fiveHour, WindowSeconds: 18000},
+		{Name: "seven_day", UsedPercent: week, WindowSeconds: 604800},
+	}}}}
 }
 
 func TestBuildClaudeStatusLineFooter_NilUsage(t *testing.T) {
@@ -77,35 +68,81 @@ func TestBuildClaudeStatusLineFooter_FullRender(t *testing.T) {
 			ContextWindow:            1_000_000,
 			UsedTokens:               1 + 971 + 40800,
 		},
+		report: quotaReport(9, 2),
 	}
 	e := newClaudeFooterEngine()
 	got := e.buildClaudeStatusLineFooter(nil, session, "/tmp/ws")
 	// 41772 / 1_000_000 = 4.17% → rounds to 4%.
 	// Output is two lines:
-	//   line 1: <model id> · out N · in N cw N cr N · ctx N%
+	//   line 1: <model id> · 5h N% used · week N% used · ctx N%
 	//   line 2: <workspace dir>
 	lines := strings.Split(got, "\n")
 	if len(lines) != 2 {
 		t.Fatalf("expected 2 lines (metrics + dir), got %d: %q", len(lines), got)
 	}
-	parts := strings.Split(lines[0], " · ")
-	if len(parts) != 4 {
-		t.Fatalf("expected 4 segments on line 1, got %d: %q", len(parts), lines[0])
-	}
-	if parts[0] != "claude-opus-4-7[1m]" {
-		t.Errorf("segment 0 = %q, want raw model id", parts[0])
-	}
-	if parts[1] != "out 168" {
-		t.Errorf("out segment = %q, want %q", parts[1], "out 168")
-	}
-	if parts[2] != "in 1 cw 971 cr 40.8k" {
-		t.Errorf("in/cw/cr segment = %q, want %q", parts[2], "in 1 cw 971 cr 40.8k")
-	}
-	if parts[3] != "ctx 4%" {
-		t.Errorf("ctx segment = %q, want %q", parts[3], "ctx 4%")
+	want := []string{"claude-opus-4-7[1m]", "5h 9% used", "week 2% used", "ctx 4%"}
+	if parts := strings.Split(lines[0], " · "); strings.Join(parts, "|") != strings.Join(want, "|") {
+		t.Fatalf("line 1 segments = %q, want %q", parts, want)
 	}
 	if lines[1] == "" || !strings.Contains(lines[1], "ws") {
 		t.Errorf("line 2 = %q, want workspace path containing 'ws'", lines[1])
+	}
+}
+
+// Token counts are no longer shown; without quota data line 1 keeps only
+// model and ctx.
+func TestBuildClaudeStatusLineFooter_NoQuotaNoTokens(t *testing.T) {
+	session := &controllableAgentSession{
+		model:   "gpt-6-astra",
+		workDir: "/tmp/ws",
+		contextUsage: &ContextUsage{
+			InputTokens:       176300,
+			OutputTokens:      35,
+			CachedInputTokens: 175900,
+			ContextWindow:     258000,
+			UsedTokens:        176335,
+		},
+	}
+	e := newClaudeFooterEngine()
+	e.SetShowWorkdirIndicator(false)
+	got := e.buildClaudeStatusLineFooter(nil, session, "/tmp/ws")
+	if got != "gpt-6-astra · ctx 68%" {
+		t.Fatalf("footer = %q, want %q", got, "gpt-6-astra · ctx 68%")
+	}
+}
+
+func TestFormatReplyFooterQuota(t *testing.T) {
+	zh := NewI18n(LangChinese)
+	if got := formatReplyFooterQuota(quotaReport(9, 2), zh); got != "5小时已用 9% · 本周已用 2%" {
+		t.Fatalf("zh quota = %q", got)
+	}
+	weekOnly := &UsageReport{Buckets: []UsageBucket{{Windows: []UsageWindow{{UsedPercent: 40, WindowSeconds: 604800}}}}}
+	if got := formatReplyFooterQuota(weekOnly, zh); got != "本周已用 40%" {
+		t.Fatalf("week-only quota = %q", got)
+	}
+	// A window of another length is never labeled as 5h or week.
+	other := &UsageReport{Buckets: []UsageBucket{{Windows: []UsageWindow{{UsedPercent: 50, WindowSeconds: 3600}}}}}
+	if got := formatReplyFooterQuota(other, zh); got != "" {
+		t.Fatalf("unknown window quota = %q, want empty", got)
+	}
+}
+
+func TestComposeRichStatusFooterShowsQuota(t *testing.T) {
+	session := &controllableAgentSession{
+		model: "claude-opus-5-5",
+		contextUsage: &ContextUsage{
+			CachedInputTokens: 40000, OutputTokens: 10, ContextWindow: 1_000_000, UsedTokens: 40000,
+		},
+		report: quotaReport(12, 30),
+	}
+	e := newClaudeFooterEngine()
+	e.SetShowWorkdirIndicator(false)
+	got := e.composeRichStatusFooter(false, time.Now(), nil, session, "")
+	if !strings.Contains(got, "claude-opus-5-5 · 5h 12% used · week 30% used · ctx 4%") {
+		t.Fatalf("rich footer = %q, want the quota status line", got)
+	}
+	if strings.Contains(got, "out ") || strings.Contains(got, " cr ") {
+		t.Fatalf("rich footer still shows token counts: %q", got)
 	}
 }
 

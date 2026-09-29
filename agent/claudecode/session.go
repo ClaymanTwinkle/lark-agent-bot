@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,6 +101,13 @@ type claudeSession struct {
 	// lacks the "[1m]" suffix (the transcript's message.model never has it).
 	// Zero until a result event carries a usable value.
 	reportedCtxWindow atomic.Int64
+
+	// quotaMu guards quotaWindows: the subscription rate-limit windows
+	// (5-hour, weekly) from the CLI's latest rate_limit_event, keyed by
+	// window length in seconds. GetUsage answers from them without a probe.
+	quotaMu      sync.Mutex
+	quotaWindows map[int]core.UsageWindow
+	quotaStatus  string
 
 	// gracefulStopTimeout is how long Close() waits for a clean exit
 	// (stdin close → Stop hooks → process exit) before escalating to
@@ -666,6 +674,8 @@ func (cs *claudeSession) handleReadLoopLine(line string) {
 		cs.handleControlRequest(raw)
 	case "control_response":
 		cs.handleControlResponse(raw)
+	case "rate_limit_event":
+		cs.handleRateLimitEvent(raw)
 	case "control_cancel_request":
 		requestID, _ := raw["request_id"].(string)
 		slog.Debug("claudeSession: permission cancelled", "request_id", requestID)
@@ -1913,4 +1923,99 @@ func filterEnv(env []string, key string) []string {
 		}
 	}
 	return out
+}
+
+// Subscription rate-limit windows as Claude Code names them, with their
+// length in seconds (the unit core.UsageWindow uses to tell them apart).
+var claudeQuotaWindowSeconds = map[string]int{
+	"five_hour":                  5 * 60 * 60,
+	"seven_day":                  7 * 24 * 60 * 60,
+	"seven_day_opus":             7 * 24 * 60 * 60,
+	"seven_day_sonnet":           7 * 24 * 60 * 60,
+	"seven_day_overage_included": 7 * 24 * 60 * 60,
+}
+
+// handleRateLimitEvent records the subscription quota from a stream-json
+// rate_limit_event. Claude Code emits it whenever the rate-limit headers of
+// an API response change; unifiedWindows carries the 5-hour and weekly
+// windows together, each with utilization as a 0-1 fraction. Older events
+// carry only the top-level window named by rateLimitType.
+func (cs *claudeSession) handleRateLimitEvent(raw map[string]any) {
+	info, ok := raw["rate_limit_info"].(map[string]any)
+	if !ok {
+		return
+	}
+	updates := map[int]core.UsageWindow{}
+	if windows, ok := info["unifiedWindows"].(map[string]any); ok {
+		for _, name := range []string{"five_hour", "seven_day"} {
+			if w, ok := windows[name].(map[string]any); ok {
+				if uw, ok := claudeQuotaWindow(name, w["utilization"], w["resetsAt"]); ok {
+					updates[uw.WindowSeconds] = uw
+				}
+			}
+		}
+	}
+	if len(updates) == 0 {
+		name, _ := info["rateLimitType"].(string)
+		if uw, ok := claudeQuotaWindow(name, info["utilization"], info["resetsAt"]); ok {
+			updates[uw.WindowSeconds] = uw
+		}
+	}
+
+	status, _ := info["status"].(string)
+	cs.quotaMu.Lock()
+	defer cs.quotaMu.Unlock()
+	if cs.quotaWindows == nil {
+		cs.quotaWindows = make(map[int]core.UsageWindow)
+	}
+	for seconds, w := range updates {
+		cs.quotaWindows[seconds] = w
+	}
+	if status != "" {
+		cs.quotaStatus = status
+	}
+}
+
+func claudeQuotaWindow(name string, utilization, resetsAt any) (core.UsageWindow, bool) {
+	seconds, ok := claudeQuotaWindowSeconds[name]
+	if !ok {
+		return core.UsageWindow{}, false
+	}
+	u, ok := utilization.(float64)
+	if !ok {
+		return core.UsageWindow{}, false
+	}
+	pct := int(math.Round(u * 100))
+	if pct < 0 {
+		pct = 0
+	}
+	return core.UsageWindow{
+		Name:          name,
+		UsedPercent:   pct,
+		WindowSeconds: seconds,
+		ResetAtUnix:   int64(asInt(resetsAt)),
+	}, true
+}
+
+// GetUsage reports the subscription quota from the latest rate_limit_event.
+// It never probes the CLI, so it is cheap enough for every reply footer; it
+// errors until the first event arrives (e.g. API-key accounts, which have no
+// subscription windows).
+func (cs *claudeSession) GetUsage(_ context.Context) (*core.UsageReport, error) {
+	cs.quotaMu.Lock()
+	defer cs.quotaMu.Unlock()
+	if len(cs.quotaWindows) == 0 {
+		return nil, fmt.Errorf("claudeSession: no rate limit info yet")
+	}
+	bucket := core.UsageBucket{
+		Name:         "claude",
+		Allowed:      cs.quotaStatus != "rejected",
+		LimitReached: cs.quotaStatus == "rejected",
+	}
+	for _, seconds := range []int{5 * 60 * 60, 7 * 24 * 60 * 60} {
+		if w, ok := cs.quotaWindows[seconds]; ok {
+			bucket.Windows = append(bucket.Windows, w)
+		}
+	}
+	return &core.UsageReport{Provider: "claude", Buckets: []core.UsageBucket{bucket}}, nil
 }
