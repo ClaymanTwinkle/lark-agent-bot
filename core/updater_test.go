@@ -1,11 +1,90 @@
 package core
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
+
+func TestParseVersionOutput(t *testing.T) {
+	cases := map[string]string{
+		"lark-connect v0.2.3\ncommit:  abc\nbuilt:   x\n": "v0.2.3",
+		"lark-connect v0.1.0+auto-review\n":               "v0.1.0+auto-review",
+		"something else v1.0.0":                           "",
+		"":                                                "",
+	}
+	for in, want := range cases {
+		if got := parseVersionOutput(in); got != want {
+			t.Errorf("parseVersionOutput(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Regression: with two bots sharing one binary, the second /upgrade confirm
+// tried to download and replace again and failed on Windows. When the binary
+// on disk is already new enough, it must only restart.
+func TestUpgradeAlreadyInstalled(t *testing.T) {
+	orig := installedVersionFunc
+	t.Cleanup(func() { installedVersionFunc = orig })
+
+	cases := []struct {
+		installed string
+		err       error
+		target    string
+		want      bool
+	}{
+		{installed: "v0.2.3", target: "v0.2.3", want: true},
+		{installed: "v0.3.0", target: "v0.2.3", want: true},
+		{installed: "v0.2.2", target: "v0.2.3", want: false},
+		{installed: "v0.1.0+auto-review", target: "v0.2.3", want: false},
+		{err: errors.New("exec failed"), target: "v0.2.3", want: false},
+	}
+	for _, tc := range cases {
+		installedVersionFunc = func() (string, error) { return tc.installed, tc.err }
+		if _, got := upgradeAlreadyInstalled(tc.target); got != tc.want {
+			t.Errorf("installed=%q err=%v target=%s: got %v, want %v", tc.installed, tc.err, tc.target, got, tc.want)
+		}
+	}
+}
+
+// Regression: "backup old binary: ... Access is denied" when the ".old"
+// backup was still in use by another bot sharing the binary. The update must
+// back up under a unique name instead of failing.
+func TestReplaceBinaryAt_BackupInUse(t *testing.T) {
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "lark-connect.exe")
+	if err := os.WriteFile(execPath, []byte("old binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A non-empty directory cannot be removed, standing in for a ".old" file
+	// locked by a running process.
+	inUse := execPath + ".old"
+	if err := os.MkdirAll(filepath.Join(inUse, "locked"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := replaceBinaryAt(execPath, []byte("new binary")); err != nil {
+		t.Fatalf("replaceBinaryAt: %v", err)
+	}
+	if b, _ := os.ReadFile(execPath); string(b) != "new binary" {
+		t.Fatalf("installed binary = %q, want new binary", b)
+	}
+	if fi, err := os.Stat(inUse); err != nil || !fi.IsDir() {
+		t.Fatalf("in-use backup was touched: %v", err)
+	}
+	matches, _ := filepath.Glob(execPath + ".old-*")
+	if len(matches) != 1 {
+		t.Fatalf("unique backups = %v, want exactly one", matches)
+	}
+	if b, _ := os.ReadFile(matches[0]); !strings.EqualFold(string(b), "old binary") {
+		t.Fatalf("backup %s = %q, want old binary", matches[0], b)
+	}
+}
 
 // fakeGitHub serves a releases API and a /releases/latest redirect page.
 // apiStatus != 200 makes the API fail like GitHub's rate limit does.

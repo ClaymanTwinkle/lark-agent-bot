@@ -15636,14 +15636,18 @@ func (e *Engine) cmdUpgradeConfirm(p Platform, msg *Message) {
 		return
 	}
 
-	e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgUpgradeDownloading), release.TagName))
-
-	if err := SelfUpdate(release.TagName); err != nil {
-		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgError, err))
-		return
+	if installed, ok := upgradeAlreadyInstalled(release.TagName); ok {
+		// Another bot sharing this binary already installed the update; only
+		// a restart is needed to load it.
+		e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgUpgradeAlreadyInstalled), installed))
+	} else {
+		e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgUpgradeDownloading), release.TagName))
+		if err := SelfUpdate(release.TagName); err != nil {
+			e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgError, err))
+			return
+		}
+		e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgUpgradeSuccess), release.TagName))
 	}
-
-	e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgUpgradeSuccess), release.TagName))
 
 	// Auto-restart to apply the update
 	select {

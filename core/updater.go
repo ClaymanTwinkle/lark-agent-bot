@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -260,7 +262,10 @@ func replaceBinary(newBinary []byte) error {
 	if err != nil {
 		return fmt.Errorf("resolve symlinks: %w", err)
 	}
+	return replaceBinaryAt(execPath, newBinary)
+}
 
+func replaceBinaryAt(execPath string, newBinary []byte) error {
 	dir := filepath.Dir(execPath)
 	tmpFile, err := os.CreateTemp(dir, "lark-connect-update-*")
 	if err != nil {
@@ -281,7 +286,13 @@ func replaceBinary(newBinary []byte) error {
 	}
 
 	oldPath := execPath + ".old"
-	os.Remove(oldPath)
+	if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
+		// Still in use: another process sharing this binary has not restarted
+		// since the previous update and runs the ".old" image, which Windows
+		// cannot replace. Keep that one and back up under a unique name.
+		oldPath = fmt.Sprintf("%s.old-%d", execPath, time.Now().Unix())
+		slog.Info("updater: previous backup in use, using a new backup name", "path", oldPath)
+	}
 
 	if err := os.Rename(execPath, oldPath); err != nil {
 		os.Remove(tmpPath)
@@ -302,6 +313,68 @@ func replaceBinary(newBinary []byte) error {
 
 	slog.Info("updater: binary replaced successfully", "path", execPath)
 	return nil
+}
+
+// InstalledVersion reports the version of the executable now on disk at this
+// process's path. It is newer than CurrentVersion once another process
+// sharing the same binary has upgraded it: the file was replaced, but this
+// process still runs the old image until it restarts.
+func InstalledVersion() (string, error) {
+	execPath, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("get executable path: %w", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
+		execPath = resolved
+	}
+	// After a self-update, os.Executable() can report the renamed ".old"
+	// image on Linux; the installed binary sits at the original path.
+	if trimmed, ok := strings.CutSuffix(execPath, ".old"); ok {
+		if _, err := os.Stat(trimmed); err == nil {
+			execPath = trimmed
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, execPath, "--version").Output()
+	if err != nil {
+		return "", fmt.Errorf("run %s --version: %w", execPath, err)
+	}
+	v := parseVersionOutput(string(out))
+	if v == "" {
+		return "", fmt.Errorf("unrecognized %s --version output %q", execPath, strings.TrimSpace(string(out)))
+	}
+	return v, nil
+}
+
+// installedVersionFunc is InstalledVersion, replaceable in tests.
+var installedVersionFunc = InstalledVersion
+
+// upgradeAlreadyInstalled reports whether the binary on disk is already at
+// least target, returning its version. It is false when the version cannot
+// be read, so the caller falls back to downloading.
+func upgradeAlreadyInstalled(target string) (string, bool) {
+	installed, err := installedVersionFunc()
+	if err != nil {
+		slog.Warn("updater: cannot read installed version, downloading", "error", err)
+		return "", false
+	}
+	if parseSemver(installed) == (semver{}) || semverCompare(installed, target) < 0 {
+		return installed, false
+	}
+	return installed, true
+}
+
+// parseVersionOutput extracts the version from `lark-connect --version`
+// output ("lark-connect v1.2.3\ncommit: ...").
+func parseVersionOutput(out string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+	fields := strings.Fields(line)
+	if len(fields) < 2 || fields[0] != "lark-connect" {
+		return ""
+	}
+	return fields[1]
 }
 
 // --- semver comparison ---

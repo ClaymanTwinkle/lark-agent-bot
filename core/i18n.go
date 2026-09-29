@@ -511,6 +511,9 @@ const (
 	MsgUpgradeDownloading MsgKey = "upgrade_downloading"
 	MsgUpgradeSuccess     MsgKey = "upgrade_success"
 	MsgUpgradeDevBuild    MsgKey = "upgrade_dev_build"
+	// MsgUpgradeAlreadyInstalled: the binary on disk is already the new
+	// version (another bot sharing it upgraded), so only a restart is needed.
+	MsgUpgradeAlreadyInstalled MsgKey = "upgrade_already_installed"
 
 	MsgWebNotSupported MsgKey = "web_not_supported"
 	MsgWebNotEnabled   MsgKey = "web_not_enabled"
@@ -3184,6 +3187,13 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "✅ 已成功更新到 **%s**！正在重啟...",
 		LangJapanese:           "✅ **%s** に更新しました！再起動中...",
 		LangSpanish:            "✅ ¡Actualizado a **%s** con éxito! Reiniciando...",
+	},
+	MsgUpgradeAlreadyInstalled: {
+		LangEnglish:            "✅ The program on disk is already **%s** (updated by another bot sharing it). Restarting to load it...",
+		LangChinese:            "✅ 磁盘上的程序已经是 **%s**（共用该程序的其他机器人已完成更新），正在重启以加载新版本...",
+		LangTraditionalChinese: "✅ 磁碟上的程式已經是 **%s**（共用該程式的其他機器人已完成更新），正在重啟以載入新版本...",
+		LangJapanese:           "✅ ディスク上のプログラムは既に **%s** です（共有している別のボットが更新済み）。読み込むため再起動中...",
+		LangSpanish:            "✅ El programa en disco ya es **%s** (lo actualizó otro bot que lo comparte). Reiniciando para cargarlo...",
 	},
 	MsgUpgradeDevBuild: {
 		LangEnglish:            "⚠️ Running a dev build — version check is not available. Please build from source or install a release version.",
