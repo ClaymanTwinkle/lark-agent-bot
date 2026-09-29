@@ -323,7 +323,7 @@ func readSessionHistoryFile(path string) ([]core.HistoryEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var entries []core.HistoryEntry
 	err = forEachLine(f, func(line []byte) bool {
@@ -425,7 +425,7 @@ func firstLineContains(path string, needle []byte) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var found bool
 	_ = forEachLine(f, func(line []byte) bool {
 		found = bytes.Contains(line, needle)
