@@ -8240,6 +8240,33 @@ func TestCmdCronExec_UsageWhenMissingID(t *testing.T) {
 	}
 }
 
+// lateWriteTempDir is t.TempDir for tests whose background work (a cron run,
+// a message turn) may still write into the directory after the test body
+// returns: t.TempDir's single RemoveAll then fails with "directory not empty"
+// (seen in release runs). Cleanup calls stop first, then retries the removal
+// until late writes have settled.
+func lateWriteTempDir(t *testing.T, stop func()) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "lark-connect-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if stop != nil {
+			stop()
+		}
+		var rmErr error
+		for i := 0; i < 50; i++ {
+			if rmErr = os.RemoveAll(dir); rmErr == nil {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Logf("temp dir not removed: %v", rmErr)
+	})
+	return dir
+}
+
 func TestCmdCronExec_TriggersJob(t *testing.T) {
 	sentContains := func(sent []string, needle string) bool {
 		for _, msg := range sent {
@@ -8252,16 +8279,16 @@ func TestCmdCronExec_TriggersJob(t *testing.T) {
 
 	for _, subcommand := range []string{"exec", "run", "trigger"} {
 		t.Run(subcommand, func(t *testing.T) {
-			store, err := NewCronStore(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			scheduler := NewCronScheduler(store)
 			platform := &stubCronReplyTargetPlatform{
 				stubPlatformEngine: stubPlatformEngine{n: "plain"},
 			}
 			agentSession := newResultAgentSession("manual run complete")
 			e := NewEngine("test", &resultAgent{session: agentSession}, []Platform{platform}, "", LangEnglish)
+			store, err := NewCronStore(lateWriteTempDir(t, func() { _ = e.Stop() }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			scheduler := NewCronScheduler(store)
 			e.cronScheduler = scheduler
 			scheduler.RegisterEngine("test", e)
 

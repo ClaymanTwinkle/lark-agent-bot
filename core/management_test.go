@@ -576,7 +576,7 @@ func TestMgmt_CronWithScheduler(t *testing.T) {
 
 func TestMgmt_CronExecByID(t *testing.T) {
 	mgmt, ts, e := testManagementServer(t, "tok")
-	store, err := NewCronStore(t.TempDir())
+	store, err := NewCronStore(lateWriteTempDir(t, func() { _ = e.Stop() }))
 	if err != nil {
 		t.Fatal(err)
 	}
