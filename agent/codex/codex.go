@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -77,8 +76,8 @@ func New(opts map[string]any) (core.Agent, error) {
 
 	cmd, cliExtraArgs := core.ParseCmdOpts(opts, "codex")
 
-	if _, err := exec.LookPath(cmd); err != nil {
-		return nil, fmt.Errorf("codex: %q CLI not found in PATH, install with: npm install -g @openai/codex", cmd)
+	if _, _, err := resolveCodexBin(cmd); err != nil {
+		return nil, err
 	}
 
 	// Parse project-level env from opts["env"] (set via [projects.agent.options.env] in config.toml).
@@ -532,6 +531,14 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 	provName, provAPIKey, provWireAPI, provHeaders := a.activeProviderCodexConfig()
 	a.mu.Unlock()
 
+	cliBin, fromDesktop, err := resolveCodexBin(cliBin)
+	if err != nil {
+		return nil, err
+	}
+	if fromDesktop {
+		extraEnv = withBinDirOnPath(extraEnv, cliBin)
+	}
+
 	if provName != "" {
 		if err := ensureCodexProviderConfig(codexHome, provName, baseURL, provWireAPI, provHeaders); err != nil {
 			slog.Warn("codex: failed to write provider config", "provider", provName, "error", err)
@@ -542,7 +549,7 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 	}
 
 	if backend == "app_server" {
-		return newAppServerSession(ctx, appServerURL, workDir, model, reasoningEffort, mode, sessionID, baseURL, provName, extraEnv, codexHome, systemPrompt, appendPrompt, toolInstructions)
+		return newAppServerSession(ctx, cliBin, appServerURL, workDir, model, reasoningEffort, mode, sessionID, baseURL, provName, extraEnv, codexHome, systemPrompt, appendPrompt, toolInstructions)
 	}
 	if codexHome != "" {
 		extraEnv = append(extraEnv, "CODEX_HOME="+codexHome)

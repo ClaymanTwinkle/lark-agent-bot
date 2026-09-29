@@ -23,8 +23,12 @@ func (a *Agent) ListSkills(ctx context.Context) ([]*core.Skill, error) {
 	env = append(env, a.providerEnvLocked()...)
 	env = append(env, a.sessionEnv...)
 	a.mu.RUnlock()
-	if bin == "" {
-		bin = "codex"
+	bin, fromDesktop, err := resolveCodexBin(bin)
+	if err != nil {
+		return nil, err
+	}
+	if fromDesktop {
+		env = withBinDirOnPath(env, bin)
 	}
 	if codexHome != "" {
 		env = append(env, "CODEX_HOME="+codexHome)

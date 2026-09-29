@@ -144,6 +144,7 @@ type appServerRequestUserInputAnswer struct {
 }
 
 type appServerSession struct {
+	bin            string // codex executable, resolved per session (see resolveCodexBin)
 	url            string
 	workDir        string
 	model          string
@@ -198,13 +199,17 @@ const (
 	appServerUsageRefreshTimeout = 1500 * time.Millisecond
 )
 
-func newAppServerSession(ctx context.Context, url, workDir, model, effort, mode, resumeID, baseURL, modelProvider string, extraEnv []string, codexHome string, systemPrompt string, appendPrompt string, developerInstructions string) (*appServerSession, error) {
+func newAppServerSession(ctx context.Context, bin, url, workDir, model, effort, mode, resumeID, baseURL, modelProvider string, extraEnv []string, codexHome string, systemPrompt string, appendPrompt string, developerInstructions string) (*appServerSession, error) {
 	if err := validateMode(mode, "app_server"); err != nil {
 		return nil, err
 	}
 	mode = normalizeMode(mode)
+	if bin == "" {
+		bin = "codex"
+	}
 	sessionCtx, cancel := context.WithCancel(ctx)
 	s := &appServerSession{
+		bin:              bin,
 		url:              url,
 		workDir:          workDir,
 		model:            model,
@@ -284,7 +289,7 @@ func (s *appServerSession) connect() error {
 	if baseURL := strings.TrimSpace(s.baseURL); baseURL != "" {
 		args = append(args, "-c", fmt.Sprintf("openai_base_url=%q", baseURL))
 	}
-	cmd := exec.CommandContext(s.ctx, "codex", args...)
+	cmd := exec.CommandContext(s.ctx, s.bin, args...)
 	cmd.Dir = s.workDir
 	env := append([]string(nil), s.extraEnv...)
 	if s.codexHome != "" {
