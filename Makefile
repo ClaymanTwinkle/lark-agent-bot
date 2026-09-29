@@ -164,11 +164,16 @@ release-all: web clean
 			go build $(_TAGS_FLAG) -ldflags "$(LDFLAGS)" -o $(OUT) $(CMD) && \
 	) true
 	@echo "Packaging archives..."
+	@# Archives keep the versioned name, but the binary inside is always
+	@# $(APP)[.exe] so an unpacked install is callable as `$(APP)` right away
+	@# (agents run `$(APP) send` from the directory lark-connect puts on PATH).
 	@cd $(DIST) && for f in $(APP)-*; do \
 		case "$$f" in \
 			*.tar.gz|*.zip) continue ;; \
-			*.exe) zip "$${f%.exe}.zip" "$$f" ;; \
-			*)     tar czf "$$f.tar.gz" "$$f" ;; \
+			*.exe) mkdir -p "stage-$$f" && cp "$$f" "stage-$$f/$(APP).exe" && \
+				(cd "stage-$$f" && zip "../$${f%.exe}.zip" "$(APP).exe") && rm -rf "stage-$$f" ;; \
+			*)     mkdir -p "stage-$$f" && cp "$$f" "stage-$$f/$(APP)" && \
+				tar czf "$$f.tar.gz" -C "stage-$$f" "$(APP)" && rm -rf "stage-$$f" ;; \
 		esac; \
 	done
 	@cd $(DIST) && sha256sum *.tar.gz *.zip > checksums.txt

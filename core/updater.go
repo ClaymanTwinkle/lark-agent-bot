@@ -254,72 +254,45 @@ func extractBinaryFromZip(data []byte) ([]byte, error) {
 }
 
 func replaceBinary(newBinary []byte) error {
-	execPath, err := os.Executable()
+	execPath, err := runningExecutablePath()
 	if err != nil {
-		return fmt.Errorf("get executable path: %w", err)
+		return err
 	}
-	execPath, err = filepath.EvalSymlinks(execPath)
+	_, err = replaceBinaryAt(execPath, newBinary)
+	return err
+}
+
+// InstallBinary installs newBinary as the standard lark-connect executable
+// next to the running one (see replaceBinaryAt) and returns its path. It is
+// the install step shared by /upgrade and the `lark-connect update` command.
+func InstallBinary(newBinary []byte) (string, error) {
+	execPath, err := runningExecutablePath()
 	if err != nil {
-		return fmt.Errorf("resolve symlinks: %w", err)
+		return "", err
 	}
 	return replaceBinaryAt(execPath, newBinary)
 }
 
-func replaceBinaryAt(execPath string, newBinary []byte) error {
-	dir := filepath.Dir(execPath)
-	tmpFile, err := os.CreateTemp(dir, "lark-connect-update-*")
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
+// StandardBinaryName is the file name every install and update uses, so
+// agents can always call the `lark-connect` command from the directory the
+// engine puts on their PATH.
+func StandardBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "lark-connect.exe"
 	}
-	tmpPath := tmpFile.Name()
-
-	if _, err := tmpFile.Write(newBinary); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
-		return fmt.Errorf("write new binary: %w", err)
-	}
-	tmpFile.Close()
-
-	if err := os.Chmod(tmpPath, 0o755); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("chmod: %w", err)
-	}
-
-	oldPath := execPath + ".old"
-	if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
-		// Still in use: another process sharing this binary has not restarted
-		// since the previous update and runs the ".old" image, which Windows
-		// cannot replace. Keep that one and back up under a unique name.
-		oldPath = fmt.Sprintf("%s.old-%d", execPath, time.Now().Unix())
-		slog.Info("updater: previous backup in use, using a new backup name", "path", oldPath)
-	}
-
-	if err := os.Rename(execPath, oldPath); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("backup old binary: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, execPath); err != nil {
-		// Try to restore
-		if restoreErr := os.Rename(oldPath, execPath); restoreErr != nil {
-			slog.Error("updater: failed to restore old binary after install failed", "error", restoreErr)
-		}
-		return fmt.Errorf("install new binary: %w", err)
-	}
-
-	// Don't remove .old file on Linux - the running process may still need it
-	// for os.Executable() to work correctly after restart.
-	// The .old file will be overwritten on next update.
-
-	slog.Info("updater: binary replaced successfully", "path", execPath)
-	return nil
+	return "lark-connect"
 }
 
-// InstalledVersion reports the version of the executable now on disk at this
-// process's path. It is newer than CurrentVersion once another process
-// sharing the same binary has upgraded it: the file was replaced, but this
-// process still runs the old image until it restarts.
-func InstalledVersion() (string, error) {
+// installTargetPath is where an update installs the binary: the standard
+// name in the running executable's directory.
+func installTargetPath(execPath string) string {
+	return filepath.Join(filepath.Dir(execPath), StandardBinaryName())
+}
+
+// runningExecutablePath returns this process's executable path. A path that
+// no longer resolves is kept as is: on Windows it is the name the process was
+// started from, which an update by another process may have renamed.
+func runningExecutablePath() (string, error) {
 	execPath, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("get executable path: %w", err)
@@ -333,6 +306,114 @@ func InstalledVersion() (string, error) {
 		if _, err := os.Stat(trimmed); err == nil {
 			execPath = trimmed
 		}
+	}
+	return execPath, nil
+}
+
+// InstalledBinaryPath is the executable to restart into and to read the
+// installed version from: the standard-named binary next to the running one
+// when it exists (an update installed it there), otherwise the running
+// executable itself.
+func InstalledBinaryPath() (string, error) {
+	execPath, err := runningExecutablePath()
+	if err != nil {
+		return "", err
+	}
+	return installedPathFor(execPath), nil
+}
+
+func installedPathFor(execPath string) string {
+	if target := installTargetPath(execPath); target != execPath {
+		if fi, err := os.Stat(target); err == nil && fi.Mode().IsRegular() {
+			return target
+		}
+	}
+	return execPath
+}
+
+// backupPath returns path+".old", or a unique ".old-<unix time>" name when
+// the previous backup is still in use: another process sharing the binary
+// has not restarted since the last update and runs that image, which Windows
+// cannot replace.
+func backupPath(path string) string {
+	oldPath := path + ".old"
+	if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
+		oldPath = fmt.Sprintf("%s.old-%d", path, time.Now().UnixNano())
+		slog.Info("updater: previous backup in use, using a new backup name", "path", oldPath)
+	}
+	return oldPath
+}
+
+// replaceBinaryAt installs newBinary as lark-connect[.exe] in execPath's
+// directory and returns that path. The binary it replaces is kept as a
+// ".old" backup. When the running executable has another name (e.g. the
+// versioned name from an old release archive), it is renamed to a backup
+// too, so scripts pointing at it fail loudly instead of silently starting a
+// stale build.
+func replaceBinaryAt(execPath string, newBinary []byte) (string, error) {
+	target := installTargetPath(execPath)
+	tmpFile, err := os.CreateTemp(filepath.Dir(target), "lark-connect-update-*")
+	if err != nil {
+		return "", fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+
+	if _, err := tmpFile.Write(newBinary); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("write new binary: %w", err)
+	}
+	tmpFile.Close()
+
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("chmod: %w", err)
+	}
+
+	oldPath := ""
+	if _, err := os.Stat(target); err == nil {
+		oldPath = backupPath(target)
+		if err := os.Rename(target, oldPath); err != nil {
+			os.Remove(tmpPath)
+			return "", fmt.Errorf("backup old binary: %w", err)
+		}
+	}
+
+	if err := os.Rename(tmpPath, target); err != nil {
+		if oldPath != "" {
+			if restoreErr := os.Rename(oldPath, target); restoreErr != nil {
+				slog.Error("updater: failed to restore old binary after install failed", "error", restoreErr)
+			}
+		}
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("install new binary: %w", err)
+	}
+
+	if execPath != target {
+		if _, err := os.Stat(execPath); err == nil {
+			if err := os.Rename(execPath, backupPath(execPath)); err != nil {
+				slog.Warn("updater: could not retire the old binary name", "path", execPath, "error", err)
+			} else {
+				slog.Warn("updater: binary renamed to the standard name; update scripts or services that start the old path",
+					"old_path", execPath, "new_path", target)
+			}
+		}
+	}
+
+	// Backups are not removed: on Linux the running process may still need
+	// its image for os.Executable() until restart. The next update reuses them.
+	slog.Info("updater: binary installed", "path", target)
+	return target, nil
+}
+
+// InstalledVersion reports the version of the installed executable (see
+// InstalledBinaryPath). It is newer than CurrentVersion once another process
+// sharing the binary has upgraded it: the file was replaced, but this
+// process still runs the old image until it restarts.
+func InstalledVersion() (string, error) {
+	execPath, err := InstalledBinaryPath()
+	if err != nil {
+		return "", err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

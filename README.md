@@ -41,8 +41,8 @@ lark-connect bridges locally running agents — Claude Code, Codex, Cursor, Gemi
 # Option 1: npm (any OS)
 npm install -g lark-connect
 
-# Option 2: download the archive for your OS from Releases, rename the binary inside
-#           to lark-connect (lark-connect.exe on Windows) and put it on PATH
+# Option 2: download the archive for your OS from Releases, extract it and put the
+#           lark-connect binary (lark-connect.exe on Windows) on PATH
 #   https://github.com/ClaymanTwinkle/lark-connect/releases
 #   e.g. lark-connect-v0.1.0-linux-amd64.tar.gz, lark-connect-v0.1.0-windows-amd64.zip
 

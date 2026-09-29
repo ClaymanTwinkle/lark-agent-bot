@@ -1252,6 +1252,7 @@ func main() {
 	}
 
 	slog.Info("lark-connect is running", "projects", len(engines))
+	warnNonStandardBinaryName()
 
 	// After startup, check if we were restarted and queue the success
 	// notification. The engine dispatches it on the first OnPlatformReady
@@ -1310,18 +1311,13 @@ func main() {
 		if err := core.SaveRestartNotify(cfg.DataDir, *restartReq); err != nil {
 			slog.Error("restart: save notify failed", "error", err)
 		}
-		execPath, err := os.Executable()
+		// Restart into the installed binary: after an update it is the
+		// standard-named lark-connect[.exe], which may differ from the name
+		// this process was started from.
+		execPath, err := core.InstalledBinaryPath()
 		if err != nil {
 			slog.Error("restart: cannot determine executable path", "error", err)
 			os.Exit(1)
-		}
-		// After self-update, os.Executable() may return the .old path on Linux.
-		// Strip the .old suffix to restart from the updated binary.
-		if strings.HasSuffix(execPath, ".old") {
-			newPath := strings.TrimSuffix(execPath, ".old")
-			if _, err := os.Stat(newPath); err == nil {
-				execPath = newPath
-			}
 		}
 		slog.Info("restarting...", "path", execPath, "args", os.Args)
 		if err := restartProcess(execPath); err != nil {

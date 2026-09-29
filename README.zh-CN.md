@@ -41,7 +41,7 @@ lark-connect 把运行在你电脑上的 Claude Code、Codex、Cursor、Gemini C
 # 方式一：npm（任意平台）
 npm install -g lark-connect
 
-# 方式二：从 Releases 下载对应平台的压缩包，解压后把二进制重命名为 lark-connect（Windows 为 lark-connect.exe）并放进 PATH
+# 方式二：从 Releases 下载对应平台的压缩包，解压出 lark-connect（Windows 为 lark-connect.exe）并放进 PATH
 #   https://github.com/ClaymanTwinkle/lark-connect/releases
 #   文件名形如 lark-connect-v0.1.0-linux-amd64.tar.gz、lark-connect-v0.1.0-windows-amd64.zip
 

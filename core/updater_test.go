@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -57,10 +56,8 @@ func TestUpgradeAlreadyInstalled(t *testing.T) {
 // back up under a unique name instead of failing.
 func TestReplaceBinaryAt_BackupInUse(t *testing.T) {
 	dir := t.TempDir()
-	execPath := filepath.Join(dir, "lark-connect.exe")
-	if err := os.WriteFile(execPath, []byte("old binary"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	execPath := filepath.Join(dir, StandardBinaryName())
+	writeFile(t, execPath, "old binary")
 	// A non-empty directory cannot be removed, standing in for a ".old" file
 	// locked by a running process.
 	inUse := execPath + ".old"
@@ -68,12 +65,14 @@ func TestReplaceBinaryAt_BackupInUse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := replaceBinaryAt(execPath, []byte("new binary")); err != nil {
+	got, err := replaceBinaryAt(execPath, []byte("new binary"))
+	if err != nil {
 		t.Fatalf("replaceBinaryAt: %v", err)
 	}
-	if b, _ := os.ReadFile(execPath); string(b) != "new binary" {
-		t.Fatalf("installed binary = %q, want new binary", b)
+	if got != execPath {
+		t.Fatalf("installed at %q, want %q", got, execPath)
 	}
+	assertFile(t, execPath, "new binary")
 	if fi, err := os.Stat(inUse); err != nil || !fi.IsDir() {
 		t.Fatalf("in-use backup was touched: %v", err)
 	}
@@ -81,8 +80,99 @@ func TestReplaceBinaryAt_BackupInUse(t *testing.T) {
 	if len(matches) != 1 {
 		t.Fatalf("unique backups = %v, want exactly one", matches)
 	}
-	if b, _ := os.ReadFile(matches[0]); !strings.EqualFold(string(b), "old binary") {
-		t.Fatalf("backup %s = %q, want old binary", matches[0], b)
+	assertFile(t, matches[0], "old binary")
+}
+
+// An update from a differently named binary (the versioned name inside
+// release archives up to v0.2.4) installs the standard name, so agents can
+// call `lark-connect`, and retires the old name so nothing launches it stale.
+func TestReplaceBinaryAt_InstallsStandardName(t *testing.T) {
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "lark-connect-v0.2.2-windows-amd64.exe")
+	writeFile(t, execPath, "old binary")
+
+	got, err := replaceBinaryAt(execPath, []byte("new binary"))
+	if err != nil {
+		t.Fatalf("replaceBinaryAt: %v", err)
+	}
+	want := filepath.Join(dir, StandardBinaryName())
+	if got != want {
+		t.Fatalf("installed at %q, want %q", got, want)
+	}
+	assertFile(t, want, "new binary")
+	if _, err := os.Stat(execPath); !os.IsNotExist(err) {
+		t.Fatalf("old binary name still present (err=%v)", err)
+	}
+	assertFile(t, execPath+".old", "old binary")
+}
+
+// The second bot sharing a versioned binary updates after the first one
+// already installed the standard name and retired the versioned file.
+func TestReplaceBinaryAt_StandardNameAlreadyInstalled(t *testing.T) {
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "lark-connect-v0.2.2-windows-amd64.exe") // already renamed away
+	target := filepath.Join(dir, StandardBinaryName())
+	writeFile(t, target, "first update")
+
+	if _, err := replaceBinaryAt(execPath, []byte("second update")); err != nil {
+		t.Fatalf("replaceBinaryAt: %v", err)
+	}
+	assertFile(t, target, "second update")
+	assertFile(t, target+".old", "first update")
+}
+
+// Both bots ran the versioned name; the first one already installed the
+// standard name, and the second upgrades before it restarted.
+func TestReplaceBinaryAt_BothNamesPresent(t *testing.T) {
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "lark-connect-v0.2.2-windows-amd64.exe")
+	target := filepath.Join(dir, StandardBinaryName())
+	writeFile(t, execPath, "versioned binary")
+	writeFile(t, target, "first update")
+
+	if _, err := replaceBinaryAt(execPath, []byte("second update")); err != nil {
+		t.Fatalf("replaceBinaryAt: %v", err)
+	}
+	assertFile(t, target, "second update")
+	assertFile(t, target+".old", "first update")
+	assertFile(t, execPath+".old", "versioned binary")
+	if _, err := os.Stat(execPath); !os.IsNotExist(err) {
+		t.Fatalf("versioned name still present (err=%v)", err)
+	}
+}
+
+func TestInstalledPathFor(t *testing.T) {
+	dir := t.TempDir()
+	versioned := filepath.Join(dir, "lark-connect-v0.2.2-windows-amd64.exe")
+	standard := filepath.Join(dir, StandardBinaryName())
+
+	if got := installedPathFor(versioned); got != versioned {
+		t.Fatalf("no standard binary yet: got %q, want the running path", got)
+	}
+	writeFile(t, standard, "installed")
+	if got := installedPathFor(versioned); got != standard {
+		t.Fatalf("after install: got %q, want %q", got, standard)
+	}
+	if got := installedPathFor(standard); got != standard {
+		t.Fatalf("running the standard name: got %q", got)
+	}
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertFile(t *testing.T, path, want string) {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if string(b) != want {
+		t.Fatalf("%s = %q, want %q", filepath.Base(path), b, want)
 	}
 }
 

@@ -34,7 +34,7 @@ Go to https://github.com/ClaymanTwinkle/lark-connect/releases and download the a
 - Windows: `lark-connect-<tag>-windows-<arch>.zip`
 - `checksums.txt` (SHA-256 of all archives)
 
-`<tag>` is the release tag (e.g. `v0.1.0`) and `<arch>` is `amd64` or `arm64`. Each archive contains a single binary with the same base name (e.g. `lark-connect-v0.1.0-linux-amd64`, or `lark-connect-v0.1.0-windows-amd64.exe` on Windows).
+`<tag>` is the release tag (e.g. `v0.1.0`) and `<arch>` is `amd64` or `arm64`. Each archive contains a single binary named `lark-connect` (`lark-connect.exe` on Windows). Keep that name: lark-connect puts its own directory on the agents' `PATH` so they can run `lark-connect send`, and `lark-connect update` / `/upgrade` install updates under this name. (Archives up to v0.2.4 used the versioned name inside; the first update renames it.)
 
 ```bash
 # Example for Linux amd64 — set TAG to the release you chose:
@@ -45,11 +45,11 @@ curl -LO https://github.com/ClaymanTwinkle/lark-connect/releases/download/${TAG}
 curl -LO https://github.com/ClaymanTwinkle/lark-connect/releases/download/${TAG}/checksums.txt
 sha256sum -c checksums.txt --ignore-missing   # optional: verify the download (macOS: shasum -a 256 -c ...)
 tar xzf lark-connect-${TAG}-${OS}-${ARCH}.tar.gz
-chmod +x lark-connect-${TAG}-${OS}-${ARCH}
-sudo mv lark-connect-${TAG}-${OS}-${ARCH} /usr/local/bin/lark-connect
+chmod +x lark-connect
+sudo mv lark-connect /usr/local/bin/lark-connect
 ```
 
-On Windows, extract the `.zip`, rename `lark-connect-<tag>-windows-<arch>.exe` to `lark-connect.exe`, and place it in a directory on your `PATH`.
+On Windows, extract the `.zip` and place `lark-connect.exe` in a directory on your `PATH`.
 
 On macOS, you may need to remove the quarantine attribute:
 

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ClaymanTwinkle/lark-connect/core"
 )
 
 const (
@@ -155,20 +157,23 @@ func runUpdate() {
 	}
 	defer os.Remove(tmpFile)
 
-	execPath, err := os.Executable()
+	newBinary, err := os.ReadFile(tmpFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Cannot locate current binary: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Update failed: read downloaded binary: %v\n", err)
 		os.Exit(1)
 	}
-
-	if err := replaceExecutable(execPath, tmpFile); err != nil {
+	installedPath, err := core.InstallBinary(newBinary)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Update failed: %v\n", err)
 		os.Exit(1)
 	}
 
-	syncNpmPackageVersion(execPath, strings.TrimPrefix(latest, "v"))
+	syncNpmPackageVersion(installedPath, strings.TrimPrefix(latest, "v"))
 
-	fmt.Printf("Updated to %s\n", latest)
+	fmt.Printf("Updated to %s (%s)\n", latest, installedPath)
+	if execPath, err := os.Executable(); err == nil && !strings.EqualFold(filepath.Clean(execPath), filepath.Clean(installedPath)) {
+		fmt.Printf("The binary now uses the standard name. Scripts or services that started %s must start %s instead.\n", execPath, installedPath)
+	}
 	fmt.Println("Restart lark-connect to use the new version.")
 }
 
@@ -392,55 +397,6 @@ func downloadToTemp(url string) (string, error) {
 	return tmp.Name(), nil
 }
 
-func replaceExecutable(target, src string) error {
-	if err := os.Chmod(src, 0o755); err != nil {
-		return fmt.Errorf("chmod: %w", err)
-	}
-
-	// On Windows, rename over a running exe is not possible directly.
-	// Move old binary aside, then move new one in.
-	backup := target + ".old"
-	os.Remove(backup)
-
-	if err := os.Rename(target, backup); err != nil {
-		return fmt.Errorf("backup old binary: %w", err)
-	}
-
-	if err := copyFile(src, target); err != nil {
-		// Attempt to restore
-		if restoreErr := os.Rename(backup, target); restoreErr != nil {
-			slog.Warn("update: failed to restore old binary after copy error", "error", restoreErr)
-		}
-		return fmt.Errorf("install new binary: %w", err)
-	}
-
-	if err := os.Chmod(target, 0o755); err != nil {
-		return fmt.Errorf("chmod new binary: %w", err)
-	}
-
-	os.Remove(backup)
-	return nil
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-	return out.Close()
-}
-
 func checkUpdate() {
 	pre := false
 	for _, arg := range os.Args[2:] {
@@ -608,4 +564,22 @@ func syncNpmPackageVersion(execPath, newVer string) {
 	} else {
 		slog.Debug("update: synced npm package.json version", "old", oldVer, "new", newVer)
 	}
+}
+
+// warnNonStandardBinaryName logs when this executable is not named
+// lark-connect[.exe]. The engine puts its directory on the agents' PATH, so
+// under any other name (e.g. the versioned name from an older release
+// archive) agents cannot run `lark-connect send`, `cron` or `timer`. The next
+// update installs the standard name.
+func warnNonStandardBinaryName() {
+	execPath, err := os.Executable()
+	if err != nil {
+		return
+	}
+	if strings.EqualFold(filepath.Base(execPath), core.StandardBinaryName()) {
+		return
+	}
+	slog.Warn("executable is not named "+core.StandardBinaryName()+
+		"; agents cannot run lark-connect commands (send, cron, timer) until it is renamed or updated",
+		"path", execPath)
 }
