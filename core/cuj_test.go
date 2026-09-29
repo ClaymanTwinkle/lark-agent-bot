@@ -280,11 +280,29 @@ type cujEnv struct {
 
 func newCUJEnv(t *testing.T) *cujEnv {
 	t.Helper()
-	dir := t.TempDir()
+	// Not t.TempDir(): message goroutines can still save sessions.json after
+	// the test body returns, which made t.TempDir's single RemoveAll fail with
+	// "directory not empty" (seen in the v0.2.5 release run). Stop the engine
+	// first, then retry the removal until late writes have settled.
+	dir, err := os.MkdirTemp("", "lark-connect-cuj-*")
+	if err != nil {
+		t.Fatal(err)
+	}
 	plat := &stubPlatformEngine{n: "test"}
 	agent := &cujAgent{}
 	storePath := dir + "/sessions.json"
 	e := NewEngine("test", agent, []Platform{plat}, storePath, LangEnglish)
+	t.Cleanup(func() {
+		_ = e.Stop()
+		var rmErr error
+		for i := 0; i < 50; i++ {
+			if rmErr = os.RemoveAll(dir); rmErr == nil {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Logf("cuj temp dir not removed: %v", rmErr)
+	})
 	return &cujEnv{
 		t:       t,
 		engine:  e,
