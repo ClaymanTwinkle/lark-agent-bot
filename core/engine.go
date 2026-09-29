@@ -4091,6 +4091,11 @@ func (e *Engine) getOrCreateWorkspaceAgent(workspace string) (Agent, *SessionMan
 
 	// workspace-specific overrides always win
 	opts["work_dir"] = workspace
+	if _, ok := opts["language"]; !ok {
+		if lang := e.i18n.CurrentLang(); lang != LangAuto {
+			opts["language"] = string(lang)
+		}
+	}
 
 	if e.projectState != nil {
 		if m := e.projectState.WorkspaceModelOverride(workspace); m != "" {
@@ -16483,7 +16488,7 @@ func (e *Engine) cmdBind(p Platform, msg *Message, args []string) {
 
 	reply := fmt.Sprintf(e.i18n.T(MsgRelayBindSuccess), strings.Join(boundProjects, " ↔ "), otherProject, otherProject)
 
-	if _, ok := e.agent.(SystemPromptSupporter); !ok {
+	if sp, ok := e.agent.(SystemPromptSupporter); !ok || !sp.HasSystemPromptSupport() {
 		if mp, ok := e.agent.(MemoryFileProvider); ok {
 			reply += fmt.Sprintf(e.i18n.T(MsgRelaySetupHint), filepath.Base(mp.ProjectMemoryFile()))
 		}
@@ -16520,7 +16525,7 @@ const (
 // setupMemoryFile appends AgentSystemPrompt() to the agent's project memory
 // file. It returns the result, the filename (for messages), and any error.
 func (e *Engine) setupMemoryFile() (setupResult, string, error) {
-	if _, ok := e.agent.(SystemPromptSupporter); ok {
+	if sp, ok := e.agent.(SystemPromptSupporter); ok && sp.HasSystemPromptSupport() {
 		return setupNative, "", nil
 	}
 

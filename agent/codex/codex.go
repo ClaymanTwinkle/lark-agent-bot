@@ -41,6 +41,11 @@ type Agent struct {
 	configEnv       []string // env vars from [projects.agent.options.env] — persists across SetSessionEnv calls
 	sessionEnv      []string
 	mu              sync.RWMutex
+
+	// toolInstructions tells the agent how to use lark-connect's own
+	// commands (send, cron, timer, relay). The app-server backend passes it
+	// as the thread's developer instructions.
+	toolInstructions string
 }
 
 func New(opts map[string]any) (core.Agent, error) {
@@ -59,6 +64,7 @@ func New(opts map[string]any) (core.Agent, error) {
 	codexHome, _ := opts["codex_home"].(string)
 	systemPrompt, _ := opts["system_prompt"].(string)
 	appendPrompt, _ := opts["append_system_prompt"].(string)
+	langRaw, _ := opts["language"].(string)
 	mode = normalizeMode(mode)
 	backend = normalizeBackend(backend)
 	if err := validateMode(mode, backend); err != nil {
@@ -89,7 +95,7 @@ func New(opts map[string]any) (core.Agent, error) {
 		}
 	}
 
-	return &Agent{
+	a := &Agent{
 		workDir:         workDir,
 		model:           model,
 		reasoningEffort: normalizeReasoningEffort(reasoningEffort),
@@ -103,7 +109,9 @@ func New(opts map[string]any) (core.Agent, error) {
 		cliExtraArgs:    cliExtraArgs,
 		configEnv:       configEnv,
 		activeIdx:       -1,
-	}, nil
+	}
+	a.toolInstructions = core.AgentSystemPromptForLang(core.NormalizeLanguageString(langRaw))
+	return a, nil
 }
 
 func normalizeBackend(raw string) string {
@@ -478,6 +486,7 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 	codexHome := a.codexHome
 	systemPrompt := a.systemPrompt
 	appendPrompt := a.appendPrompt
+	toolInstructions := a.toolInstructions
 	cliBin := a.cmd
 	cliExtraArgs := a.cliExtraArgs
 	workDir := a.workDir
@@ -508,7 +517,7 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 	}
 
 	if backend == "app_server" {
-		return newAppServerSession(ctx, appServerURL, workDir, model, reasoningEffort, mode, sessionID, baseURL, provName, extraEnv, codexHome, systemPrompt, appendPrompt)
+		return newAppServerSession(ctx, appServerURL, workDir, model, reasoningEffort, mode, sessionID, baseURL, provName, extraEnv, codexHome, systemPrompt, appendPrompt, toolInstructions)
 	}
 	if codexHome != "" {
 		extraEnv = append(extraEnv, "CODEX_HOME="+codexHome)
@@ -798,4 +807,14 @@ func (a *Agent) activeProviderCodexConfig() (name string, apiKey string, wireAPI
 		return
 	}
 	return p.Name, p.APIKey, p.CodexWireAPI, p.CodexHTTPHeaders
+}
+
+// HasSystemPromptSupport reports whether lark-connect's tool instructions
+// reach the agent natively: the app-server backend sends them as the
+// thread's developer instructions. The exec backend still needs them in the
+// project's AGENTS.md.
+func (a *Agent) HasSystemPromptSupport() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return normalizeBackend(a.backend) == "app_server"
 }

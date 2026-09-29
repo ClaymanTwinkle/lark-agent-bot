@@ -21,7 +21,7 @@ func TestIntegration_AppServerResumeAndGo(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	s, err := newAppServerSession(ctx, "stdio://", workDir, "", "", "read-only", threadID, "", "", nil, "", "", "")
+	s, err := newAppServerSession(ctx, "stdio://", workDir, "", "", "read-only", threadID, "", "", nil, "", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

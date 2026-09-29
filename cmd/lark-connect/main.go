@@ -368,7 +368,13 @@ func main() {
 				proj.Agent.Options["run_as_env"] = proj.RunAsEnv
 			}
 		}
-		agent, err := core.CreateAgent(proj.Agent.Type, buildAgentOptions(cfg.DataDir, proj))
+		agentOpts := buildAgentOptions(cfg.DataDir, proj)
+		// The agent's lark-connect tool instructions follow the configured
+		// language unless the agent options set their own.
+		if _, ok := agentOpts["language"]; !ok && cfg.Language != "" {
+			agentOpts["language"] = cfg.Language
+		}
+		agent, err := core.CreateAgent(proj.Agent.Type, agentOpts)
 		if err != nil {
 			slog.Error("failed to create agent", "project", proj.Name, "error", err)
 			os.Exit(1)

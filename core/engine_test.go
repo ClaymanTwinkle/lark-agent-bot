@@ -8136,6 +8136,31 @@ func TestSetupMemoryFile_NativeAgent(t *testing.T) {
 	}
 }
 
+// An agent whose native prompt support depends on its configuration (Codex:
+// only the app-server backend) must still get the memory file when it
+// reports false.
+type stubSwitchablePromptAgent struct {
+	stubMemoryAgent
+	native bool
+}
+
+func (a *stubSwitchablePromptAgent) HasSystemPromptSupport() bool { return a.native }
+
+func TestSetupMemoryFile_HonorsSystemPromptSupportValue(t *testing.T) {
+	memFile := filepath.Join(t.TempDir(), "AGENTS.md")
+	p := &stubPlatformEngine{n: "plain"}
+
+	native := &stubSwitchablePromptAgent{stubMemoryAgent: stubMemoryAgent{memFile: memFile}, native: true}
+	if result, _, _ := NewEngine("test", native, []Platform{p}, "", LangEnglish).setupMemoryFile(); result != setupNative {
+		t.Fatalf("native=true: result = %d, want setupNative", result)
+	}
+
+	notNative := &stubSwitchablePromptAgent{stubMemoryAgent: stubMemoryAgent{memFile: memFile}, native: false}
+	if result, _, err := NewEngine("test", notNative, []Platform{p}, "", LangEnglish).setupMemoryFile(); result != setupOK {
+		t.Fatalf("native=false: result = %d, want setupOK; err = %v", result, err)
+	}
+}
+
 func TestSetupMemoryFile_NoMemorySupport(t *testing.T) {
 	p := &stubPlatformEngine{n: "plain"}
 	agent := &stubAgent{}

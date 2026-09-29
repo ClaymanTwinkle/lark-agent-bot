@@ -154,6 +154,10 @@ type appServerSession struct {
 	extraEnv       []string
 	codexHome      string
 	promptPreamble string
+	// developerInstructions is sent on thread/start and thread/resume so the
+	// thread knows lark-connect's commands (send, cron, timer, relay) the way
+	// Claude Code gets them through --append-system-prompt-file.
+	developerInstructions string
 
 	events chan core.Event
 
@@ -194,7 +198,7 @@ const (
 	appServerUsageRefreshTimeout = 1500 * time.Millisecond
 )
 
-func newAppServerSession(ctx context.Context, url, workDir, model, effort, mode, resumeID, baseURL, modelProvider string, extraEnv []string, codexHome string, systemPrompt string, appendPrompt string) (*appServerSession, error) {
+func newAppServerSession(ctx context.Context, url, workDir, model, effort, mode, resumeID, baseURL, modelProvider string, extraEnv []string, codexHome string, systemPrompt string, appendPrompt string, developerInstructions string) (*appServerSession, error) {
 	if err := validateMode(mode, "app_server"); err != nil {
 		return nil, err
 	}
@@ -218,6 +222,7 @@ func newAppServerSession(ctx context.Context, url, workDir, model, effort, mode,
 		pendingApprovals: make(map[string]chan core.PermissionResult),
 		preambleSent:     resumeID != "" && resumeID != core.ContinueSession,
 	}
+	s.developerInstructions = strings.TrimSpace(developerInstructions)
 	s.alive.Store(true)
 
 	if err := s.connect(); err != nil {
@@ -394,6 +399,9 @@ func (s *appServerSession) threadRequestParams() map[string]any {
 	}
 	if model := s.GetModel(); model != "" {
 		params["model"] = model
+	}
+	if s.developerInstructions != "" {
+		params["developerInstructions"] = s.developerInstructions
 	}
 	params["approvalsReviewer"] = modeSettings(s.mode).reviewer
 	if approval, sandbox := appServerModeSettings(s.mode); approval != "" {

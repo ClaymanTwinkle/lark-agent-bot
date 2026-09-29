@@ -643,3 +643,44 @@ func TestAppServerReadLoop_DeliversLinesOver10MB(t *testing.T) {
 		t.Fatal("session still marked alive after EOF")
 	}
 }
+
+// lark-connect's own tool instructions (send, cron, timer, relay) reach the
+// Codex thread as developer instructions on both thread/start and
+// thread/resume, which builds on the same params.
+func TestAppServerThreadParams_IncludeDeveloperInstructions(t *testing.T) {
+	s := &appServerSession{mode: "default", developerInstructions: "use lark-connect send"}
+	if got := s.threadRequestParams()["developerInstructions"]; got != "use lark-connect send" {
+		t.Fatalf("developerInstructions = %v, want the tool instructions", got)
+	}
+
+	s = &appServerSession{mode: "default"}
+	if _, ok := s.threadRequestParams()["developerInstructions"]; ok {
+		t.Fatal("developerInstructions sent although empty")
+	}
+}
+
+func TestAgentHasSystemPromptSupport_OnlyAppServer(t *testing.T) {
+	if !(&Agent{backend: "app_server"}).HasSystemPromptSupport() {
+		t.Fatal("app_server backend should report native instructions")
+	}
+	if (&Agent{backend: "exec"}).HasSystemPromptSupport() {
+		t.Fatal("exec backend does not send the instructions and must not claim support")
+	}
+}
+
+func TestNewAgentToolInstructionsFollowLanguage(t *testing.T) {
+	for _, lang := range []string{"zh", "en", ""} {
+		agent, err := New(map[string]any{"cmd": "go", "language": lang})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := agent.(*Agent).toolInstructions
+		want := core.AgentSystemPromptForLang(core.NormalizeLanguageString(lang))
+		if got != want {
+			t.Fatalf("language %q: tool instructions differ from AgentSystemPromptForLang", lang)
+		}
+		if !strings.Contains(got, "lark-connect send") {
+			t.Fatalf("language %q: instructions do not mention lark-connect send", lang)
+		}
+	}
+}
