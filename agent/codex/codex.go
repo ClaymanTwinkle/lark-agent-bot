@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -577,11 +578,19 @@ func (a *Agent) DeleteSession(_ context.Context, sessionID string) error {
 	a.mu.RLock()
 	codexHome := a.codexHome
 	a.mu.RUnlock()
-	path := findSessionFile(sessionID, codexHome)
-	if path == "" {
+	paths := findSessionFiles(sessionID, codexHome)
+	if len(paths) == 0 {
 		return fmt.Errorf("session file not found: %s", sessionID)
 	}
-	return os.Remove(path)
+	// Remove every transcript of the session, or it reappears in the list
+	// through its continuation files.
+	var errs []error
+	for _, path := range paths {
+		if err := os.Remove(path); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (a *Agent) Stop() error { return nil }
