@@ -160,8 +160,9 @@ type Platform struct {
 	groupFilterDegradedErr string
 	groupFilterRetryCancel context.CancelFunc
 	groupFilterRetryStop   chan struct{}
-	peerBots               map[string]string // app_id -> friendly alias, for quoted-reply attribution
+	peerBots               map[string]string // app_id -> friendly alias, for quoted-reply attribution and trusting bot senders
 	mentionMap             map[string]string // agent name -> open_id (for outbound @ resolution)
+	botTriggeredSessions   sync.Map          // session key -> true when its latest trigger came from a peer bot
 	userNameCache          sync.Map          // open_id -> display name
 	chatNameCache          sync.Map          // chat_id -> chat name
 	chatMemberCache        sync.Map          // chatID -> *chatMemberEntry
@@ -1838,10 +1839,22 @@ func (p *Platform) onMessage(ctx context.Context, event *larkim.P2MessageReceive
 		}
 	}
 
+	fromBot := strings.EqualFold(senderType, "app")
 	if !core.AllowList(p.allowFrom, userID) {
-		slog.Debug(p.tag()+": message from unauthorized user", "user", userID)
-		p.replyUnauthorizedAccess(ctx, replyContext{messageID: messageID, chatID: chatID, sessionKey: sessionKey})
-		return nil
+		switch {
+		case fromBot && p.isPeerBotSender(userID):
+			slog.Info(p.tag()+": accepting a task from a peer bot", "sender_id", userID, "chat_id", chatID)
+		case fromBot:
+			// Answering "unauthorized" to a bot only adds noise. Logged at Info
+			// so the sender ID can be added to peer_bots or mention_map.
+			slog.Info(p.tag()+": ignoring a bot not listed in peer_bots or mention_map",
+				"sender_id", userID, "chat_id", chatID, "message_id", messageID)
+			return nil
+		default:
+			slog.Debug(p.tag()+": message from unauthorized user", "user", userID)
+			p.replyUnauthorizedAccess(ctx, replyContext{messageID: messageID, chatID: chatID, sessionKey: sessionKey})
+			return nil
+		}
 	}
 
 	if chatType == "group" && !core.AllowList(p.allowChat, chatID) {
@@ -1865,6 +1878,7 @@ func (p *Platform) onMessage(ctx context.Context, event *larkim.P2MessageReceive
 	}
 	mentions := msg.Mentions
 	parentID := stringValue(msg.ParentId)
+	p.rememberSessionTrigger(sessionKey, fromBot)
 
 	rctx := replyContext{messageID: messageID, chatID: chatID, sessionKey: sessionKey}
 	var groupHistoryCtx groupHistoryContext
@@ -3303,7 +3317,7 @@ func (p *Platform) Reply(ctx context.Context, rctx any, content string) error {
 		return fmt.Errorf("%s: invalid reply context type %T", p.tag(), rctx)
 	}
 
-	content = p.resolveMentionsInContent(ctx, rc.chatID, content)
+	content = p.resolveOutboundMentions(ctx, rc, content)
 	msgType, msgBody := buildReplyContent(content)
 
 	if !p.shouldUseThreadOrReplyAPI(rc) {
@@ -3325,7 +3339,7 @@ func (p *Platform) Send(ctx context.Context, rctx any, content string) error {
 		return p.Reply(ctx, rctx, content)
 	}
 
-	content = p.resolveMentionsInContent(ctx, rc.chatID, content)
+	content = p.resolveOutboundMentions(ctx, rc, content)
 	msgType, msgBody := buildReplyContent(content)
 	return p.sendNewMessageToChat(ctx, rc, msgType, msgBody)
 }
@@ -3342,7 +3356,7 @@ func (p *Platform) SendWithStatusFooter(ctx context.Context, rctx any, content, 
 		return fmt.Errorf("%s: invalid reply context type %T", p.tag(), rctx)
 	}
 	// Resolve mentions first so we can detect whether a real @mention is
-	content = p.resolveMentionsInContent(ctx, rc.chatID, content)
+	content = p.resolveOutboundMentions(ctx, rc, content)
 	if strings.TrimSpace(footer) == "" || strings.Contains(content, `<at user_id=`) || strings.Contains(content, `<at id=`) {
 		if strings.TrimSpace(footer) != "" {
 			content += "\n\n" + footer

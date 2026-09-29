@@ -46,6 +46,9 @@ type Agent struct {
 	// commands (send, cron, timer, relay). The app-server backend passes it
 	// as the thread's developer instructions.
 	toolInstructions string
+	// platformPrompt is the platform-specific prompt (e.g. which bots in the
+	// group the agent can hand work to), appended to toolInstructions.
+	platformPrompt string
 }
 
 func New(opts map[string]any) (core.Agent, error) {
@@ -476,6 +479,28 @@ func (a *Agent) SetSessionEnv(env []string) {
 	a.sessionEnv = env
 }
 
+// SetPlatformPrompt implements core.PlatformPromptInjector.
+func (a *Agent) SetPlatformPrompt(prompt string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.platformPrompt = prompt
+}
+
+// developerInstructions joins lark-connect's tool instructions and the
+// platform prompt into the app-server thread's developer instructions.
+func developerInstructions(toolInstructions, platformPrompt string) string {
+	toolInstructions = strings.TrimSpace(toolInstructions)
+	platformPrompt = strings.TrimSpace(platformPrompt)
+	switch {
+	case platformPrompt == "":
+		return toolInstructions
+	case toolInstructions == "":
+		return platformPrompt
+	default:
+		return toolInstructions + "\n\n" + platformPrompt
+	}
+}
+
 func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentSession, error) {
 	a.mu.Lock()
 	mode := a.mode
@@ -486,7 +511,7 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 	codexHome := a.codexHome
 	systemPrompt := a.systemPrompt
 	appendPrompt := a.appendPrompt
-	toolInstructions := a.toolInstructions
+	toolInstructions := developerInstructions(a.toolInstructions, a.platformPrompt)
 	cliBin := a.cmd
 	cliExtraArgs := a.cliExtraArgs
 	workDir := a.workDir

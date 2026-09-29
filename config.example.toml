@@ -1121,6 +1121,12 @@ app_secret = "your-feishu-app-secret"
 #                           # 机器人间 @通知映射表：friendly_name -> open_id。
 #                           # 当 @name 不是群成员（例如另一个机器人 / Agent，只能用 open_id 标识）时使用。
 #                           # 优先级高于 resolve_mentions 的群成员匹配；需同时开启 resolve_mentions = true。
+#                           # The open_id must be the other bot's ID as THIS app sees it (IDs are per app), and
+#                           # listed bots may send tasks to this bot even though allow_from only lists people.
+#                           # open_id 必须是本应用看到的对方机器人 ID（不同应用看到的 ID 不同）；列出的机器人即使不在 allow_from 里也能给本机器人派活。
+# peer_bots = { cli_bot_b_app_id = "BOT-B" }
+#                           # Other bots' app_id -> display name. Names quoted bot messages, and lets these bots send tasks to this bot.
+#                           # 其他机器人的 app_id -> 显示名。用于标注引用的机器人消息，并允许这些机器人给本机器人派活。
 # image_batch_window_ms = 500  # Coalesce window for consecutive images from the same session (default: 500ms).
 #                              # When the Feishu mobile client sends multiple images, each arrives as a separate
 #                              # event; lark-connect buffers them and dispatches a single multi-image message once

@@ -4292,11 +4292,7 @@ func (e *Engine) getOrCreateInteractiveStateWith(sessionKey string, p Platform, 
 	// Clear the prompt first so instructions from a previous platform don't leak
 	// into sessions for platforms that don't provide their own instructions.
 	if ppi, ok := agent.(PlatformPromptInjector); ok {
-		prompt := ""
-		if fip, ok := p.(FormattingInstructionProvider); ok {
-			prompt = fip.FormattingInstructions()
-		}
-		ppi.SetPlatformPrompt(prompt)
+		ppi.SetPlatformPrompt(e.platformPrompt(p))
 	}
 
 	// Check if context is already canceled (e.g. during shutdown/restart)
@@ -16156,6 +16152,24 @@ func (platformNameOnly) Stop() error                              { return nil }
 
 func relayConversationKey(fromProject, platformName, chatID string) string {
 	return "relay:" + fromProject + ":" + workspaceChannelKey(platformName, chatID)
+}
+
+// platformPrompt is the platform-specific part of the agent's system prompt:
+// the platform's formatting instructions plus, when the platform lets the
+// agent @ other bots, how to hand work to them.
+func (e *Engine) platformPrompt(p Platform) string {
+	var parts []string
+	if fip, ok := p.(FormattingInstructionProvider); ok {
+		if s := strings.TrimSpace(fip.FormattingInstructions()); s != "" {
+			parts = append(parts, s)
+		}
+	}
+	if pb, ok := p.(PeerBotProvider); ok {
+		if names := pb.PeerBotNames(); len(names) > 0 {
+			parts = append(parts, e.i18n.Tf(MsgAgentPeerBotPrompt, strings.Join(names, ", "), names[0]))
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 func (e *Engine) platformForName(name string) Platform {

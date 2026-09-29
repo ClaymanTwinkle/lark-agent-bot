@@ -419,47 +419,58 @@ mention_map = { BOT-B = "ou_bot_b_open_id", BOT-A = "ou_bot_a_open_id" }
 > - `mention_map` 负责显式 open_id 映射（覆盖不在群成员列表里的机器人）
 > - 当同一个 `@name` 两者都能匹配时，**`mention_map` 优先级更高**，确保显式配置不会被群成员匹配覆盖。
 
-### 使用示例
+### 机器人之间派活
 
-Agent 输出 `@BOT-B 请复核巡检报告` 时，lark-connect 在发送到飞书前会把它替换为：
+飞书会把机器人发出的文本消息推给它 @ 到的机器人，所以同一个群里的两个机器人可以互相 @ 派活。配好 `mention_map` 后：
 
+1. Agent 的系统提示词里会列出能 @ 的机器人（`mention_map` 的名字）。
+2. 用户的请求里有一部分适合别的机器人做时，Agent 单独发一条消息：`lark-connect send --message "@BOT-B 请复核巡检报告"`。发送前会被替换成 `<at user_id="ou_bot_b_open_id">BOT-B</at> 请复核巡检报告`，以文本消息发出，BOT-B 会收到 @ 事件。
+3. BOT-B 自己做完，在群里回复结果。结果不会回到 BOT-A 手里；需要把结果拿回来接着处理时，用 relay（见使用文档「多机器人中继」）。
+
+要点：
+
+- **必须用 `lark-connect send` 单独发**。普通回复默认通过更新流式预览卡片送达，卡片里的 @ 不会通知对方。
+- **接收方要信任发送方**：`mention_map` 或 `peer_bots` 里列出的机器人，即使不在 `allow_from` 里，发来的消息也会被接受。没列出的机器人发来的消息会被忽略，不回复"未授权"。日志里会有一条 Info 记录，带上它的发送者 ID，方便加进配置。
+- **只转一手**：由其他机器人发起的会话里，发出的消息不会把 `@名字` 转成真的 @，`--at-users` 也不生效。被派活的机器人不能再转派，两个机器人也不会互相 @ 个没完。
+
+两个机器人互相派活的配置示例（ID 都要按下一节的方法获取）：
+
+```toml
+# 机器人 A 的配置
+[projects.platforms.options]
+resolve_mentions = true
+mention_map = { "BOT-B" = "<A 看到的 B 的 open_id>" }
+peer_bots = { cli_bot_b_app_id = "BOT-B" }
+
+# 机器人 B 的配置
+[projects.platforms.options]
+resolve_mentions = true
+mention_map = { "BOT-A" = "<B 看到的 A 的 open_id>" }
+peer_bots = { cli_bot_a_app_id = "BOT-A" }
 ```
-<at user_id="ou_bot_b_open_id">BOT-B</at> 请复核巡检报告
-```
 
-BOT-B 机器人会收到飞书 @ 事件并被触发。
+### 如何获取对方机器人的 open_id
 
-典型场景：
+`open_id` 是**按应用区分**的：同一个机器人，在不同应用看来 open_id 不同。所以不能用对方机器人日志里 `feishu: bot identified open_id=...` 打印的自身 ID，也不能用 `/open-apis/bot/v3/info` 返回的值，那是它在自己应用里的 ID。`mention_map` 要填的是**本应用看到的**对方 ID。
 
-- **多 Agent 协作**：BOT-A 巡检发现问题 → 在回复里 @BOT-B 触发修复 Agent。
-- **跨 Agent 通知**：长任务（Cron）由一个 Agent 完成后，@另一个 Agent 接力。
-- **@ 机器人触发 Hook**：飞书机器人收到 @ 事件可触发 lark-connect 的会话路由。
+获取方法：
 
-### 如何获取机器人 open_id
-
-机器人的 `open_id`（`ou_` 开头）**不是** App ID（`cli_` 开头），两者在飞书里是完全不同的标识符。「凭证与基础信息」页只显示 App ID / App Secret，**不显示** bot 的 `open_id`。
-
-获取方式（按推荐顺序）：
-
-1. **读 lark-connect 启动日志（最简单，适用于自己控制的应用）**
-   lark-connect 启动时会自动调用 `/open-apis/bot/v3/info` 拉取自身 `open_id`，并打印：
-   ```
-   feishu: bot identified open_id=ou_xxxxxxxxxxxxxxxx
-   ```
-   直接复制日志里的值即可。
-
-2. **调用「获取机器人信息」API（`/open-apis/bot/v3/info`）**
-   用任意有效 `tenant_access_token` 发起请求：
+1. 在群里发一条同时 @ 两个机器人的消息，例如 `@BOT-A @BOT-B 测试`。
+2. 从机器人 A 的日志里找到这条消息的 `msg_id`（`message received ... msg_id=om_xxx`）。
+3. 用机器人 A 的凭证读这条消息，`mentions` 里 BOT-B 的 `id` 就是 A 的 `mention_map` 要填的值：
    ```bash
-   curl -H "Authorization: Bearer t-xxxx" https://open.feishu.cn/open-apis/bot/v3/info
-   # 响应：{ "code": 0, "bot": { "open_id": "ou_xxx", ... } }
+   curl -H "Authorization: Bearer <A 的 tenant_access_token>" \
+     https://open.feishu.cn/open-apis/im/v1/messages/om_xxx
+   # data.items[0].mentions: [{ "name": "BOT-B", "id": "ou_...", "id_type": "open_id" }, ...]
    ```
+4. 用机器人 B 的凭证读同一条消息，得到 B 要填的 A 的 ID。
+
+机器人的 App ID（`cli_` 开头）在开放平台「凭证与基础信息」页，填到对方的 `peer_bots`。
 
 ### 注意事项
 
-- `mention_map` 必须配合 `resolve_mentions = true` 才会生效；单独配置 `mention_map` 不会触发解析。
+- `mention_map` 必须配合 `resolve_mentions = true` 才会生效；单独配置 `mention_map` 不会触发解析。开启 `resolve_mentions` 后，发出消息里的 `@群成员名字` 也会变成真 @，被 @ 的人会收到提醒。
 - `@name` 必须与 `mention_map` 的 key 完全一致（区分大小写）。
-- 飞书机器人的 `open_id` 是**应用级别**的，与群聊无关；同一个机器人在不同群的 `open_id` 一致。
 - 被 @ 的机器人需要在**目标群里**，且该群已开启机器人能力，否则飞书不会派发 @ 事件。
 
 ---

@@ -100,6 +100,13 @@ type FormattingInstructionProvider interface {
 	FormattingInstructions() string
 }
 
+// PeerBotProvider is an optional interface for platforms where the agent can
+// hand work to other bots in a group chat by @-mentioning them in a message it
+// sends. PeerBotNames returns the names the agent can @ that way.
+type PeerBotProvider interface {
+	PeerBotNames() []string
+}
+
 // PlatformPromptInjector is an optional interface for agents that can receive
 // platform-specific prompt fragments (e.g., formatting instructions).
 // The engine calls this before StartSession when the platform provides formatting.

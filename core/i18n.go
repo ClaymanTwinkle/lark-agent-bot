@@ -718,6 +718,7 @@ const (
 	MsgAgentCronToolPrompt  MsgKey = "agent_cron_tool_prompt"
 	MsgAgentTimerToolPrompt MsgKey = "agent_timer_tool_prompt"
 	MsgAgentRelayToolPrompt MsgKey = "agent_relay_tool_prompt"
+	MsgAgentPeerBotPrompt   MsgKey = "agent_peer_bot_prompt"
 )
 
 var messages = map[MsgKey]map[Language]string{
@@ -4697,6 +4698,26 @@ Environment variables CC_PROJECT and CC_SESSION are already set, so the relay kn
 每个 bot 维护自己的 relay 会话,消息里要写清目标 bot 需要的全部上下文。
 
 环境变量 CC_PROJECT 和 CC_SESSION 已经设置好,relay 知道用哪个群聊。`,
+	},
+	MsgAgentPeerBotPrompt: {
+		LangEnglish: `### Handing work to other bots in the group
+These bots are in this group chat and you can hand work to them: %[1]s
+When part of the user's request is better done by one of them, send it a separate message that @-mentions it and says exactly what to do:
+
+  lark-connect send --message "@%[2]s <the task, with all the context it needs>"
+
+- Use the name exactly as listed above. Only an @ sent this way reaches the other bot; an @ inside your normal reply does not notify it.
+- The other bot posts its result in the group itself; you will not receive it. After sending, tell the user who you handed the task to and stop.
+- If the message you are handling came from another bot, do the work yourself; do not hand it on.`,
+		LangChinese: `### 把任务交给群里的其他机器人
+这个群里还有这些机器人,可以把任务交给它们:%[1]s
+当用户要求里的某部分更适合交给其中一个机器人时,单独发一条消息 @ 它,写清要做什么:
+
+  lark-connect send --message "@%[2]s <任务内容,写清它需要的全部上下文>"
+
+- 名字必须和上面列出的完全一致。只有这样单独发出的 @ 才能通知到对方,写在普通回复里的 @ 不会通知它。
+- 对方会自己在群里回复结果,你收不到它的结果。发出后告诉用户交给了谁,然后结束。
+- 如果你正在处理的消息本身就是别的机器人派给你的,自己完成,不要再转派。`,
 	},
 }
 

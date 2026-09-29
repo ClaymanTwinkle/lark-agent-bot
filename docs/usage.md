@@ -925,6 +925,8 @@ The shell configuration applies to all command execution in lark-connect:
 
 Multi-bot communication in group chats.
 
+To just hand a task to another bot in the group without getting the result back, skip relay and let the bots @ each other natively; see "机器人之间派活" in [the Feishu guide](feishu.md). Relay is for when the caller needs the other bot's result to continue.
+
 ### Group Chat Binding
 
 ```
