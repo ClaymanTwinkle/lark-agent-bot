@@ -77,9 +77,9 @@ All agents support permission modes switchable at runtime via `/mode`.
 
 | Mode | Config Value | Behavior |
 |------|-------------|----------|
-| Default | `default` | Every tool call requires approval |
+| Auto (default when `mode` is unset) | `auto` | Claude decides when to ask for permission. Needs Anthropic's API; with a third-party model behind `ANTHROPIC_BASE_URL` / `router_url` Claude Code stops with "Auto mode is unavailable" — pick another mode |
+| Manual | `default` / `manual` | Every tool call requires approval |
 | Accept Edits | `acceptEdits` / `edit` | File edits auto-approved |
-| Auto | `auto` | Claude decides when to ask for permission |
 | Plan Mode | `plan` | Claude only plans, no execution |
 | YOLO | `bypassPermissions` / `yolo` | All tools auto-approved |
 

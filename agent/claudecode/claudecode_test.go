@@ -157,7 +157,10 @@ func TestNormalizePermissionMode(t *testing.T) {
 		{"manual", "default"},
 		{"Manual", "default"},
 		// default fallback
-		{"", "default"},
+		{"default", "default"},
+		// unset means auto; unknown values stay strict
+		{"", "auto"},
+		{"  ", "auto"},
 		{"unknown", "default"},
 	}
 	for _, tt := range tests {

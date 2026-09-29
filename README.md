@@ -87,7 +87,7 @@ type = "claudecode"
 
 [projects.agent.options]
 work_dir = "/path/to/your/repo"
-mode = "default"
+mode = "auto"
 
 [[projects.platforms]]
 type = "feishu"          # use "lark" for Lark (international)

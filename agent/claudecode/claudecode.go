@@ -32,7 +32,7 @@ func init() {
 //   - "default":           every tool call requires user approval (Claude Code calls it "manual")
 //   - "acceptEdits":       auto-approve file edit tools, ask for others
 //   - "plan":              plan only, no execution until approved
-//   - "auto":              Claude's automatic permission classifier
+//   - "auto":              Claude's automatic permission classifier (used when mode is unset)
 //   - "bypassPermissions": auto-approve everything (alias: yolo)
 type Agent struct {
 	workDir             string
@@ -359,13 +359,18 @@ func normalizeEffort(raw string) string {
 }
 
 // normalizePermissionMode maps user-friendly aliases to Claude CLI values.
+// An unset mode means "auto": Claude decides when a permission prompt is
+// needed, instead of the IM user approving every tool call. An unknown value
+// stays the strict "default" so a typo never loosens permissions.
 func normalizePermissionMode(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "":
+		return "auto"
 	case "acceptedits", "accept-edits", "accept_edits", "edit":
 		return "acceptEdits"
-	case "manual":
-		// Claude Code's user-facing name for "default"; the CLI still
-		// reports and accepts "default".
+	case "default", "manual":
+		// "manual" is Claude Code's user-facing name for "default"; the CLI
+		// still reports and accepts "default".
 		return "default"
 	case "plan":
 		return "plan"

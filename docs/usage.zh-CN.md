@@ -75,9 +75,9 @@ reset_on_idle_mins = 60
 
 | 模式 | 配置值 | 行为 |
 |------|--------|------|
-| 默认 | `default` | 每次工具调用需确认 |
+| 自动模式（未配置 `mode` 时的默认值） | `auto` | 由 Claude 自动判断何时需要确认。依赖 Anthropic 官方 API；通过 `ANTHROPIC_BASE_URL` / `router_url` 接第三方模型时会提示 "Auto mode is unavailable" 并停止，请改用其他模式 |
+| 手动 | `default` / `manual` | 每次工具调用需确认 |
 | 接受编辑 | `acceptEdits` / `edit` | 文件编辑自动通过 |
-| 自动模式 | `auto` | 由 Claude 自动判断何时需要确认 |
 | 计划模式 | `plan` | 只规划不执行 |
 | YOLO | `bypassPermissions` / `yolo` | 全部自动通过 |
 

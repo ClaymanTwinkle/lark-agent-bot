@@ -1504,7 +1504,9 @@ type = "claudecode"   # "claudecode", "codex", "cursor", "gemini", "qoder", "ope
 
 [projects.agent.options]
 work_dir = "/path/to/your/project"
-mode = "default"
+# mode: leave unset for each agent's default (Claude Code: "auto", Claude decides when to ask).
+# The same value means different things per agent: "auto" is full auto-approve for cursor/gemini.
+# mode = "default"
 # model = "opus"   # Claude Code alias: "fable" | "opus" | "sonnet" | "haiku", or a full id like "claude-opus-5-5"
 
 # --- Choose at least one platform below ---

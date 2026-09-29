@@ -148,10 +148,12 @@ type = "claudecode"  # or "codex", "cursor", "gemini", "qoder", "opencode", "ifl
 
 [projects.agent.options]
 work_dir = "/absolute/path/to/your/project"
-mode = "default"
+# mode: leave unset for the agent's default (Claude Code: "auto"). Values mean different
+# things per agent — "auto" is full auto-approve for cursor/gemini — so pick from the lists below.
 
 # --- Claude Code mode options ---
-# "default", "acceptEdits" (alias: "edit"), "plan", "auto", "bypassPermissions" (alias: "yolo")
+# "auto" (default when unset), "default" (alias: "manual"), "acceptEdits" (alias: "edit"), "plan", "bypassPermissions" (alias: "yolo"), "dontAsk"
+# "auto" needs Anthropic's API; with a third-party model behind ANTHROPIC_BASE_URL use another mode
 # allowed_tools = ["Read", "Grep", "Glob"]  # optional: pre-approve specific tools
 
 # --- Codex mode options ---
@@ -396,7 +398,7 @@ type = "claudecode"
 
 [projects.agent.options]
 work_dir = "/path/to/backend"
-mode = "default"
+mode = "auto"
 
 [[projects.platforms]]
 type = "feishu"
