@@ -2,6 +2,7 @@ package codex
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1010,73 +1011,76 @@ func (s *appServerSession) Close() error {
 
 func (s *appServerSession) readLoop(r io.Reader) {
 	defer s.wg.Done()
-	scanner := bufio.NewScanner(r)
-	scanBuf := make([]byte, 0, 64*1024)
-	const maxLineSize = 10 * 1024 * 1024 // 10MB
-	scanner.Buffer(scanBuf, maxLineSize)
-
-	for scanner.Scan() {
-		select {
-		case <-s.ctx.Done():
-			return
-		default:
+	// Lines are read whole, with no size cap: a thread/resume response
+	// carries the full thread history, which grows past any fixed limit once
+	// it holds images (a 10MB bufio.Scanner cap failed with "token too long"
+	// and ended the session). The peer is our own codex child process.
+	br := bufio.NewReaderSize(r, 64*1024)
+	for {
+		data, err := br.ReadBytes('\n')
+		if len(bytes.TrimSpace(data)) > 0 {
+			select {
+			case <-s.ctx.Done():
+				return
+			default:
+			}
+			s.handleLine(data)
 		}
-
-		data := scanner.Bytes()
-
-		var probe map[string]json.RawMessage
-		if err := json.Unmarshal(data, &probe); err != nil {
-			slog.Debug("codex app-server: invalid JSON", "error", err)
+		if err == nil {
 			continue
 		}
 
-		_, hasID := probe["id"]
-		_, hasMethod := probe["method"]
-
-		switch {
-		case hasID && !hasMethod:
-			// Response to one of our requests.
-			var resp rpcResponseEnvelope
-			if err := json.Unmarshal(data, &resp); err != nil {
-				slog.Debug("codex app-server: bad response envelope", "error", err)
-				continue
-			}
-			s.handleResponse(resp)
-
-		case hasID && hasMethod:
-			// Server-initiated request that requires a response (e.g. approval).
-			s.handleServerRequest(probe)
-
-		default:
-			// Notification (no id).
-			var notif rpcNotificationEnvelope
-			if err := json.Unmarshal(data, &notif); err != nil {
-				slog.Debug("codex app-server: bad notification envelope", "error", err)
-				continue
-			}
-			s.handleNotification(notif.Method, notif.Params)
-		}
-	}
-
-	err := scanner.Err()
-	if err != nil {
-		if s.ctx.Err() == nil && !errors.Is(err, io.EOF) {
-			slog.Warn("codex app-server read failed", "error", err)
-			if errors.Is(err, bufio.ErrTooLong) {
-				s.emitError(fmt.Errorf("codex app-server line exceeds max size (%d bytes): %w", maxLineSize, err))
-			} else {
+		if !errors.Is(err, io.EOF) {
+			if s.ctx.Err() == nil {
+				slog.Warn("codex app-server read failed", "error", err)
 				s.emitError(fmt.Errorf("codex app-server connection closed: %w", err))
 			}
+			s.alive.Store(false)
+			s.rejectPending(err)
+			s.rejectPendingApprovals(err)
+			return
 		}
 		s.alive.Store(false)
-		s.rejectPending(err)
-		s.rejectPendingApprovals(err)
+		s.rejectPending(io.EOF)
+		s.rejectPendingApprovals(io.EOF)
+		return
+	}
+}
+
+// handleLine dispatches one JSON-RPC message from the app-server.
+func (s *appServerSession) handleLine(data []byte) {
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(data, &probe); err != nil {
+		slog.Debug("codex app-server: invalid JSON", "error", err)
 		return
 	}
 
-	s.alive.Store(false)
-	s.rejectPending(io.EOF)
-	s.rejectPendingApprovals(io.EOF)
+	_, hasID := probe["id"]
+	_, hasMethod := probe["method"]
+
+	switch {
+	case hasID && !hasMethod:
+		// Response to one of our requests.
+		var resp rpcResponseEnvelope
+		if err := json.Unmarshal(data, &resp); err != nil {
+			slog.Debug("codex app-server: bad response envelope", "error", err)
+			return
+		}
+		s.handleResponse(resp)
+
+	case hasID && hasMethod:
+		// Server-initiated request that requires a response (e.g. approval).
+		s.handleServerRequest(probe)
+
+	default:
+		// Notification (no id).
+		var notif rpcNotificationEnvelope
+		if err := json.Unmarshal(data, &notif); err != nil {
+			slog.Debug("codex app-server: bad notification envelope", "error", err)
+			return
+		}
+		s.handleNotification(notif.Method, notif.Params)
+	}
 }
 
 func (s *appServerSession) stderrLoop(r io.Reader) {

@@ -592,3 +592,54 @@ func TestAppServerListenURL(t *testing.T) {
 		}
 	}
 }
+
+// Regression: a thread/resume response larger than the old 10MB line cap
+// ("bufio.Scanner: token too long") ended the read loop, so resuming a long
+// thread fell back to a fresh session. Oversized lines must be delivered and
+// the loop must keep reading.
+func TestAppServerReadLoop_DeliversLinesOver10MB(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	big := strings.Repeat("x", 12*1024*1024)
+	first := make(chan rpcResponseEnvelope, 1)
+	second := make(chan rpcResponseEnvelope, 1)
+	s := &appServerSession{ctx: ctx, events: make(chan core.Event, 4),
+		pending: map[int64]chan rpcResponseEnvelope{7: first, 8: second}}
+	s.alive.Store(true)
+
+	input := `{"id":7,"result":{"history":"` + big + `"}}` + "\n" +
+		`{"id":8,"result":{"ok":true}}` // last line without a trailing newline
+
+	s.wg.Add(1)
+	done := make(chan struct{})
+	go func() {
+		s.readLoop(strings.NewReader(input))
+		close(done)
+	}()
+
+	select {
+	case resp := <-first:
+		if len(resp.Result) < len(big) {
+			t.Fatalf("oversized result truncated: %d bytes", len(resp.Result))
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("oversized response was not delivered")
+	}
+	select {
+	case resp := <-second:
+		if string(resp.Result) != `{"ok":true}` {
+			t.Fatalf("second result = %s", resp.Result)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("line after the oversized one was not delivered")
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("read loop did not stop at EOF")
+	}
+	if s.alive.Load() {
+		t.Fatal("session still marked alive after EOF")
+	}
+}
