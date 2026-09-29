@@ -158,15 +158,37 @@ app_secret = "QhkMpxxxxxxxxxxxxxxxxxxxx"
 
 ### 4.2 申请必要权限
 
-在「权限配置」中搜索并添加以下权限：
+在「权限配置」中搜索并添加以下权限。「权限标识」一列可直接粘贴到搜索框。
+
+**必需**：缺少时对应功能直接失效。
 
 | 权限名称 | 权限标识 | 用途 |
 |---------|---------|------|
-| 获取与更新用户基本信息 | `contact:user.base:readonly` | 获取用户信息 |
-| 获取群组中用户@机器人消息 | `im:message.group_at_msg:readonly` | 接收群消息 |
-| 获取群组中所有消息（敏感权限） | `im:message.group_msg` | 读取群消息内容 |
-| 读取单聊消息 | `im:message.p2p_msg:readonly` | 读取私聊内容 |
-| 以应用身份发送群消息 | `im:message:send_as_bot` | 发送消息回复用户 |
+| 读取用户发给机器人的私聊消息 | `im:message.p2p_msg:readonly` | 接收私聊消息 |
+| 读取群聊中用户 @机器人的消息 | `im:message.group_at_msg:readonly` | 接收群里 @ 机器人的消息 |
+| 以机器人身份发送消息 | `im:message:send_as_bot` | 回复消息 |
+| 更新消息 | `im:message:update` | 流式输出、进度等消息的原地更新 |
+| 获取单聊、群组消息 | `im:message:readonly` | 读取被引用 / 合并转发的消息内容 |
+| 获取与上传图片或文件资源 | `im:resource` | 接收用户发来的图片 / 文件；发送图片、文件、语音、视频（包括 agent 调用 `lark-connect send`） |
+| 发送、删除消息表情回复 | `im:message.reactions:write_only` | 处理中表情（`reaction_emoji`）和完成表情（`done_emoji`） |
+| 创建与更新卡片 | `cardkit:card:write` | 流式卡片 |
+| 查看群信息 | `im:chat:read` | 读取群信息 |
+
+**建议**：缺少时功能降级，不影响收发。
+
+| 权限名称 | 权限标识 | 用途 |
+|---------|---------|------|
+| 获取与更新用户基本信息 | `contact:user.base:readonly` | 读取发消息人的名字，群聊中 agent 靠它区分说话人。「获取通讯录基本信息」（`contact:contact.base:readonly`）拿不到名字 |
+| 查看消息表情回复 | `im:message.reactions:read` | 读取表情回复 |
+
+**按需**：
+
+| 权限名称 | 权限标识 | 何时需要 |
+|---------|---------|------|
+| 获取群组中所有消息（敏感权限） | `im:message.group_msg` | 开启 `group_chat_history_share`，把群里未 @ 机器人的消息作为上下文时 |
+
+> 飞书用这些权限限制可调用的接口；具体能读到哪些消息、联系人，仍受应用可用范围和数据权限限制。
+> 缺权限时相关调用会静默失败，只在 Debug 日志中出现（如 `add reaction failed`）。功能不生效时先核对这张表。
 
 ### 4.3 发布权限申请
 
@@ -472,7 +494,7 @@ lark-connect 默认使用交互卡片显示权限确认、provider 选择等操�
 
 1. **事件订阅**：确认已在飞书开放平台订阅了 `card.action.trigger` 事件（详见第五步）
 2. **应用发布**：修改事件订阅后需要重新发布应用版本
-3. **权限配置**：确保应用有 `im:message:send_as_bot` 权限
+3. **权限配置**：确保应用有 `im:message:send_as_bot`、`im:message:update`、`cardkit:card:write` 权限（见第四步）
 
 **快速解决方案**：如果暂时无法配置卡片回调，可以在 `config.toml` 中关闭交互卡片：
 

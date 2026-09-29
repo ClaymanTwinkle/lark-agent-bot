@@ -204,7 +204,7 @@ Notes:
 **Setup steps:**
 1. Go to https://open.feishu.cn → Console → Create Enterprise App
 2. Enable **Bot** capability (App Capabilities → Bot)
-3. Go to **Permissions** → add `im:message.receive_v1`, `im:message:send_as_bot`
+3. Go to **Permissions** → add at least `im:message.p2p_msg:readonly`, `im:message.group_at_msg:readonly`, `im:message:send_as_bot`, `im:message:update`, `im:message:readonly`, `im:resource`, `im:message.reactions:write_only`, `cardkit:card:write`, `im:chat:read` (full list with what each one is for: [docs/feishu.md](docs/feishu.md), step 4). `im.message.receive_v1` is an event, not a permission — it goes in step 4 below.
 4. Go to **Event Subscriptions** → select **WebSocket long connection mode** → add event `im.message.receive_v1`
 5. Publish the app version
 6. Copy App ID and App Secret
