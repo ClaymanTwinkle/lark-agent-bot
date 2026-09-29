@@ -318,11 +318,11 @@ func TestRelayManager_DefaultVisibilityEchoesFullMessages(t *testing.T) {
 	if resp != "target says long answer" {
 		t.Fatalf("response = %q, want target response", resp)
 	}
-	if len(sourceSent) != 1 || sourceSent[0] != "[source-bot → target-bot] please ask target" {
-		t.Fatalf("source sent = %#v, want full relay request", sourceSent)
+	if len(sourceSent) != 1 || sourceSent[0] != "@target-bot please ask target" {
+		t.Fatalf("source sent = %#v, want the source bot addressing the target", sourceSent)
 	}
-	if len(targetSent) != 1 || targetSent[0] != "[target-bot] target says long answer" {
-		t.Fatalf("target sent = %#v, want full relay response", targetSent)
+	if len(targetSent) != 1 || targetSent[0] != "@source-bot target says long answer" {
+		t.Fatalf("target sent = %#v, want the target bot answering the source", targetSent)
 	}
 }
 
@@ -499,6 +499,8 @@ func TestHandleRelay_SingleWorkspaceUsesGlobalAgentAndSourceSessionKey(t *testin
 	e := newTestEngine()
 	agent := &sessionEnvRecordingAgent{session: newResultAgentSession("global")}
 	e.agent = agent
+	dataDir := t.TempDir()
+	e.SetDataDir(dataDir)
 
 	sourceSessionKey := "discord:C1:U1"
 	resp, err := e.HandleRelay(context.Background(), "source", sourceSessionKey, "hello")
@@ -510,6 +512,12 @@ func TestHandleRelay_SingleWorkspaceUsesGlobalAgentAndSourceSessionKey(t *testin
 	}
 	if got := agent.EnvValue("CC_SESSION_KEY"); got != sourceSessionKey {
 		t.Fatalf("CC_SESSION_KEY = %q, want %q", got, sourceSessionKey)
+	}
+	if got := agent.EnvValue("CC_RELAY_DEPTH"); got != "1" {
+		t.Fatalf("CC_RELAY_DEPTH = %q, want 1 for a direct relay", got)
+	}
+	if got := agent.EnvValue("CC_DATA_DIR"); got != dataDir {
+		t.Fatalf("CC_DATA_DIR = %q, want %q so the relay session can call lark-connect", got, dataDir)
 	}
 	if got := e.sessions.ActiveSessionID("relay:source:discord:C1"); got == "" {
 		t.Fatal("expected relay session to be stored under platform-qualified relay key")

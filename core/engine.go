@@ -16204,6 +16204,13 @@ func (e *Engine) relayContextForSourceSessionKey(fromProject, sourceSessionKey s
 // dedicated relay session, sends the message to the agent, and blocks until
 // the complete response is collected (or the relay context times out).
 func (e *Engine) HandleRelay(ctx context.Context, fromProject, sourceSessionKey, message string) (string, error) {
+	return e.handleRelay(ctx, fromProject, sourceSessionKey, message, 0)
+}
+
+// handleRelay is HandleRelay for a request that is depth hops into a relay
+// chain. The target session sees depth+1 in CC_RELAY_DEPTH, so relay calls it
+// makes count toward maxRelayDepth.
+func (e *Engine) handleRelay(ctx context.Context, fromProject, sourceSessionKey, message string, depth int) (string, error) {
 	agent, sessions, relaySessionKey, err := e.relayContextForSourceSessionKey(fromProject, sourceSessionKey)
 	if err != nil {
 		return "", err
@@ -16215,6 +16222,12 @@ func (e *Engine) HandleRelay(ctx context.Context, fromProject, sourceSessionKey,
 			"CC_PROJECT=" + e.name,
 			"CC_SESSION_KEY=" + sourceSessionKey,
 			"CC_SESSION=" + sourceSessionKey,
+			"CC_RELAY_DEPTH=" + strconv.Itoa(depth+1),
+		}
+		// Without CC_DATA_DIR the relay session's lark-connect CLI calls look for
+		// the default socket and miss a process with a custom data_dir.
+		if e.dataDir != "" {
+			envVars = append(envVars, "CC_DATA_DIR="+e.dataDir)
 		}
 		if exePath, err := os.Executable(); err == nil {
 			binDir := filepath.Dir(exePath)
@@ -16475,9 +16488,9 @@ func (e *Engine) cmdBind(p Platform, msg *Message, args []string) {
 		return
 	}
 
-	// Validate the target project exists
-	if !e.relayManager.HasEngine(otherProject) {
-		available := e.relayManager.ListEngineNames()
+	// Validate the target project runs here or in a peer lark-connect process
+	if !e.relayManager.HasTarget(otherProject) {
+		available := e.relayManager.ListTargetNames()
 		var others []string
 		for _, n := range available {
 			if n != e.name {
@@ -16493,8 +16506,7 @@ func (e *Engine) cmdBind(p Platform, msg *Message, args []string) {
 	}
 
 	// Add current project and target project to binding
-	e.relayManager.AddToBind(p.Name(), chatID, e.name)
-	e.relayManager.AddToBind(p.Name(), chatID, otherProject)
+	e.relayManager.LinkProjects(p.Name(), chatID, e.name, otherProject)
 
 	// Get all bound projects for status message
 	binding := e.relayManager.GetBinding(chatID)

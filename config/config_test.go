@@ -1359,6 +1359,7 @@ const relayConfigFixture = `
 [relay]
 timeout_secs = 300
 visibility = "none"
+peers_dir = "/srv/lark-connect/relay-peers"
 
 [[projects]]
 name = "alpha"
@@ -1985,6 +1986,9 @@ func TestLoadRelayTimeoutConfig(t *testing.T) {
 	}
 	if cfg.Relay.Visibility != "none" {
 		t.Fatalf("cfg.Relay.Visibility = %q, want none", cfg.Relay.Visibility)
+	}
+	if cfg.Relay.PeersDir != "/srv/lark-connect/relay-peers" {
+		t.Fatalf("cfg.Relay.PeersDir = %q, want /srv/lark-connect/relay-peers", cfg.Relay.PeersDir)
 	}
 }
 

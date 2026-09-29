@@ -3607,8 +3607,8 @@ var messages = map[MsgKey]map[Language]string{
 		LangChinese: "项目 %q 不存在。可用的项目: %s",
 	},
 	MsgRelayNoTarget: {
-		LangEnglish: "Project %q not found. No other projects are configured.",
-		LangChinese: "项目 %q 不存在。没有配置其他项目。",
+		LangEnglish: "Project %q not found. No other project is configured here or running in another lark-connect process.",
+		LangChinese: "项目 %q 不存在。本配置里没有其他项目，也没有其他 lark-connect 进程在运行其他项目。",
 	},
 	MsgRelayBindRemoved: {
 		LangEnglish:            "✅ Removed %s from binding",
@@ -4663,27 +4663,38 @@ You can also list or cancel timers:
 	},
 	MsgAgentRelayToolPrompt: {
 		LangEnglish: `### Bot-to-bot relay
-When you need to communicate with another bot (e.g. ask another AI agent a question), use:
+When part of a task needs another bot (e.g. another AI agent), first list the bots you can hand work to in this chat:
+
+  lark-connect relay list
+
+Then send the task:
 
   lark-connect relay send --to <target_project> "<message>"
 
-IMPORTANT: <target_project> must be the EXACT project name from the /bind command output.
-Do NOT guess or modify the name — use it exactly as shown (e.g. "gemini", not "gemini-bot").
+IMPORTANT: <target_project> must be a name printed by relay list, copied EXACTLY.
+Do NOT guess or modify the name (e.g. "gemini", not "gemini-bot").
 
-This sends a message to the target bot and waits for its response (printed to stdout).
-The conversation is visible in the group chat and each bot maintains its own relay session.
+This posts the request into the group chat as "@<target> <message>", waits for the target bot to finish,
+and prints its reply to stdout. The target bot may work for several minutes: run the command with a
+long shell timeout or in the background, not with a short default timeout.
+Each bot keeps its own relay session, so include all the context the target needs in the message.
 
 Environment variables CC_PROJECT and CC_SESSION are already set, so the relay knows which group chat to use.`,
 		LangChinese: `### Bot 之间转发 (relay)
-当需要和另一个 bot 通信(例如向另一个 AI agent 提问)时,使用:
+当任务的一部分需要另一个 bot(例如另一个 AI agent)来做时,先列出这个群里可以派活的 bot:
+
+  lark-connect relay list
+
+再把任务发过去:
 
   lark-connect relay send --to <目标项目名> "<消息>"
 
-重要:<目标项目名> 必须是 /bind 命令输出里的 EXACT 项目名。
-不要猜测或修改名字 —— 完全照搬显示值(例如 "gemini" 而不是 "gemini-bot")。
+重要:<目标项目名> 必须是 relay list 输出里的项目名,完全照搬。
+不要猜测或修改名字(例如 "gemini" 而不是 "gemini-bot")。
 
-这会把消息发给目标 bot 并等待它的回复(打印到 stdout)。
-会话在群聊里可见,每个 bot 维护自己的 relay 会话。
+这会以 "@<目标> <消息>" 的形式把请求发到群里,等目标 bot 做完,把它的回复打印到 stdout。
+目标 bot 可能要干好几分钟:执行这条命令时设置足够长的 shell 超时或放到后台运行,不要用很短的默认超时。
+每个 bot 维护自己的 relay 会话,消息里要写清目标 bot 需要的全部上下文。
 
 环境变量 CC_PROJECT 和 CC_SESSION 已经设置好,relay 知道用哪个群聊。`,
 	},

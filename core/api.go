@@ -105,6 +105,9 @@ func NewAPIServer(dataDir string) (*APIServer, error) {
 	s.mux.HandleFunc("/relay/send", s.handleRelaySend)
 	s.mux.HandleFunc("/relay/bind", s.handleRelayBind)
 	s.mux.HandleFunc("/relay/binding", s.handleRelayBinding)
+	s.mux.HandleFunc("/relay/targets", s.handleRelayTargets)
+	s.mux.HandleFunc("/relay/handle", s.handleRelayHandle)
+	s.mux.HandleFunc("/relay/join", s.handleRelayJoin)
 
 	return s, nil
 }
@@ -830,4 +833,87 @@ func (s *APIServer) handleRelayBinding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apiJSON(w, http.StatusOK, binding)
+}
+
+// RelayTargetsResponse is returned by GET /relay/targets.
+type RelayTargetsResponse struct {
+	Bound     []string `json:"bound"`     // projects bound with the caller in this chat
+	Available []string `json:"available"` // every other reachable project
+}
+
+func (s *APIServer) handleRelayTargets(w http.ResponseWriter, r *http.Request) {
+	if s.relay == nil {
+		http.Error(w, "relay not available", http.StatusServiceUnavailable)
+		return
+	}
+	sessionKey := r.URL.Query().Get("session_key")
+	if sessionKey == "" {
+		http.Error(w, "session_key is required", http.StatusBadRequest)
+		return
+	}
+	bound, available, err := s.relay.Targets(sessionKey, r.URL.Query().Get("from"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	apiJSON(w, http.StatusOK, RelayTargetsResponse{Bound: bound, Available: available})
+}
+
+// handleRelayHandle runs a relay request forwarded by another lark-connect
+// process for a project that runs in this one.
+func (s *APIServer) handleRelayHandle(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.relay == nil {
+		http.Error(w, "relay not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	var req RelayPeerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.To == "" || req.Message == "" || req.SessionKey == "" {
+		http.Error(w, "to, session_key, and message are required", http.StatusBadRequest)
+		return
+	}
+
+	resp, err := s.relay.HandlePeer(r.Context(), req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	apiJSON(w, http.StatusOK, resp)
+}
+
+// handleRelayJoin adds projects to a chat binding without replacing the
+// projects already bound there; peers call it to mirror a /bind.
+func (s *APIServer) handleRelayJoin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.relay == nil {
+		http.Error(w, "relay not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	var req RelayJoinRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.ChatID == "" || len(req.Projects) == 0 {
+		http.Error(w, "chat_id and projects are required", http.StatusBadRequest)
+		return
+	}
+	for _, project := range req.Projects {
+		if project != "" {
+			s.relay.AddToBind(req.Platform, req.ChatID, project)
+		}
+	}
+	apiJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

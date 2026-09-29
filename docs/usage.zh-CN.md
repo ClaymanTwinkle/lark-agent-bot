@@ -831,8 +831,19 @@ Shell 配置适用于 lark-connect 中所有命令执行路径：
 ### 机器人间通信
 
 ```bash
+lark-connect relay list                                  # 列出这个群里能派活的机器人
 lark-connect relay send --to gemini "你觉得这个架构怎么样？"
 ```
+
+Agent 会自己调用这两条命令：发现任务需要别的机器人时，先 `relay list`，再 `relay send`。群里会看到源机器人发出 `@gemini 你觉得…`，目标机器人做完后回一条 `@源机器人 <结果>`，结果同时返回给源机器人继续处理。这里的 `@` 是普通文本，不是飞书原生 @：不同应用看到的 open_id 不一样，一个机器人拿不到另一个应用机器人的 open_id。
+
+### 跨进程
+
+目标项目不必和源项目在同一个 lark-connect 进程里。每个进程启动时把自己的项目登记到 `~/.lark-connect/relay-peers/`（可用 `[relay] peers_dir` 改位置），`/bind` 和 `relay send` 会通过对方进程的本地 socket 转发。在一个机器人里 `/bind` 另一个进程的项目，绑定会同步到对方，两边都能互相派活；`/bind -项目` 和 `/bind remove` 只影响当前机器人。
+
+- 目标机器人在 relay 模式下自动批准所有权限请求。
+- 一条任务最多转发 3 跳（A→B→A→B 到此为止），防止两个机器人互相推来推去。
+- 目标机器人干活超过 `[relay] timeout_secs`（默认 120 秒）时，源机器人拿到已输出的部分，目标机器人在后台做完。长任务建议设为 `0`（不限时）。
 
 ---
 

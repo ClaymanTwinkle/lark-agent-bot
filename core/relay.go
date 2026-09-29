@@ -7,12 +7,17 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
 const relayTimeout = 120 * time.Second
+
+// maxRelayDepth caps how many relay hops one chain may take (A→B→A→…), so two
+// bots cannot keep handing a task back and forth.
+const maxRelayDepth = 3
 
 const (
 	RelayVisibilityFull    = "full"
@@ -35,6 +40,8 @@ type RelayManager struct {
 	storePath  string                   // empty = no persistence
 	timeout    time.Duration
 	visibility string
+	peers      *RelayPeerRegistry // nil = only projects in this process are reachable
+	peerSocket string             // this process's API socket, published for its engines
 }
 
 func NewRelayManager(dataDir string) *RelayManager {
@@ -53,8 +60,60 @@ func NewRelayManager(dataDir string) *RelayManager {
 
 func (rm *RelayManager) RegisterEngine(name string, e *Engine) {
 	rm.mu.Lock()
-	defer rm.mu.Unlock()
 	rm.engines[name] = e
+	reg, socket := rm.peers, rm.peerSocket
+	rm.mu.Unlock()
+	if reg != nil {
+		if err := reg.Register(name, socket); err != nil {
+			slog.Warn("relay: publish project to peers failed", "project", name, "error", err)
+		}
+	}
+}
+
+// EnablePeers publishes this process's projects in reg under socket and lets
+// relay reach projects that other lark-connect processes registered there.
+func (rm *RelayManager) EnablePeers(reg *RelayPeerRegistry, socket string) {
+	rm.mu.Lock()
+	rm.peers = reg
+	rm.peerSocket = socket
+	names := rm.engineNamesLocked()
+	rm.mu.Unlock()
+	for _, name := range names {
+		if err := reg.Register(name, socket); err != nil {
+			slog.Warn("relay: publish project to peers failed", "project", name, "error", err)
+		}
+	}
+}
+
+// ClosePeers withdraws this process's projects from the peer registry.
+func (rm *RelayManager) ClosePeers() {
+	rm.mu.RLock()
+	reg, socket := rm.peers, rm.peerSocket
+	names := rm.engineNamesLocked()
+	rm.mu.RUnlock()
+	if reg == nil {
+		return
+	}
+	for _, name := range names {
+		reg.Unregister(name, socket)
+	}
+}
+
+// peerSocketFor returns the API socket of the other process that runs
+// project. Projects in this process never resolve to a peer.
+func (rm *RelayManager) peerSocketFor(project string) (string, bool) {
+	rm.mu.RLock()
+	reg, self := rm.peers, rm.peerSocket
+	_, local := rm.engines[project]
+	rm.mu.RUnlock()
+	if reg == nil || local {
+		return "", false
+	}
+	socket, ok := reg.Lookup(project)
+	if !ok || socket == self {
+		return "", false
+	}
+	return socket, true
 }
 
 // SetTimeout overrides the relay response timeout. Set to 0 to disable it.
@@ -163,11 +222,88 @@ func (rm *RelayManager) HasEngine(name string) bool {
 func (rm *RelayManager) ListEngineNames() []string {
 	rm.mu.RLock()
 	defer rm.mu.RUnlock()
+	return rm.engineNamesLocked()
+}
+
+func (rm *RelayManager) engineNamesLocked() []string {
 	names := make([]string, 0, len(rm.engines))
 	for n := range rm.engines {
 		names = append(names, n)
 	}
 	return names
+}
+
+// HasTarget reports whether relay can reach project, either in this process
+// or in another lark-connect process registered as a peer.
+func (rm *RelayManager) HasTarget(name string) bool {
+	if rm.HasEngine(name) {
+		return true
+	}
+	_, ok := rm.peerSocketFor(name)
+	return ok
+}
+
+// ListTargetNames returns every project relay can reach, sorted: the
+// projects in this process plus the running peer projects.
+func (rm *RelayManager) ListTargetNames() []string {
+	seen := make(map[string]bool)
+	for _, n := range rm.ListEngineNames() {
+		seen[n] = true
+	}
+	rm.mu.RLock()
+	reg := rm.peers
+	rm.mu.RUnlock()
+	if reg != nil {
+		for _, n := range reg.Projects() {
+			if _, ok := rm.peerSocketFor(n); ok {
+				seen[n] = true
+			}
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for n := range seen {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// LinkProjects binds self and other together in a chat. When other runs in a
+// peer process the binding is mirrored there too, so other can relay back
+// without a second /bind.
+func (rm *RelayManager) LinkProjects(platform, chatID, self, other string) {
+	rm.AddToBind(platform, chatID, self)
+	rm.AddToBind(platform, chatID, other)
+
+	socket, ok := rm.peerSocketFor(other)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), relayPeerJoinTimeout)
+	defer cancel()
+	req := RelayJoinRequest{Platform: platform, ChatID: chatID, Projects: []string{self, other}}
+	if err := postRelayPeer(ctx, socket, "/relay/join", req, nil); err != nil {
+		slog.Warn("relay: mirror binding to peer failed", "peer", other, "chat_id", chatID, "error", err)
+	}
+}
+
+// Targets returns, for the chat in sessionKey, the projects bound together
+// with self and every other project that could be bound there.
+func (rm *RelayManager) Targets(sessionKey, self string) (bound, available []string, err error) {
+	_, chatID, err := parseSessionKeyParts(sessionKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("relay: invalid session key: %w", err)
+	}
+	for proj := range rm.ListBoundBots(chatID, self) {
+		bound = append(bound, proj)
+	}
+	sort.Strings(bound)
+	for _, n := range rm.ListTargetNames() {
+		if n != self {
+			available = append(available, n)
+		}
+	}
+	return bound, available, nil
 }
 
 // ListBoundBots returns the other bots bound in the same chat as the given project.
@@ -194,6 +330,7 @@ type RelayRequest struct {
 	To         string `json:"to"`          // target project name
 	SessionKey string `json:"session_key"` // source session key (contains platform + chatID)
 	Message    string `json:"message"`
+	Depth      int    `json:"depth,omitempty"` // relay hops that led to this request (CC_RELAY_DEPTH of the caller)
 }
 
 // RelayResponse is the result of a relay send.
@@ -206,6 +343,9 @@ func (rm *RelayManager) Send(ctx context.Context, req RelayRequest) (*RelayRespo
 	platform, chatID, err := parseSessionKeyParts(req.SessionKey)
 	if err != nil {
 		return nil, fmt.Errorf("relay: invalid session key: %w", err)
+	}
+	if req.Depth >= maxRelayDepth {
+		return nil, fmt.Errorf("relay: this task has already been relayed %d times; finish it yourself instead of relaying again", req.Depth)
 	}
 
 	rm.mu.RLock()
@@ -227,8 +367,13 @@ func (rm *RelayManager) Send(ctx context.Context, req RelayRequest) (*RelayRespo
 		}
 		return nil, fmt.Errorf("relay: project %q is not bound in this chat. Available targets: %s (use the exact name)", req.To, strings.Join(bound, ", "))
 	}
+	var peerSocket string
 	if targetEngine == nil {
-		return nil, fmt.Errorf("relay: target engine %q not found (is the project running?)", req.To)
+		socket, ok := rm.peerSocketFor(req.To)
+		if !ok {
+			return nil, fmt.Errorf("relay: target engine %q not found (is the project running?)", req.To)
+		}
+		peerSocket = socket
 	}
 
 	fromName := req.From
@@ -250,21 +395,94 @@ func (rm *RelayManager) Send(ctx context.Context, req RelayRequest) (*RelayRespo
 		rm.sendToGroup(ctx, sourceEngine, platform, groupSessionKey, label)
 	}
 
+	if peerSocket != "" {
+		// The peer runs the target and posts the response echo as the target bot.
+		return rm.sendToPeer(ctx, peerSocket, RelayPeerRequest{
+			From:            req.From,
+			FromName:        fromName,
+			To:              req.To,
+			ToName:          toName,
+			SessionKey:      req.SessionKey,
+			Message:         req.Message,
+			GroupSessionKey: groupSessionKey,
+			Visibility:      visibility,
+			Depth:           req.Depth,
+		})
+	}
+
 	// Execute relay: inject message into target engine and collect response
 	relayCtx, cancel := rm.relayContext(ctx)
 	defer cancel()
 
-	response, err := targetEngine.HandleRelay(relayCtx, req.From, req.SessionKey, req.Message)
+	response, err := targetEngine.handleRelay(relayCtx, req.From, req.SessionKey, req.Message, req.Depth)
 	if err != nil {
 		return nil, fmt.Errorf("relay: %w", err)
 	}
 
 	// Post the response to the group chat for visibility.
-	if targetEngine != nil && visibility != RelayVisibilityNone {
-		label := relayVisibilityResponseLabel(visibility, toName, response)
+	if visibility != RelayVisibilityNone {
+		label := relayVisibilityResponseLabel(visibility, fromName, toName, response)
 		rm.sendToGroup(ctx, targetEngine, platform, groupSessionKey, label)
 	}
 
+	return &RelayResponse{Response: response}, nil
+}
+
+// sendToPeer forwards a relay request to the process that runs the target.
+// The peer enforces the relay timeout itself so it can still return a partial
+// response; the caller waits a little longer than that before giving up.
+func (rm *RelayManager) sendToPeer(ctx context.Context, socket string, req RelayPeerRequest) (*RelayResponse, error) {
+	rm.mu.RLock()
+	timeout := rm.timeout
+	rm.mu.RUnlock()
+	if timeout > 0 {
+		req.TimeoutSecs = int((timeout + time.Second - 1) / time.Second)
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(req.TimeoutSecs)*time.Second+relayPeerGrace)
+		defer cancel()
+	}
+
+	var resp RelayResponse
+	if err := postRelayPeer(ctx, socket, "/relay/handle", req, &resp); err != nil {
+		return nil, fmt.Errorf("relay: peer %q: %w", req.To, err)
+	}
+	return &resp, nil
+}
+
+// HandlePeer runs a relay request that another lark-connect process forwarded
+// to a project in this process, and posts the response echo into the group as
+// the target bot.
+func (rm *RelayManager) HandlePeer(ctx context.Context, req RelayPeerRequest) (*RelayResponse, error) {
+	rm.mu.RLock()
+	target := rm.engines[req.To]
+	rm.mu.RUnlock()
+	if target == nil {
+		return nil, fmt.Errorf("relay: project %q does not run in this process", req.To)
+	}
+	platform, _, err := parseSessionKeyParts(req.SessionKey)
+	if err != nil {
+		return nil, fmt.Errorf("relay: invalid session key: %w", err)
+	}
+
+	relayCtx := ctx
+	if req.TimeoutSecs > 0 {
+		var cancel context.CancelFunc
+		relayCtx, cancel = context.WithTimeout(ctx, time.Duration(req.TimeoutSecs)*time.Second)
+		defer cancel()
+	}
+
+	response, err := target.handleRelay(relayCtx, req.From, req.SessionKey, req.Message, req.Depth)
+	if err != nil {
+		return nil, fmt.Errorf("relay: %w", err)
+	}
+
+	visibility := normalizeRelayVisibility(req.Visibility)
+	if visibility != RelayVisibilityNone && req.GroupSessionKey != "" {
+		label := relayVisibilityResponseLabel(visibility, req.FromName, req.ToName, response)
+		// The caller may have hung up (e.g. its shell timed out); still post
+		// what the target produced so it is not lost.
+		rm.sendToGroup(context.WithoutCancel(ctx), target, platform, req.GroupSessionKey, label)
+	}
 	return &RelayResponse{Response: response}, nil
 }
 
@@ -313,18 +531,24 @@ func normalizeRelayVisibility(mode string) string {
 	}
 }
 
+// relayVisibilityRequestLabel is posted by the source bot. In full mode it
+// reads as the source bot addressing the target ("@target task"). The @ is
+// plain text: a bot cannot produce a native mention of another app's bot
+// because open_ids are scoped per app.
 func relayVisibilityRequestLabel(mode, fromName, toName, message string) string {
 	if normalizeRelayVisibility(mode) == RelayVisibilitySummary {
 		return fmt.Sprintf("[%s → %s] relay request sent", fromName, toName)
 	}
-	return fmt.Sprintf("[%s → %s] %s", fromName, toName, message)
+	return fmt.Sprintf("@%s %s", toName, message)
 }
 
-func relayVisibilityResponseLabel(mode, toName, response string) string {
+// relayVisibilityResponseLabel is posted by the target bot, answering the
+// source bot ("@source reply") in full mode.
+func relayVisibilityResponseLabel(mode, fromName, toName, response string) string {
 	if normalizeRelayVisibility(mode) == RelayVisibilitySummary {
 		return fmt.Sprintf("[%s] relay response ready (%d chars)", toName, len([]rune(response)))
 	}
-	return fmt.Sprintf("[%s] %s", toName, truncateRelay(response, 2000))
+	return fmt.Sprintf("@%s %s", fromName, truncateRelay(response, 2000))
 }
 
 func (rm *RelayManager) relayContext(ctx context.Context) (context.Context, context.CancelFunc) {

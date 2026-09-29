@@ -192,6 +192,16 @@ func resolveMaxAttachmentSize(cfg *config.Config) int64 {
 	return core.DefaultMaxAttachmentSize
 }
 
+// resolveRelayPeersDir returns the registry directory shared by every local
+// lark-connect process for cross-process relay: relay.peers_dir when set,
+// otherwise ~/.lark-connect/relay-peers ("" when the home dir is unknown).
+func resolveRelayPeersDir(cfg *config.Config) string {
+	if dir := strings.TrimSpace(cfg.Relay.PeersDir); dir != "" {
+		return dir
+	}
+	return core.DefaultRelayPeersDir()
+}
+
 type initialModelRefreshStarter interface {
 	StartInitialModelRefresh()
 }
@@ -1255,6 +1265,14 @@ func main() {
 			apiSrv.SetTimerScheduler(timerSched)
 		}
 		apiSrv.Start()
+
+		// Publish this process's projects so relay in other local lark-connect
+		// processes can reach them, and vice versa.
+		if peersDir := resolveRelayPeersDir(cfg); peersDir != "" {
+			relayMgr.EnablePeers(core.NewRelayPeerRegistry(peersDir), apiSrv.SocketPath())
+		} else {
+			slog.Warn("relay: home directory unknown, cross-process relay disabled (set relay.peers_dir)")
+		}
 	}
 
 	slog.Info("lark-connect is running", "projects", len(engines))
@@ -1301,6 +1319,9 @@ func main() {
 		cronSched.Stop()
 	}
 	if apiSrv != nil {
+		if rm := apiSrv.RelayManager(); rm != nil {
+			rm.ClosePeers()
+		}
 		apiSrv.Stop()
 	}
 	for _, e := range engines {

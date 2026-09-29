@@ -259,6 +259,7 @@ type RoleConfig struct {
 type RelayConfig struct {
 	TimeoutSecs *int   `toml:"timeout_secs"`         // max seconds to wait for relay response; 0 = disabled; default 120
 	Visibility  string `toml:"visibility,omitempty"` // "full" (default), "summary", or "none" for group visibility echoes
+	PeersDir    string `toml:"peers_dir,omitempty"`  // registry shared with other local lark-connect processes; default ~/.lark-connect/relay-peers
 }
 
 // SpeechConfig configures speech-to-text for voice messages.

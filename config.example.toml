@@ -314,6 +314,7 @@ level = "info" # debug, info, warn, error
 # [relay]
 # timeout_secs = 120        # Max relay wait in seconds; 0 = disabled (default: 120) / relay 最大等待秒数；0 = 禁用（默认 120）
 # visibility = "full"       # "full" (default), "summary", or "none" / 群内可见消息：完整、摘要或不显示
+# peers_dir = "/srv/lark-connect/relay-peers"  # Registry shared by local lark-connect processes so relay reaches projects in other processes; all processes must use the same dir (default: <home>/.lark-connect/relay-peers) / 本机各 lark-connect 进程共享的登记目录，relay 靠它找到其他进程里的项目，各进程必须一致（默认 <home>/.lark-connect/relay-peers）
 
 # =============================================================================
 # Auto-Compress (after each turn) / 自动压缩（每轮结束后）

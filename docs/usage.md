@@ -937,8 +937,19 @@ Multi-bot communication in group chats.
 ### Bot-to-Bot Communication
 
 ```bash
+lark-connect relay list                                   # bots you can hand work to in this chat
 lark-connect relay send --to gemini "What do you think about this architecture?"
 ```
+
+The agent runs these itself: when a task needs another bot it calls `relay list`, then `relay send`. The group shows the source bot posting `@gemini What do you…`, and the target bot answering `@<source bot> <result>` when done; the result also goes back to the source bot so it can continue. The `@` is plain text, not a native Feishu mention: open_ids are scoped per app, so one bot cannot mention another app's bot.
+
+### Across Processes
+
+The target project does not have to run in the same lark-connect process as the source. Each process registers its projects in `~/.lark-connect/relay-peers/` on startup (change with `[relay] peers_dir`), and `/bind` and `relay send` reach the other process through its local socket. Binding a project from another process mirrors the binding there, so both bots can hand work to each other; `/bind -project` and `/bind remove` only affect the current bot.
+
+- The target bot auto-approves every permission request in relay mode.
+- One task can be relayed at most 3 hops (A→B→A→B stops there) so two bots cannot pass it back and forth forever.
+- If the target works longer than `[relay] timeout_secs` (default 120), the source gets the output so far and the target finishes in the background. Set it to `0` (no limit) for long tasks.
 
 ---
 
