@@ -1601,6 +1601,7 @@ Commands:
 
   relay              Cross-project message relay
     send             Send a message to another project and get the response
+    list             List the bots you can relay to in the current chat
 
   provider           Manage API providers for projects
     add              Add a provider (--project, --name, --api-key, ...)
