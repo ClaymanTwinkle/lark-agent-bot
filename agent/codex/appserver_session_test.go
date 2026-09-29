@@ -99,6 +99,19 @@ func TestAppServerSession_ApplyThreadRuntimeState(t *testing.T) {
 	}
 }
 
+// A session resumed after /reasoning keeps the effort the user chose rather
+// than the one the thread last ran with; turn/start sends GetReasoningEffort.
+func TestAppServerSession_ResumedThreadKeepsTheRequestedEffort(t *testing.T) {
+	s := &appServerSession{effort: "high", requestedEffort: "high"}
+	old := "low"
+
+	s.applyThreadRuntimeState("/tmp/project", "gpt-5.4", &old)
+
+	if got := s.GetReasoningEffort(); got != "high" {
+		t.Fatalf("GetReasoningEffort() = %q, want the requested high over the thread's low", got)
+	}
+}
+
 func TestAppServerSession_HandleRateLimitsUpdatedCachesUsage(t *testing.T) {
 	s := &appServerSession{}
 	raw, err := json.Marshal(appServerRateLimitsResponse{

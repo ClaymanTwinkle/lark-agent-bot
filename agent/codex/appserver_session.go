@@ -144,17 +144,20 @@ type appServerRequestUserInputAnswer struct {
 }
 
 type appServerSession struct {
-	bin            string // codex executable, resolved per session (see resolveCodexBin)
-	url            string
-	workDir        string
-	model          string
-	effort         string
-	mode           string
-	baseURL        string
-	modelProvider  string
-	extraEnv       []string
-	codexHome      string
-	promptPreamble string
+	bin     string // codex executable, resolved per session (see resolveCodexBin)
+	url     string
+	workDir string
+	model   string
+	effort  string
+	// requestedEffort is the effort configured for this session ("" = let the
+	// thread decide); it wins over the effort a resumed thread reports.
+	requestedEffort string
+	mode            string
+	baseURL         string
+	modelProvider   string
+	extraEnv        []string
+	codexHome       string
+	promptPreamble  string
 	// developerInstructions is sent on thread/start and thread/resume so the
 	// thread knows lark-connect's commands (send, cron, timer, relay) the way
 	// Claude Code gets them through --append-system-prompt-file.
@@ -210,6 +213,7 @@ func newAppServerSession(ctx context.Context, bin, url, workDir, model, effort, 
 	sessionCtx, cancel := context.WithCancel(ctx)
 	s := &appServerSession{
 		bin:              bin,
+		requestedEffort:  strings.TrimSpace(effort),
 		url:              url,
 		workDir:          workDir,
 		model:            model,
@@ -442,6 +446,13 @@ func (s *appServerSession) applyThreadRuntimeState(workDir, model string, effort
 	}
 	if m := strings.TrimSpace(model); m != "" {
 		s.model = m
+	}
+	// A resumed thread reports the effort it last ran with. When the user has
+	// chosen one, keep that: it is what turn/start sends, so changing the
+	// effort takes effect on the same conversation.
+	if s.requestedEffort != "" {
+		s.effort = s.requestedEffort
+		return
 	}
 	s.effort = normalizeRuntimeReasoningEffort(stringValue(effort))
 }

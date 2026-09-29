@@ -5512,7 +5512,10 @@ func TestCmdReasoning_UsageListsAgentEfforts(t *testing.T) {
 	})
 }
 
-func TestCmdReasoning_SwitchesEffortAndResetsSession(t *testing.T) {
+// Changing the effort keeps the conversation, like a model switch: the live
+// agent process is restarted so the next message resumes the same session
+// with the new effort.
+func TestCmdReasoning_SwitchesEffortAndKeepsSession(t *testing.T) {
 	p := &stubPlatformEngine{n: "plain"}
 	agent := &stubModelModeAgent{}
 	e := NewEngine("test", agent, []Platform{p}, "", LangEnglish)
@@ -5521,17 +5524,26 @@ func TestCmdReasoning_SwitchesEffortAndResetsSession(t *testing.T) {
 	s := e.sessions.GetOrCreateActive(msg.SessionKey)
 	s.SetAgentSessionID("existing-session", "test")
 	s.AddHistory("user", "hello")
+	e.interactiveMu.Lock()
+	e.interactiveStates[msg.SessionKey] = &interactiveState{platform: p, replyCtx: "ctx"}
+	e.interactiveMu.Unlock()
 
 	e.cmdReasoning(p, msg, []string{"3"})
 
 	if agent.reasoningEffort != "high" {
 		t.Fatalf("reasoning effort = %q, want high", agent.reasoningEffort)
 	}
-	if s.GetAgentSessionID() != "" {
-		t.Fatalf("AgentSessionID = %q, want cleared", s.GetAgentSessionID())
+	if s.GetAgentSessionID() != "existing-session" {
+		t.Fatalf("AgentSessionID = %q, want the conversation kept", s.GetAgentSessionID())
 	}
-	if len(s.History) != 0 {
-		t.Fatalf("history length = %d, want 0", len(s.History))
+	if len(s.History) != 1 {
+		t.Fatalf("history length = %d, want the history kept", len(s.History))
+	}
+	e.interactiveMu.Lock()
+	_, live := e.interactiveStates[msg.SessionKey]
+	e.interactiveMu.Unlock()
+	if live {
+		t.Fatal("live agent state kept; the next message would not pick up the new effort")
 	}
 	if len(p.sent) != 1 || !strings.Contains(p.sent[0], "Reasoning effort switched to `high`") {
 		t.Fatalf("sent = %v, want reasoning changed message", p.sent)
@@ -5555,8 +5567,9 @@ func TestCmdReasoning_RejectsMinimal(t *testing.T) {
 }
 
 // TestCmdReasoning_MultiWorkspaceSavesToWorkspaceSessions is a regression test
-// for the bug where cmdReasoning called e.sessions.Save() (global) instead of
-// sessions.Save() (workspace-resolved), leaving workspace session state unsaved.
+// for the bug where cmdReasoning worked on the global sessions instead of the
+// workspace-resolved ones. It now also pins that only the chat's workspace
+// agent changes and neither conversation is reset.
 func TestCmdReasoning_MultiWorkspaceSavesToWorkspaceSessions(t *testing.T) {
 	p := &stubPlatformEngine{n: "plain"}
 	globalAgent := &stubModelModeAgent{}
@@ -5589,8 +5602,11 @@ func TestCmdReasoning_MultiWorkspaceSavesToWorkspaceSessions(t *testing.T) {
 	if wsAgent.reasoningEffort != "high" {
 		t.Fatalf("workspace agent reasoning effort = %q, want high", wsAgent.reasoningEffort)
 	}
-	if got := wsSession.GetAgentSessionID(); got != "" {
-		t.Fatalf("workspace session id = %q, want cleared", got)
+	if globalAgent.reasoningEffort != "" {
+		t.Fatalf("global agent reasoning effort = %q, want untouched", globalAgent.reasoningEffort)
+	}
+	if got := wsSession.GetAgentSessionID(); got != "ws-session-id" {
+		t.Fatalf("workspace session id = %q, want the conversation kept", got)
 	}
 	if got := globalSession.GetAgentSessionID(); got != "global-session-id" {
 		t.Fatalf("global session id = %q, want untouched", got)

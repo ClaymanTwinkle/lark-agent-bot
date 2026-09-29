@@ -10321,21 +10321,19 @@ func (e *Engine) cmdReasoning(p Platform, msg *Message, args []string) {
 	e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgReasoningChanged, target))
 }
 
-// setReasoningEffort switches the agent's reasoning effort and resets the
-// session so the next message starts with it. The reset stops a turn that is
-// still running; its chat is told, so that turn does not just go quiet.
-// Callers must pass the agent and sessions resolved for sessionKey (the
-// workspace's in multi-workspace mode), not the engine's global ones.
+// setReasoningEffort switches the agent's reasoning effort and restarts the
+// chat's live agent process, so the next message resumes the same
+// conversation with the new effort (like a model switch; the conversation is
+// not reset). The restart stops a turn that is still running; its chat is
+// told, so that turn does not just go quiet. Callers must pass the agent and
+// sessions resolved for sessionKey (the workspace's in multi-workspace mode),
+// not the engine's global ones.
 func (e *Engine) setReasoningEffort(switcher ReasoningEffortSwitcher, sessions *SessionManager, sessionKey, effort string) {
 	interactiveKey := e.interactiveKeyForSessionKey(sessionKey)
-	s := sessions.GetOrCreateActive(sessionKey)
-	p, replyCtx, running := e.runningTurnReplyTarget(interactiveKey, s)
+	p, replyCtx, running := e.runningTurnReplyTarget(interactiveKey, sessions.GetOrCreateActive(sessionKey))
 
 	switcher.SetReasoningEffort(effort)
 	e.cleanupInteractiveState(interactiveKey)
-	s.SetAgentSessionID("", "")
-	s.ClearHistory()
-	sessions.Save()
 
 	if running {
 		e.reply(p, replyCtx, e.i18n.T(MsgTurnStoppedBySettingChange))

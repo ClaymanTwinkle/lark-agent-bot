@@ -46,8 +46,8 @@ func TestCardReasoning_MultiWorkspaceChangesTheChatsWorkspaceAgent(t *testing.T)
 	if globalAgent.reasoningEffort != "" {
 		t.Fatalf("global agent effort = %q, want untouched", globalAgent.reasoningEffort)
 	}
-	if got := wsSession.GetAgentSessionID(); got != "" {
-		t.Fatalf("workspace session = %q, want reset like /reasoning", got)
+	if got := wsSession.GetAgentSessionID(); got != "ws-thread" {
+		t.Fatalf("workspace session = %q, want the conversation kept", got)
 	}
 	if got := globalSession.GetAgentSessionID(); got != "global-thread" {
 		t.Fatalf("global session = %q, want untouched", got)
