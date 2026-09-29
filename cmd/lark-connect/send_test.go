@@ -57,6 +57,7 @@ func TestParseSendArgs_RequiresMessageOrAttachment(t *testing.T) {
 
 func TestParseSendArgs_UsesSessionEnvFallback(t *testing.T) {
 	t.Setenv("CC_PROJECT", "demo")
+	t.Setenv("CC_SESSION", "") // the old name is the fallback; clear an inherited new one
 	t.Setenv("CC_SESSION_KEY", "telegram:123:456")
 
 	dir := t.TempDir()
@@ -184,6 +185,7 @@ func TestParseSendArgs_AudioVideoFileMixed_StaySeparate(t *testing.T) {
 
 func TestParseSendArgs_TTSOnly(t *testing.T) {
 	t.Setenv("CC_PROJECT", "demo")
+	t.Setenv("CC_SESSION", "") // the old name is the fallback; clear an inherited new one
 	t.Setenv("CC_SESSION_KEY", "telegram:123:456")
 
 	req, _, err := parseSendArgs([]string{"--tts", "hello voice"})
