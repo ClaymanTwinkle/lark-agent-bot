@@ -69,7 +69,7 @@ func runRelaySend(args []string) {
 		from = os.Getenv("CC_PROJECT")
 	}
 	if sessionKey == "" {
-		sessionKey = os.Getenv("CC_SESSION_KEY")
+		sessionKey = sessionKeyFromEnv()
 	}
 	if message == "" && len(positional) > 0 {
 		if to == "" && len(positional) >= 2 {
@@ -86,7 +86,7 @@ func runRelaySend(args []string) {
 		os.Exit(1)
 	}
 	if sessionKey == "" {
-		fmt.Fprintln(os.Stderr, "Error: session key is required (set CC_SESSION_KEY or use --session-key)")
+		fmt.Fprintln(os.Stderr, "Error: session key is required (set CC_SESSION or use --session-key)")
 		os.Exit(1)
 	}
 
@@ -143,7 +143,7 @@ Send a message to another bot and wait for the response.
 Options:
   -f, --from <project>       Source project (auto-detected from CC_PROJECT env)
   -t, --to <project>         Target bot project name
-  -s, --session-key <key>    Session key (auto-detected from CC_SESSION_KEY env)
+  -s, --session-key <key>    Session key (auto-detected from CC_SESSION env)
   -m, --message <text>       Message to send
       --data-dir <path>      Data directory (default: ~/.lark-connect)
   -h, --help                 Show this help

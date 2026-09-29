@@ -387,7 +387,7 @@ func (s *APIServer) handleCronAdd(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if sessionKey == "" {
-		http.Error(w, "session_key is required: set CC_SESSION_KEY env, pass --session-key, or ensure exactly one active session exists", http.StatusBadRequest)
+		http.Error(w, "session_key is required: set CC_SESSION env, pass --session-key, or ensure exactly one active session exists", http.StatusBadRequest)
 		return
 	}
 

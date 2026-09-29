@@ -4270,6 +4270,9 @@ func (e *Engine) getOrCreateInteractiveStateWith(sessionKey string, p Platform, 
 		envVars := []string{
 			"CC_PROJECT=" + e.name,
 			"CC_SESSION_KEY=" + ccKey,
+			// Same value under a name without "KEY": Codex drops *KEY* variables
+			// from the commands it runs, which hid CC_SESSION_KEY from `lark-connect send`.
+			"CC_SESSION=" + ccKey,
 		}
 		if e.dataDir != "" {
 			envVars = append(envVars, "CC_DATA_DIR="+e.dataDir)
@@ -16198,6 +16201,7 @@ func (e *Engine) HandleRelay(ctx context.Context, fromProject, sourceSessionKey,
 		envVars := []string{
 			"CC_PROJECT=" + e.name,
 			"CC_SESSION_KEY=" + sourceSessionKey,
+			"CC_SESSION=" + sourceSessionKey,
 		}
 		if exePath, err := os.Executable(); err == nil {
 			binDir := filepath.Dir(exePath)

@@ -173,7 +173,7 @@ func parseSendArgs(args []string) (core.SendRequest, string, error) {
 		req.Project = strings.TrimSpace(os.Getenv("CC_PROJECT"))
 	}
 	if req.SessionKey == "" {
-		req.SessionKey = strings.TrimSpace(os.Getenv("CC_SESSION_KEY"))
+		req.SessionKey = sessionKeyFromEnv()
 	}
 	if req.Message == "" {
 		req.Message = strings.Join(positional, " ")

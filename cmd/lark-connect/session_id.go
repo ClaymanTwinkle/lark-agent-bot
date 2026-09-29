@@ -38,7 +38,7 @@ func runAgentSID(args []string) {
 		project = os.Getenv("CC_PROJECT")
 	}
 	if sessionKey == "" {
-		sessionKey = os.Getenv("CC_SESSION_KEY")
+		sessionKey = sessionKeyFromEnv()
 	}
 	dataDir = resolveDataDir(dataDir)
 
@@ -47,7 +47,7 @@ func runAgentSID(args []string) {
 		os.Exit(1)
 	}
 	if sessionKey == "" {
-		fmt.Fprintln(os.Stderr, "Error: session key is required (set CC_SESSION_KEY env or use --session-key)")
+		fmt.Fprintln(os.Stderr, "Error: session key is required (set CC_SESSION env or use --session-key)")
 		os.Exit(1)
 	}
 
@@ -243,7 +243,7 @@ instance is required.
 
 Options:
   -p, --project <name>       Project name (auto-detected from CC_PROJECT env)
-  -s, --session-key <key>    Session key  (auto-detected from CC_SESSION_KEY env)
+  -s, --session-key <key>    Session key  (auto-detected from CC_SESSION env)
       --data-dir <path>      Data directory (default: ~/.lark-connect)
   -h, --help                 Show this help
 

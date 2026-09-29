@@ -129,7 +129,7 @@ func runCronAdd(args []string) {
 		project = os.Getenv("CC_PROJECT")
 	}
 	if sessionKey == "" {
-		sessionKey = os.Getenv("CC_SESSION_KEY")
+		sessionKey = sessionKeyFromEnv()
 	}
 
 	// If cron expr not provided via --cron, try positional: first 5 fields are cron, rest is prompt/exec
@@ -621,7 +621,7 @@ Create a new scheduled task (agent prompt or shell command).
 
 Options:
   -p, --project <name>       Target project (auto-detected from CC_PROJECT env)
-  -s, --session-key <key>    Target session (auto-detected from CC_SESSION_KEY env)
+  -s, --session-key <key>    Target session (auto-detected from CC_SESSION env)
   -c, --cron <expr>          Cron expression, e.g. "0 6 * * *"
       --prompt <text>        Task prompt (runs through agent)
       --exec <command>       Shell command (runs directly, mutually exclusive with --prompt)

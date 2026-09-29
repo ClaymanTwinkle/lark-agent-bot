@@ -4486,7 +4486,7 @@ When the user asks you to do something on a schedule (e.g. "每天早上6点帮�
 
   lark-connect cron add --cron "<min> <hour> <day> <month> <weekday>" --prompt "<task description>" --desc "<short label>"
 
-Environment variables CC_PROJECT and CC_SESSION_KEY are already set, so you do NOT need to specify --project or --session-key.
+Environment variables CC_PROJECT and CC_SESSION are already set, so you do NOT need to specify --project or --session-key.
 
 Optional flags:
   --session-mode <mode>     reuse (default) or new-per-run (fresh session each trigger)
@@ -4545,7 +4545,7 @@ lark-connect 有两个不同的调度命令。选错会让用户感到很困惑�
 
   lark-connect cron add --cron "<分> <时> <日> <月> <星期>" --prompt "<任务描述>" --desc "<简短标签>"
 
-环境变量 CC_PROJECT 和 CC_SESSION_KEY 已经设置好,你不需要传 --project 或 --session-key。
+环境变量 CC_PROJECT 和 CC_SESSION 已经设置好,你不需要传 --project 或 --session-key。
 
 可选参数:
   --session-mode <mode>     reuse(默认)或 new-per-run(每次触发用新会话)
@@ -4597,7 +4597,7 @@ means "every year on June 14 at 19:04", not "once on this date". Cron has no bui
 Duration examples: 30m, 2h, 1h30m. Or use absolute time: --at "2026-05-16T09:00"
 Absolute times without timezone (e.g. "2026-05-16T09:00") are interpreted as the
 system's local timezone. When the user says "明天早上9点", use local time.
-Environment variables CC_PROJECT and CC_SESSION_KEY are already set.
+Environment variables CC_PROJECT and CC_SESSION are already set.
 
 Optional flags:
   --exec <command>          run a shell command directly instead of --prompt
@@ -4627,7 +4627,7 @@ You can also list or cancel timers:
 
 时长示例:30m、2h、1h30m。或者用绝对时间:--at "2026-05-16T09:00"
 不带时区的绝对时间(例如 "2026-05-16T09:00")按系统本地时区解释。用户说"明天早上9点"时用本地时间。
-环境变量 CC_PROJECT 和 CC_SESSION_KEY 已经设置好。
+环境变量 CC_PROJECT 和 CC_SESSION 已经设置好。
 
 可选参数:
   --exec <command>          直接跑 shell 命令而不是 --prompt
@@ -4657,7 +4657,7 @@ Do NOT guess or modify the name — use it exactly as shown (e.g. "gemini", not 
 This sends a message to the target bot and waits for its response (printed to stdout).
 The conversation is visible in the group chat and each bot maintains its own relay session.
 
-Environment variables CC_PROJECT and CC_SESSION_KEY are already set, so the relay knows which group chat to use.`,
+Environment variables CC_PROJECT and CC_SESSION are already set, so the relay knows which group chat to use.`,
 		LangChinese: `### Bot 之间转发 (relay)
 当需要和另一个 bot 通信(例如向另一个 AI agent 提问)时,使用:
 
@@ -4669,7 +4669,7 @@ Environment variables CC_PROJECT and CC_SESSION_KEY are already set, so the rela
 这会把消息发给目标 bot 并等待它的回复(打印到 stdout)。
 会话在群聊里可见,每个 bot 维护自己的 relay 会话。
 
-环境变量 CC_PROJECT 和 CC_SESSION_KEY 已经设置好,relay 知道用哪个群聊。`,
+环境变量 CC_PROJECT 和 CC_SESSION 已经设置好,relay 知道用哪个群聊。`,
 	},
 }
 
