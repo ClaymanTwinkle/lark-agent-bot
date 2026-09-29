@@ -4357,7 +4357,12 @@ func (e *Engine) getOrCreateInteractiveStateWith(sessionKey string, p Platform, 
 				"error", err, "elapsed", startElapsed)
 			// Clear the stale session ID so CompareAndSetAgentSessionID can
 			// write the new ID, matching the relay fallback at line 12640.
+			// Also drop the session's name: it described the conversation that
+			// could not be resumed and would otherwise be pinned onto the new
+			// one, making the session list show the old title for it.
+			lostName := session.GetName()
 			session.SetAgentSessionID("", agent.Name())
+			session.SetName("")
 			sessions.Save()
 			startAt = time.Now()
 			agentSession, err = agent.StartSession(e.ctx, "")
@@ -4365,6 +4370,7 @@ func (e *Engine) getOrCreateInteractiveStateWith(sessionKey string, p Platform, 
 			if err == nil {
 				slog.Info("fresh session started after resume failure",
 					"session_key", sessionKey, "elapsed", startElapsed)
+				e.send(p, replyCtx, e.i18n.Tf(MsgResumeFailedNewSession, resumeFailureLabel(lostName, startSessionID)))
 			}
 		}
 		if err != nil {
@@ -10289,7 +10295,7 @@ func (e *Engine) cmdReasoning(p Platform, msg *Message, args []string) {
 			e.replyWithButtons(p, msg.ReplyCtx, sb.String(), buttons)
 			return
 		}
-		e.replyWithCard(p, msg.ReplyCtx, e.renderReasoningCard())
+		e.replyWithCard(p, msg.ReplyCtx, e.renderReasoningCard(msg.SessionKey))
 		return
 	}
 
@@ -10311,15 +10317,64 @@ func (e *Engine) cmdReasoning(p Platform, msg *Message, args []string) {
 		return
 	}
 
-	switcher.SetReasoningEffort(target)
-	e.cleanupInteractiveState(e.interactiveKeyForSessionKey(msg.SessionKey))
+	e.setReasoningEffort(switcher, sessions, msg.SessionKey, target)
+	e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgReasoningChanged, target))
+}
 
-	s := sessions.GetOrCreateActive(msg.SessionKey)
+// setReasoningEffort switches the agent's reasoning effort and resets the
+// session so the next message starts with it. The reset stops a turn that is
+// still running; its chat is told, so that turn does not just go quiet.
+// Callers must pass the agent and sessions resolved for sessionKey (the
+// workspace's in multi-workspace mode), not the engine's global ones.
+func (e *Engine) setReasoningEffort(switcher ReasoningEffortSwitcher, sessions *SessionManager, sessionKey, effort string) {
+	interactiveKey := e.interactiveKeyForSessionKey(sessionKey)
+	s := sessions.GetOrCreateActive(sessionKey)
+	p, replyCtx, running := e.runningTurnReplyTarget(interactiveKey, s)
+
+	switcher.SetReasoningEffort(effort)
+	e.cleanupInteractiveState(interactiveKey)
 	s.SetAgentSessionID("", "")
 	s.ClearHistory()
 	sessions.Save()
 
-	e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgReasoningChanged, target))
+	if running {
+		e.reply(p, replyCtx, e.i18n.T(MsgTurnStoppedBySettingChange))
+	}
+}
+
+// resumeFailureLabel names the conversation that could not be resumed: its
+// session name when it has a meaningful one, otherwise a short agent session ID.
+func resumeFailureLabel(name, agentSessionID string) string {
+	if name = strings.TrimSpace(name); name != "" && name != "session" && name != "default" {
+		if runes := []rune(name); len(runes) > 30 {
+			name = string(runes[:30]) + "…"
+		}
+		return name
+	}
+	if len(agentSessionID) > 8 {
+		return agentSessionID[:8]
+	}
+	return agentSessionID
+}
+
+// runningTurnReplyTarget returns where to reach the chat of the turn running
+// in interactiveKey, or ok=false when session is not in the middle of a turn.
+func (e *Engine) runningTurnReplyTarget(interactiveKey string, session *Session) (Platform, any, bool) {
+	if session == nil || !session.Busy() {
+		return nil, nil, false
+	}
+	e.interactiveMu.Lock()
+	state := e.interactiveStates[interactiveKey]
+	e.interactiveMu.Unlock()
+	if state == nil {
+		return nil, nil, false
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.platform == nil || state.replyCtx == nil {
+		return nil, nil, false
+	}
+	return state.platform, state.replyCtx, true
 }
 
 func (e *Engine) reasoningUsage(efforts []string) string {
@@ -12447,7 +12502,7 @@ func (e *Engine) handleCardNav(action string, sessionKey string) *Card {
 	case "/model":
 		return e.renderModelCard(sessionKey)
 	case "/reasoning":
-		return e.renderReasoningCard()
+		return e.renderReasoningCard(sessionKey)
 	case "/mode":
 		return e.renderModeCard(sessionKey)
 	case "/lang":
@@ -12630,7 +12685,11 @@ func (e *Engine) executeCardAction(cmd, args, sessionKey string) {
 		if args == "" {
 			return
 		}
-		switcher, ok := e.agent.(ReasoningEffortSwitcher)
+		// The workspace's agent and sessions, like cmdReasoning: the global
+		// ones would change an agent this chat does not use while stopping
+		// the chat's running turn.
+		agent, sessions := e.sessionContextForKey(sessionKey)
+		switcher, ok := agent.(ReasoningEffortSwitcher)
 		if !ok {
 			return
 		}
@@ -12641,12 +12700,7 @@ func (e *Engine) executeCardAction(cmd, args, sessionKey string) {
 		}
 		for _, effort := range efforts {
 			if effort == target {
-				switcher.SetReasoningEffort(target)
-				e.cleanupInteractiveState(interactiveKey)
-				s := e.sessions.GetOrCreateActive(sessionKey)
-				s.SetAgentSessionID("", "")
-				s.ClearHistory()
-				e.sessions.Save()
+				e.setReasoningEffort(switcher, sessions, sessionKey, target)
 				return
 			}
 		}
@@ -13438,8 +13492,11 @@ func (e *Engine) renderModelSwitchResultCard(target string, err error) *Card {
 		Build()
 }
 
-func (e *Engine) renderReasoningCard() *Card {
-	switcher, ok := e.agent.(ReasoningEffortSwitcher)
+// renderReasoningCard shows the effort of the agent that serves sessionKey
+// (the workspace's agent in multi-workspace mode).
+func (e *Engine) renderReasoningCard(sessionKey string) *Card {
+	agent, _ := e.sessionContextForKey(sessionKey)
+	switcher, ok := agent.(ReasoningEffortSwitcher)
 	if !ok {
 		return e.simpleCard(e.i18n.T(MsgCardTitleReasoning), "orange", e.i18n.T(MsgReasoningNotSupported))
 	}

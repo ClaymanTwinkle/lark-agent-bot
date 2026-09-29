@@ -357,6 +357,9 @@ const (
 	MsgReasoningChanged      MsgKey = "reasoning_changed"
 	MsgReasoningNotSupported MsgKey = "reasoning_not_supported"
 
+	MsgTurnStoppedBySettingChange MsgKey = "turn_stopped_by_setting_change"
+	MsgResumeFailedNewSession     MsgKey = "resume_failed_new_session"
+
 	MsgCompressNotSupported MsgKey = "compress_not_supported"
 	MsgCompressing          MsgKey = "compressing"
 	MsgCompressNoSession    MsgKey = "compress_no_session"
@@ -2420,6 +2423,20 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "當前推理強度: %s",
 		LangJapanese:           "現在の推論強度: %s",
 		LangSpanish:            "Esfuerzo de razonamiento actual: %s",
+	},
+	MsgTurnStoppedBySettingChange: {
+		LangEnglish:            "⚠️ Changing the setting stopped the task that was running before it finished. Send your message again if you still need it.",
+		LangChinese:            "⚠️ 修改设置中断了正在进行的任务，它没有完成。需要的话请重新发送。",
+		LangTraditionalChinese: "⚠️ 修改設定中斷了正在進行的任務，它沒有完成。需要的話請重新傳送。",
+		LangJapanese:           "⚠️ 設定の変更により実行中のタスクが完了前に中断されました。必要であればもう一度送信してください。",
+		LangSpanish:            "⚠️ El cambio de configuración detuvo la tarea en curso antes de que terminara. Vuelve a enviar tu mensaje si aún lo necesitas.",
+	},
+	MsgResumeFailedNewSession: {
+		LangEnglish:            "⚠️ Could not continue the previous conversation (%s), so this message started a new one without its earlier context.",
+		LangChinese:            "⚠️ 无法接续之前的会话（%s），这条消息已在新会话中处理，之前的上下文没有带过来。",
+		LangTraditionalChinese: "⚠️ 無法接續之前的會話（%s），這則訊息已在新會話中處理，之前的上下文沒有帶過來。",
+		LangJapanese:           "⚠️ 以前の会話（%s）を再開できなかったため、このメッセージは以前の文脈なしの新しい会話で処理されました。",
+		LangSpanish:            "⚠️ No se pudo continuar la conversación anterior (%s), así que este mensaje inició una nueva sin su contexto previo.",
 	},
 	MsgReasoningChanged: {
 		LangEnglish:            "Reasoning effort switched to `%s`. New sessions will use this setting.",
