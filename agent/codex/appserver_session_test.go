@@ -346,6 +346,45 @@ func TestMapAppServerRateLimits_PrefersMultiBucketView(t *testing.T) {
 	}
 }
 
+// Regression: base_model_inference sorts before codex, so its unused reserve
+// quota was displayed as the account's weekly usage in /usage and reply footers.
+func TestMapAppServerRateLimits_WeeklyUsagePrefersMainBucketOverReserve(t *testing.T) {
+	for _, primaryID := range []string{"codex", "", "account_main"} {
+		t.Run("primary="+primaryID, func(t *testing.T) {
+			mainID := primaryID
+			if mainID == "" {
+				mainID = "codex"
+			}
+			report := mapAppServerRateLimits(appServerRateLimitsResponse{
+				RateLimits: appServerRateLimitSnapshot{LimitID: primaryID},
+				RateLimitsByLimitID: map[string]appServerRateLimitSnapshot{
+					"base_model_inference": {
+						LimitID: "base_model_inference", LimitName: "gpt-reserve",
+						Primary: &appServerRateLimitWindow{UsedPercent: 0, WindowDurationMins: 10080, ResetsAt: 1791335406},
+					},
+					mainID: {
+						LimitID: mainID,
+						Primary: &appServerRateLimitWindow{UsedPercent: 42, WindowDurationMins: 10080, ResetsAt: 1791116306},
+					},
+				},
+			})
+			if len(report.Buckets) != 2 {
+				t.Fatalf("buckets = %d, want main and reserve", len(report.Buckets))
+			}
+			if report.Buckets[0].Name != mainID {
+				t.Fatalf("display bucket = %q, want %q", report.Buckets[0].Name, mainID)
+			}
+			window := report.Buckets[0].Windows[0]
+			if window.UsedPercent != 42 || window.WindowSeconds != 604800 || window.ResetAtUnix != 1791116306 {
+				t.Fatalf("weekly quota = %+v, want main bucket's usage and reset", window)
+			}
+			if report.Buckets[1].Name != "gpt-reserve" {
+				t.Fatalf("reserve bucket lost: %+v", report.Buckets)
+			}
+		})
+	}
+}
+
 func TestAppServerSession_HandleRequestUserInputEmitsAskQuestion(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -1416,7 +1416,19 @@ func mapAppServerRateLimits(payload appServerRateLimitsResponse) *core.UsageRepo
 		for key := range payload.RateLimitsByLimitID {
 			keys = append(keys, key)
 		}
-		sort.Strings(keys)
+		// Core displays the first bucket's windows. Keep the server's main
+		// quota first; alphabetic order can put an unrelated reserve bucket
+		// (e.g. base_model_inference) ahead of the account's Codex quota.
+		primaryID := strings.TrimSpace(payload.RateLimits.LimitID)
+		if primaryID == "" {
+			primaryID = "codex"
+		}
+		sort.Slice(keys, func(i, j int) bool {
+			if keys[i] == primaryID || keys[j] == primaryID {
+				return keys[i] == primaryID && keys[j] != primaryID
+			}
+			return keys[i] < keys[j]
+		})
 		for _, key := range keys {
 			snapshots = append(snapshots, payload.RateLimitsByLimitID[key])
 		}
