@@ -12,10 +12,10 @@ import (
 
 func TestParseVersionOutput(t *testing.T) {
 	cases := map[string]string{
-		"lark-connect v0.2.3\ncommit:  abc\nbuilt:   x\n": "v0.2.3",
-		"lark-connect v0.1.0+auto-review\n":               "v0.1.0+auto-review",
-		"something else v1.0.0":                           "",
-		"":                                                "",
+		"lark-agent-bot v0.2.3\ncommit:  abc\nbuilt:   x\n": "v0.2.3",
+		"lark-agent-bot v0.1.0+auto-review\n":               "v0.1.0+auto-review",
+		"something else v1.0.0":                             "",
+		"":                                                  "",
 	}
 	for in, want := range cases {
 		if got := parseVersionOutput(in); got != want {
@@ -85,10 +85,10 @@ func TestReplaceBinaryAt_BackupInUse(t *testing.T) {
 
 // An update from a differently named binary (the versioned name inside
 // release archives up to v0.2.4) installs the standard name, so agents can
-// call `lark-connect`, and retires the old name so nothing launches it stale.
+// call `lark-agent-bot`, and retires the old name so nothing launches it stale.
 func TestReplaceBinaryAt_InstallsStandardName(t *testing.T) {
 	dir := t.TempDir()
-	execPath := filepath.Join(dir, "lark-connect-v0.2.2-windows-amd64.exe")
+	execPath := filepath.Join(dir, "lark-agent-bot-v0.2.2-windows-amd64.exe")
 	writeFile(t, execPath, "old binary")
 
 	got, err := replaceBinaryAt(execPath, []byte("new binary"))
@@ -110,7 +110,7 @@ func TestReplaceBinaryAt_InstallsStandardName(t *testing.T) {
 // already installed the standard name and retired the versioned file.
 func TestReplaceBinaryAt_StandardNameAlreadyInstalled(t *testing.T) {
 	dir := t.TempDir()
-	execPath := filepath.Join(dir, "lark-connect-v0.2.2-windows-amd64.exe") // already renamed away
+	execPath := filepath.Join(dir, "lark-agent-bot-v0.2.2-windows-amd64.exe") // already renamed away
 	target := filepath.Join(dir, StandardBinaryName())
 	writeFile(t, target, "first update")
 
@@ -125,7 +125,7 @@ func TestReplaceBinaryAt_StandardNameAlreadyInstalled(t *testing.T) {
 // standard name, and the second upgrades before it restarted.
 func TestReplaceBinaryAt_BothNamesPresent(t *testing.T) {
 	dir := t.TempDir()
-	execPath := filepath.Join(dir, "lark-connect-v0.2.2-windows-amd64.exe")
+	execPath := filepath.Join(dir, "lark-agent-bot-v0.2.2-windows-amd64.exe")
 	target := filepath.Join(dir, StandardBinaryName())
 	writeFile(t, execPath, "versioned binary")
 	writeFile(t, target, "first update")
@@ -143,7 +143,7 @@ func TestReplaceBinaryAt_BothNamesPresent(t *testing.T) {
 
 func TestInstalledPathFor(t *testing.T) {
 	dir := t.TempDir()
-	versioned := filepath.Join(dir, "lark-connect-v0.2.2-windows-amd64.exe")
+	versioned := filepath.Join(dir, "lark-agent-bot-v0.2.2-windows-amd64.exe")
 	standard := filepath.Join(dir, StandardBinaryName())
 
 	if got := installedPathFor(versioned); got != versioned {
@@ -200,7 +200,7 @@ func fakeGitHub(t *testing.T, apiStatus int, apiBody, latestLocation string) (ap
 // IP used up GitHub's unauthenticated quota. It must fall back to the release
 // page redirect.
 func TestCheckForUpdate_FallsBackWhenAPIRateLimited(t *testing.T) {
-	const loc = "https://github.com/ClaymanTwinkle/lark-connect/releases/tag/v0.2.1"
+	const loc = "https://github.com/ClaymanTwinkle/lark-agent-bot/releases/tag/v0.2.1"
 	apiURL, pageURL, _ := fakeGitHub(t, http.StatusForbidden, `{"message":"API rate limit exceeded"}`, loc)
 
 	got, err := checkForUpdateFrom("v0.2.0", apiURL, pageURL)
@@ -238,7 +238,7 @@ func TestCheckForUpdate_UsesAPIWhenAvailable(t *testing.T) {
 
 func TestCheckForUpdate_ErrorsWhenFallbackHasNoTag(t *testing.T) {
 	apiURL, pageURL, _ := fakeGitHub(t, http.StatusForbidden, `{}`,
-		"https://github.com/ClaymanTwinkle/lark-connect/releases")
+		"https://github.com/ClaymanTwinkle/lark-agent-bot/releases")
 
 	if got, err := checkForUpdateFrom("v0.2.0", apiURL, pageURL); err == nil {
 		t.Fatalf("release = %+v, want an error", got)

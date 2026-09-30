@@ -34,9 +34,9 @@ func MergeEnv(base, extra []string) []string {
 	return append(merged, extra...)
 }
 
-// InjectedAgentEnv returns the env vars lark-connect injects into a spawned
-// agent process so in-process extensions can learn lark-connect's runtime state.
-// The CC_ prefix marks these vars as lark-connect's public extension contract,
+// InjectedAgentEnv returns the env vars lark-agent-bot injects into a spawned
+// agent process so in-process extensions can learn lark-agent-bot's runtime state.
+// The CC_ prefix marks these vars as lark-agent-bot's public extension contract,
 // alongside CC_PROJECT / CC_SESSION_KEY / CC_DATA_DIR that the engine injects
 // as session env.
 //
@@ -112,8 +112,8 @@ type FileAttachment struct {
 //
 // Layout:
 //
-//	messageID == "": <workDir>/.lark-connect/attachments/<sanitized_name>
-//	messageID != "": <workDir>/.lark-connect/attachments/<messageID>/<sanitized_name>
+//	messageID == "": <workDir>/.lark-agent-bot/attachments/<sanitized_name>
+//	messageID != "": <workDir>/.lark-agent-bot/attachments/<messageID>/<sanitized_name>
 //
 // Scoping files to a per-message subdirectory (issue #1552) prevents the
 // silent-overwrite data loss that occurred when two different messages
@@ -127,7 +127,7 @@ type FileAttachment struct {
 //
 // workDir may be absolute or relative; the returned paths are always
 // absolute. When workDir is relative, filepath.Abs resolves it against
-// the lark-connect process's current working directory, so callers running
+// the lark-agent-bot process's current working directory, so callers running
 // from different cwd contexts (especially those where the agent's
 // "workDir" is itself relative to the user's home, like "~/project") still
 // get paths the agent can actually open. An empty workDir falls back to
@@ -160,9 +160,9 @@ func SaveFilesToDisk(workDir, messageID string, files []FileAttachment) []string
 	}
 	// Absolutize workDir so the returned paths are usable no matter where the
 	// process is invoked from. See issue #1459: when workDir is relative
-	// (e.g. ".lark-connect" or "project/sub"), the agent's prompt referenced
-	// ".lark-connect/attachments/<file>" while the file actually landed at
-	// workDir/.lark-connect/attachments/<file> — a path mismatch that lost
+	// (e.g. ".lark-agent-bot" or "project/sub"), the agent's prompt referenced
+	// ".lark-agent-bot/attachments/<file>" while the file actually landed at
+	// workDir/.lark-agent-bot/attachments/<file> — a path mismatch that lost
 	// every attachment.
 	absWorkDir, err := filepath.Abs(workDir)
 	if err != nil {
@@ -172,7 +172,7 @@ func SaveFilesToDisk(workDir, messageID string, files []FileAttachment) []string
 		absWorkDir = workDir
 		slog.Warn("SaveFilesToDisk: filepath.Abs failed, using raw workDir", "workDir", workDir, "error", err)
 	}
-	attachDir := filepath.Join(absWorkDir, ".lark-connect", "attachments")
+	attachDir := filepath.Join(absWorkDir, ".lark-agent-bot", "attachments")
 	scoped := false
 	if messageID != "" {
 		safeMid := sanitizeAttachmentFileName(messageID)
@@ -315,7 +315,7 @@ func sanitizeAttachmentFileName(name string) string {
 // File paths are defensively absolutized so the prompt handed to the agent
 // always points at a real on-disk location, even when a caller passed a
 // relative path by mistake. This guards against the issue #1459 class of
-// bugs where the prompt referenced ".lark-connect/attachments/<file>" while
+// bugs where the prompt referenced ".lark-agent-bot/attachments/<file>" while
 // the file actually landed at the absolute version of workDir. Absolute
 // inputs are passed through unchanged. An unresolvable relative path falls
 // back to the raw input rather than dropping the reference.

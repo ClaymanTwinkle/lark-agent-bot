@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // TestAgent_StartSessionWorkDirRace exercises concurrent SetWorkDir + StartSession.

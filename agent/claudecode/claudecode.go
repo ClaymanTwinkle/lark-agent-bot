@@ -17,8 +17,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/ClaymanTwinkle/lark-connect/agent/internal/skillroots"
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/agent/internal/skillroots"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func init() {
@@ -57,10 +57,10 @@ type Agent struct {
 
 	appendSystemPrompt string // Custom text appended to the system prompt (keeps Claude's default)
 
-	// lang is the operator's configured lark-connect language (Issue #1655).
-	// When non-empty, session spawns use the localized lark-connect system
+	// lang is the operator's configured lark-agent-bot language (Issue #1655).
+	// When non-empty, session spawns use the localized lark-agent-bot system
 	// prompt for the four tool sections (send / cron / timer / relay).
-	// Empty means "use English / lark-connect default" — back-compat with
+	// Empty means "use English / lark-agent-bot default" — back-compat with
 	// callers that pre-date the language option.
 	lang core.Language
 
@@ -68,11 +68,11 @@ type Agent struct {
 	proxyLocalURL  string              // local URL of the proxy
 	platformPrompt string              // platform-specific formatting instructions
 
-	// ccDataDir is injected by the lark-connect host (see buildAgentOptions
-	// in cmd/lark-connect/main.go). It locates the global directory where
-	// we write the shared lark-connect system prompt file (issue #1376
+	// ccDataDir is injected by the lark-agent-bot host (see buildAgentOptions
+	// in cmd/lark-agent-bot/main.go). It locates the global directory where
+	// we write the shared lark-agent-bot system prompt file (issue #1376
 	// workaround for Windows 8192-byte cmdline limit). The file at
-	// <ccDataDir>/agent-prompts/lark-connect-system.md is written once per
+	// <ccDataDir>/agent-prompts/lark-agent-bot-system.md is written once per
 	// startup and shared across all sessions that don't need per-spawn
 	// customisation. Empty value falls back to os.TempDir.
 	ccDataDir string
@@ -139,7 +139,7 @@ var claudeProviderManagedEnvVars = map[string]struct{}{
 	"ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES":  {},
 
 	// Provider-specific base URL env vars for thinking rewrite proxy routing.
-	// These are set by lark-connect when thinking override is needed for
+	// These are set by lark-agent-bot when thinking override is needed for
 	// Bedrock/Vertex/Foundry providers that don't use base_url config.
 	"ANTHROPIC_BEDROCK_PROXY_BASE_URL":                      {},
 	"ANTHROPIC_VERTEX_PROXY_BASE_URL":                       {},
@@ -183,7 +183,7 @@ func New(opts map[string]any) (core.Agent, error) {
 	systemPrompt, _ := opts["system_prompt"].(string)
 	appendSystemPrompt, _ := opts["append_system_prompt"].(string)
 	ccDataDir, _ := opts["cc_data_dir"].(string)
-	// Issue #1655: pass the operator's configured lark-connect language into the
+	// Issue #1655: pass the operator's configured lark-agent-bot language into the
 	// agent so per-spawn prompts can be localized. Empty string (legacy callers)
 	// falls back to English via AgentSystemPromptForLang.
 	langRaw, _ := opts["language"].(string)
@@ -260,7 +260,7 @@ func New(opts map[string]any) (core.Agent, error) {
 	routerAPIKey, _ := opts["router_api_key"].(string)
 
 	// run_as_user: optional OS-user isolation. Injected into opts from
-	// the project-level config field by cmd/lark-connect/main.go.
+	// the project-level config field by cmd/lark-agent-bot/main.go.
 	spawnOpts := core.SpawnOptions{}
 	spawnOpts.RunAsUser, _ = opts["run_as_user"].(string)
 	if env, ok := opts["run_as_env"].([]any); ok {
@@ -297,10 +297,10 @@ func New(opts map[string]any) (core.Agent, error) {
 		}
 	}
 
-	// Eagerly materialise the shared lark-connect-system.md at startup so
+	// Eagerly materialise the shared lark-agent-bot-system.md at startup so
 	// the file exists on disk before the first spawn. claude reads it
 	// via --append-system-prompt-file; the lazy fallback in
-	// newClaudeSession still covers content drift (lark-connect upgrades)
+	// newClaudeSession still covers content drift (lark-agent-bot upgrades)
 	// and the empty-ccDataDir corner case. Failure here is non-fatal —
 	// the next spawn will retry and surface the error then.
 	//
@@ -608,7 +608,7 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 	platformPrompt := a.platformPrompt
 	systemPrompt := a.systemPrompt
 	appendSystemPrompt := a.appendSystemPrompt
-	// Issue #1655: agent-level language drives the localized lark-connect system
+	// Issue #1655: agent-level language drives the localized lark-agent-bot system
 	// prompt. Read under the mutex and pass through to newClaudeSession so the
 	// session picks up the right tool-prompt bundle at spawn time.
 	lang := a.lang
@@ -784,7 +784,7 @@ func stripXMLTags(s string) string {
 // JSONL transcript entry and converts it to the local timezone so the wall-clock
 // time matches what `time.Now()` produces on the host (which is what AddHistory
 // in core/session.go writes for new messages). Without this conversion, history
-// fallback paths (e.g. /history in lark-connect when the local history is empty)
+// fallback paths (e.g. /history in lark-agent-bot when the local history is empty)
 // display UTC clock times instead of local clock times (issue #1780).
 func parseHistoryTimestamp(s string) (time.Time, error) {
 	ts, err := time.Parse(time.RFC3339Nano, s)
@@ -905,14 +905,14 @@ func (a *Agent) GetMode() string {
 
 // GetRunAsUser returns the target user for OS-isolation spawning, or ""
 // if no isolation is configured. Set at construction from the project-level
-// run_as_user field (injected into opts by cmd/lark-connect/main.go).
+// run_as_user field (injected into opts by cmd/lark-agent-bot/main.go).
 //
 // This accessor exists specifically so multi-workspace mode can propagate
 // run_as_user from the parent (project-level) agent into per-workspace
 // agent instances created lazily by core.Engine.getOrCreateWorkspaceAgent.
 // Without this, workspace agents are constructed with a fresh opts map
 // that never contained run_as_user, silently dropping back to the legacy
-// supervisor-user spawn path — which is exactly the leak lark-connect#496
+// supervisor-user spawn path — which is exactly the leak lark-agent-bot#496
 // is designed to prevent.
 func (a *Agent) GetRunAsUser() string {
 	a.mu.Lock()
@@ -951,7 +951,7 @@ func (a *Agent) GetRunAsEnv() []string {
 // propagate to every workspace agent. sessionEnv is excluded (runtime-only).
 //
 // run_as_user / run_as_env are also omitted because the engine has its own
-// dedicated propagation path via GetRunAsUser/GetRunAsEnv (see lark-connect#496).
+// dedicated propagation path via GetRunAsUser/GetRunAsEnv (see lark-agent-bot#496).
 func (a *Agent) WorkspaceAgentOptions() map[string]any {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

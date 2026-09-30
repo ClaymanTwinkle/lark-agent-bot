@@ -298,8 +298,8 @@ func TestCompactReplyFooterPath_HomeRelativeDeepPathStaysFull(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("USERPROFILE", homeDir)
 
-	shortPath := filepath.Join(homeDir, "codes", "lark-connect")
-	if got, want := compactReplyFooterPath(shortPath), "~/codes/lark-connect"; got != want {
+	shortPath := filepath.Join(homeDir, "codes", "lark-agent-bot")
+	if got, want := compactReplyFooterPath(shortPath), "~/codes/lark-agent-bot"; got != want {
 		t.Fatalf("short home path = %q, want %q", got, want)
 	}
 

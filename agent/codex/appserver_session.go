@@ -18,7 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 type rpcResponseEnvelope struct {
@@ -159,7 +159,7 @@ type appServerSession struct {
 	codexHome       string
 	promptPreamble  string
 	// developerInstructions is sent on thread/start and thread/resume so the
-	// thread knows lark-connect's commands (send, cron, timer, relay) the way
+	// thread knows lark-agent-bot's commands (send, cron, timer, relay) the way
 	// Claude Code gets them through --append-system-prompt-file.
 	developerInstructions string
 
@@ -336,8 +336,8 @@ func (s *appServerSession) connect() error {
 func (s *appServerSession) initialize() error {
 	params := map[string]any{
 		"clientInfo": map[string]any{
-			"name":    "lark-connect-codex-agent",
-			"title":   "Lark Connect Codex Agent",
+			"name":    "lark-agent-bot-codex-agent",
+			"title":   "Lark Agent Bot Codex Agent",
 			"version": "0.1.0",
 		},
 		"capabilities": map[string]any{
@@ -581,7 +581,7 @@ func (s *appServerSession) stageImages(prompt string, images []core.ImageAttachm
 		return prompt, nil, nil
 	}
 
-	imgDir := filepath.Join(s.workDir, ".lark-connect", "images")
+	imgDir := filepath.Join(s.workDir, ".lark-agent-bot", "images")
 	if err := os.MkdirAll(imgDir, 0o755); err != nil {
 		return "", nil, fmt.Errorf("codex app-server: create image dir: %w", err)
 	}

@@ -167,8 +167,8 @@
     "rawConfig": "Config. sin procesar"
   },
   "login": {
-    "title": "Lark-Connect Admin",
-    "subtitle": "Conéctese a su instancia de Lark-Connect",
+    "title": "Lark-Agent-Bot Admin",
+    "subtitle": "Conéctese a su instancia de Lark-Agent-Bot",
     "token": "Token de API",
     "serverUrl": "URL del servidor",
     "connect": "Conectar",
@@ -263,7 +263,7 @@
     "longPollTimeout": "Timeout de long polling (ms)",
     "listen": "Dirección de escucha",
     "publicUrl": "URL pública del webhook",
-    "publicUrlHint": "URL pública para que el Gateway llame al webhook de lark-connect",
+    "publicUrlHint": "URL pública para que el Gateway llame al webhook de lark-agent-bot",
     "registerUrl": "URL de registro",
     "registerUrlHint": "Opcional: endpoint para registrar el webhook en el Gateway",
     "eventsPath": "Ruta de eventos (long poll)",

@@ -17,7 +17,7 @@
   <rect width="800" height="200" fill="#0f172a"/>
 
   <!-- Title -->
-  <text x="400" y="115" font-family="system-ui, -apple-system, sans-serif" font-size="72" fill="url(#textGrad)" text-anchor="middle" font-weight="bold" filter="url(#glow)" letter-spacing="-2">Lark-Connect</text>
+  <text x="400" y="115" font-family="system-ui, -apple-system, sans-serif" font-size="72" fill="url(#textGrad)" text-anchor="middle" font-weight="bold" filter="url(#glow)" letter-spacing="-2">Lark-Agent-Bot</text>
 
   <!-- Subtitle -->
   <text x="400" y="150" font-family="system-ui, -apple-system, sans-serif" font-size="16" fill="#94a3b8" text-anchor="middle">Bridge AI Coding Agents to Feishu / Lark</text>

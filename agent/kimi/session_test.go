@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -164,7 +164,7 @@ func TestTruncate(t *testing.T) {
 
 // TestBuildArgs_NoPrintSupportOmitsPrintFlag is the regression test for #1456.
 // When the locally installed Kimi CLI does not advertise --print in its help
-// output, lark-connect must omit that flag — otherwise the newer Kimi Code CLI
+// output, lark-agent-bot must omit that flag — otherwise the newer Kimi Code CLI
 // exits with `error: unknown option '--print' (Did you mean --prompt?)`.
 func TestBuildArgs_NoPrintSupportOmitsPrintFlag(t *testing.T) {
 	ctx := context.Background()
@@ -201,7 +201,7 @@ func TestBuildArgs_PrintSupportIncludesPrintFlag(t *testing.T) {
 
 // TestBuildArgs_WorkDirFlagGated is the regression test for #1476. When the
 // locally installed Kimi Code CLI does not advertise --work-dir in its help
-// output, lark-connect must omit that flag — otherwise the CLI exits with
+// output, lark-agent-bot must omit that flag — otherwise the CLI exits with
 // `error: unknown option --work-dir`. The agent still runs in the correct
 // directory because exec.Command.Dir is set separately (see session.go).
 func TestBuildArgs_WorkDirFlagGated(t *testing.T) {
@@ -399,7 +399,7 @@ func TestHandleToolStringContent(t *testing.T) {
 // TestHandleMetaResumeHint is the #1561 session-continuity regression test:
 // the Kimi Code CLI reports the resumable session id via a stdout JSON meta
 // line ({"role":"meta","type":"session.resume_hint",...}) instead of the
-// legacy plain-text/stderr hint, and lark-connect must capture it so the next
+// legacy plain-text/stderr hint, and lark-agent-bot must capture it so the next
 // turn can resume.
 func TestHandleMetaResumeHint(t *testing.T) {
 	ctx := context.Background()

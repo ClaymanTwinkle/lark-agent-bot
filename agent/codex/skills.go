@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // ListSkills asks the same CLI that executes turns for its enabled catalog.
@@ -62,7 +62,7 @@ func (a *Agent) ListSkills(ctx context.Context) ([]*core.Skill, error) {
 	}()
 	reader := bufio.NewReader(stdout)
 	if err := rpcRequestOverIO(stdin, reader, 1, "initialize", map[string]any{
-		"clientInfo": map[string]any{"name": "lark-connect-skills", "version": "1"},
+		"clientInfo": map[string]any{"name": "lark-agent-bot-skills", "version": "1"},
 	}, nil); err != nil {
 		return nil, fmt.Errorf("codex: skills initialize: %w", err)
 	}

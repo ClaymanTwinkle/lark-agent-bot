@@ -1247,7 +1247,7 @@ func TestProcessInteractiveEvents_AppendsReplyFooterWhenEnabled(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("USERPROFILE", homeDir)
-	workDir := filepath.Join(homeDir, "codes", "lark-connect")
+	workDir := filepath.Join(homeDir, "codes", "lark-agent-bot")
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1439,7 +1439,7 @@ func TestProcessInteractiveEvents_DoesNotAppendReplyFooterWhenDisabled(t *testin
 			model:           "gpt-5.4",
 			reasoningEffort: "xhigh",
 		},
-		workDir: filepath.Join(homeDir, "codes", "lark-connect"),
+		workDir: filepath.Join(homeDir, "codes", "lark-agent-bot"),
 		report: &UsageReport{
 			Buckets: []UsageBucket{{
 				Name: "Rate limit",
@@ -1481,7 +1481,7 @@ func TestProcessInteractiveEvents_ReplyFooterPrefersSessionRuntimeState(t *testi
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("USERPROFILE", homeDir)
-	if err := os.MkdirAll(filepath.Join(homeDir, "codes", "lark-connect"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(homeDir, "codes", "lark-agent-bot"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1511,7 +1511,7 @@ func TestProcessInteractiveEvents_ReplyFooterPrefersSessionRuntimeState(t *testi
 	agentSession := newControllableSession("s-footer-runtime")
 	agentSession.model = "gpt-5.4"
 	agentSession.reasoningEffort = "xhigh"
-	sessionWorkDir := filepath.Join(homeDir, "codes", "lark-connect")
+	sessionWorkDir := filepath.Join(homeDir, "codes", "lark-agent-bot")
 	agentSession.workDir = sessionWorkDir
 	agentSession.report = &UsageReport{
 		Buckets: []UsageBucket{{
@@ -2413,13 +2413,13 @@ func TestProcessInteractiveEvents_RichCard_ToolThenNoReply(t *testing.T) {
 
 func TestAgentSystemPrompt_MentionsAttachmentSend(t *testing.T) {
 	prompt := AgentSystemPrompt()
-	if !strings.Contains(prompt, "lark-connect send --image") {
+	if !strings.Contains(prompt, "lark-agent-bot send --image") {
 		t.Fatalf("prompt missing image send instructions: %q", prompt)
 	}
-	if !strings.Contains(prompt, "lark-connect send --file") {
+	if !strings.Contains(prompt, "lark-agent-bot send --file") {
 		t.Fatalf("prompt missing file send instructions: %q", prompt)
 	}
-	if !strings.Contains(prompt, "lark-connect send --tts") {
+	if !strings.Contains(prompt, "lark-agent-bot send --tts") {
 		t.Fatalf("prompt missing tts send instructions: %q", prompt)
 	}
 	if !strings.Contains(prompt, "NO_REPLY") {
@@ -3780,7 +3780,7 @@ func TestCmdHelp_UsesLegacyTextOnPlatformWithoutCardSupport(t *testing.T) {
 	if got := p.sent[0]; got != e.i18n.T(MsgHelp) {
 		t.Fatalf("help text = %q, want legacy help text", got)
 	}
-	if strings.Contains(p.sent[0], "lark-connect 帮助") {
+	if strings.Contains(p.sent[0], "lark-agent-bot 帮助") {
 		t.Fatalf("help text = %q, should not be card title fallback", p.sent[0])
 	}
 	if !strings.Contains(p.sent[0], "/cron [add|list|exec|del|enable|disable]") {
@@ -3827,7 +3827,7 @@ func TestCmdCurrent_UsesLegacyTextOnPlatformWithoutCardSupport(t *testing.T) {
 	if !strings.Contains(p.sent[0], "Focus") {
 		t.Fatalf("current text = %q, want session name 'Focus'", p.sent[0])
 	}
-	if strings.Contains(p.sent[0], "lark-connect") {
+	if strings.Contains(p.sent[0], "lark-agent-bot") {
 		t.Fatalf("current text = %q, should not be card fallback title", p.sent[0])
 	}
 }
@@ -5727,7 +5727,7 @@ func TestSwitchProvider_MultiWorkspaceUsesWorkspaceSessions(t *testing.T) {
 }
 
 // TestSwitchProvider_PersistsToSession verifies that `/provider switch <name>`
-// records the choice on the Session so it survives a lark-connect process
+// records the choice on the Session so it survives a lark-agent-bot process
 // restart. Without this, the agent_session_id keeps the conversation alive
 // while the in-memory active provider reverts to default — see internal
 // task t-20260614-qp7xnl.
@@ -6343,7 +6343,7 @@ func TestRenderListCard_MakesEveryVisibleSessionClickable(t *testing.T) {
 
 	e := NewEngine("test", &stubListAgent{sessions: sessions}, []Platform{&stubPlatformEngine{n: "test"}}, "", LangEnglish)
 	// Register all agent sessions with the session manager so they pass the
-	// owned-session filter (simulates lark-connect having created each session).
+	// owned-session filter (simulates lark-agent-bot having created each session).
 	var internalIDs []string
 	for i, s := range sessions {
 		sess := e.sessions.NewSession("test:user1", "session-"+string(rune('A'+i)))
@@ -8088,10 +8088,10 @@ func TestSetupMemoryFile_WritesInstructions(t *testing.T) {
 	}
 
 	content, _ := os.ReadFile(memFile)
-	if !strings.Contains(string(content), larkConnectInstructionMarker) {
+	if !strings.Contains(string(content), larkAgentBotInstructionMarker) {
 		t.Error("expected instruction marker in file")
 	}
-	if !strings.Contains(string(content), "lark-connect cron add") {
+	if !strings.Contains(string(content), "lark-agent-bot cron add") {
 		t.Error("expected cron instructions in file")
 	}
 }
@@ -8118,7 +8118,7 @@ func TestSetupMemoryFile_Idempotent(t *testing.T) {
 func TestSetupMemoryFile_RefreshesLegacyInstructions(t *testing.T) {
 	tmpDir := t.TempDir()
 	memFile := filepath.Join(tmpDir, "AGENTS.md")
-	legacy := "\n" + larkConnectInstructionMarker + "\nlegacy instructions\n"
+	legacy := "\n" + larkAgentBotInstructionMarker + "\nlegacy instructions\n"
 	if err := os.WriteFile(memFile, []byte(legacy), 0o644); err != nil {
 		t.Fatalf("write legacy mem file: %v", err)
 	}
@@ -8136,7 +8136,7 @@ func TestSetupMemoryFile_RefreshesLegacyInstructions(t *testing.T) {
 	if strings.Contains(string(content), "legacy instructions") {
 		t.Fatalf("legacy instructions should be refreshed, got %q", string(content))
 	}
-	if !strings.Contains(string(content), "lark-connect send --image") {
+	if !strings.Contains(string(content), "lark-agent-bot send --image") {
 		t.Fatalf("expected refreshed attachment instructions, got %q", string(content))
 	}
 }
@@ -8207,11 +8207,11 @@ func TestCmdCronSetup_WritesAndReplies(t *testing.T) {
 		t.Errorf("reply = %q, want to contain filename", p.sent[0])
 	}
 	if !strings.Contains(p.sent[0], "attachment send-back") {
-		t.Errorf("reply = %q, want unified lark-connect setup success message", p.sent[0])
+		t.Errorf("reply = %q, want unified lark-agent-bot setup success message", p.sent[0])
 	}
 
 	content, _ := os.ReadFile(memFile)
-	if !strings.Contains(string(content), larkConnectInstructionMarker) {
+	if !strings.Contains(string(content), larkAgentBotInstructionMarker) {
 		t.Error("expected instructions written to file")
 	}
 }
@@ -8263,7 +8263,7 @@ func TestCmdCronExec_UsageWhenMissingID(t *testing.T) {
 // until late writes have settled.
 func lateWriteTempDir(t *testing.T, stop func()) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "lark-connect-test-*")
+	dir, err := os.MkdirTemp("", "lark-agent-bot-test-*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -8431,7 +8431,7 @@ func TestCmdBindSetup_UsesSharedLogic(t *testing.T) {
 	}
 
 	content, _ := os.ReadFile(memFile)
-	if !strings.Contains(string(content), larkConnectInstructionMarker) {
+	if !strings.Contains(string(content), larkAgentBotInstructionMarker) {
 		t.Error("expected instructions written to file")
 	}
 }
@@ -10087,7 +10087,7 @@ func TestAutoCompress_UsesRealUsageWhenAvailable(t *testing.T) {
 // TestAutoCompress_NoUsage_MakesNoDecision is the inverse of the old
 // TestAutoCompress_FallsBackToHeuristicWhenNoUsage: with no exact API-reported
 // usage available, the default configuration must NOT decide at all. The
-// heuristic counts only lark-connect's own history text, ignoring tool results
+// heuristic counts only lark-agent-bot's own history text, ignoring tool results
 // and the fixed system-prompt+tools overhead, and was measured 2.5x off
 // (574,797 estimated vs 229,783 real) — a guess at that error either compacts
 // early, discarding context still in use, or never compacts.
@@ -10184,7 +10184,7 @@ func TestAutoCompress_HeuristicOptIn_StillTriggers(t *testing.T) {
 }
 
 // noReporterSession is an AgentSession that deliberately does NOT implement
-// ContextUsageReporter — the shape most lark-connect agents (gemini, cursor, kimi,
+// ContextUsageReporter — the shape most lark-agent-bot agents (gemini, cursor, kimi,
 // qoder, iflow, opencode, devin, …) actually have. Embedding the AgentSession
 // *interface* rather than a concrete session is what makes that work: only the
 // interface's methods are promoted, so GetContextUsage stays out of the method
@@ -10202,7 +10202,7 @@ type noReporterSession struct {
 // An agent with no ContextUsageReporter is a different situation: it can never
 // report, so the text-length heuristic is the only mechanism it has ever had.
 // Skipping the decision there would silently disable auto-compress for the
-// majority of lark-connect's agents — a main-path regression, not a fix. This
+// majority of lark-agent-bot's agents — a main-path regression, not a fix. This
 // test fails if the gate is ever widened to `estimateSource == "exact"` alone.
 func TestAutoCompress_AgentWithoutReporter_StillUsesHeuristic(t *testing.T) {
 	p := &stubPlatformEngine{n: "test"}
@@ -11095,7 +11095,7 @@ func TestBuildSenderPrompt_Enabled(t *testing.T) {
 	e.SetInjectSender(true)
 
 	result := e.buildSenderPrompt("hello world", "user123", "Alice", "feishu", "feishu:channel42:user123", "")
-	expected := "[lark-connect sender_id=user123 sender_name=\"Alice\" platform=feishu chat_id=channel42]\nhello world"
+	expected := "[lark-agent-bot sender_id=user123 sender_name=\"Alice\" platform=feishu chat_id=channel42]\nhello world"
 	if result != expected {
 		t.Fatalf("got %q, want %q", result, expected)
 	}
@@ -11126,7 +11126,7 @@ func TestBuildSenderPrompt_EmptyUserName(t *testing.T) {
 	e.SetInjectSender(true)
 
 	result := e.buildSenderPrompt("hello", "user1", "", "feishu", "feishu:ch:user1", "")
-	expected := "[lark-connect sender_id=user1 platform=feishu chat_id=ch]\nhello"
+	expected := "[lark-agent-bot sender_id=user1 platform=feishu chat_id=ch]\nhello"
 	if result != expected {
 		t.Fatalf("got %q, want %q", result, expected)
 	}
@@ -11137,7 +11137,7 @@ func TestBuildSenderPrompt_NameWithSpaces(t *testing.T) {
 	e.SetInjectSender(true)
 
 	result := e.buildSenderPrompt("hi", "U999", "Jim Tang", "slack", "slack:C012:U999", "")
-	expected := "[lark-connect sender_id=U999 sender_name=\"Jim Tang\" platform=slack chat_id=C012]\nhi"
+	expected := "[lark-agent-bot sender_id=U999 sender_name=\"Jim Tang\" platform=slack chat_id=C012]\nhi"
 	if result != expected {
 		t.Fatalf("got %q, want %q", result, expected)
 	}
@@ -11213,7 +11213,7 @@ func TestBuildSenderPrompt_ChannelKeyOverridesSessionKey(t *testing.T) {
 	// When channelKey is provided, it should be used as chat_id instead of
 	// extracting from sessionKey (which would give "g" for dingtalk).
 	result := e.buildSenderPrompt("hello", "staff1", "Alice", "dingtalk", "dingtalk:g:cidXXX:staff1", "cidXXX")
-	expected := "[lark-connect sender_id=staff1 sender_name=\"Alice\" platform=dingtalk chat_id=cidXXX]\nhello"
+	expected := "[lark-agent-bot sender_id=staff1 sender_name=\"Alice\" platform=dingtalk chat_id=cidXXX]\nhello"
 	if result != expected {
 		t.Fatalf("got %q, want %q", result, expected)
 	}
@@ -11226,7 +11226,7 @@ func TestBuildSenderPrompt_FallbackWithoutChannelKey(t *testing.T) {
 	// When channelKey is empty, extractChannelID heuristic should detect
 	// the 4-segment format and extract the correct channel.
 	result := e.buildSenderPrompt("hello", "staff1", "Alice", "dingtalk", "dingtalk:g:cidXXX:staff1", "")
-	expected := "[lark-connect sender_id=staff1 sender_name=\"Alice\" platform=dingtalk chat_id=cidXXX]\nhello"
+	expected := "[lark-agent-bot sender_id=staff1 sender_name=\"Alice\" platform=dingtalk chat_id=cidXXX]\nhello"
 	if result != expected {
 		t.Fatalf("got %q, want %q", result, expected)
 	}
@@ -15195,7 +15195,7 @@ func TestCmdList_RealWorldLegacyDataFullFlow(t *testing.T) {
 }
 
 // TestCmdList_FilterExternalSessionsEnabled verifies that when
-// filter_external_sessions is enabled, only lark-connect-tracked sessions
+// filter_external_sessions is enabled, only lark-agent-bot-tracked sessions
 // appear in /list.
 func TestCmdList_FilterExternalSessionsEnabled(t *testing.T) {
 	agentSessions := []AgentSessionInfo{
@@ -15276,7 +15276,7 @@ func TestCmdList_DefaultShowsAllSessions(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // setupFilterTestEngine creates a test Engine with 3 agent sessions, 2 tracked
-// by lark-connect and 1 external. Returns (engine, platform, userKey, agentSessions).
+// by lark-agent-bot and 1 external. Returns (engine, platform, userKey, agentSessions).
 func setupFilterTestEngine(t *testing.T, filterEnabled bool) (*Engine, *stubPlatformEngine, string, []AgentSessionInfo) {
 	t.Helper()
 	agentSessions := []AgentSessionInfo{
@@ -15951,7 +15951,7 @@ func TestHandlePendingPermission_StalePermissionCallback_Dropped(t *testing.T) {
 
 // ─── Permission keyword tokenization (t-20260614-ayc85z) ────────────────
 // Group-chat platforms (wecom in particular) require the user to
-// @mention the bot for the message to reach lark-connect, so permission
+// @mention the bot for the message to reach lark-agent-bot, so permission
 // replies arrive as "@bot 允许" / "允许 @bot" / etc. rather than the
 // bare keyword. The matchers must tolerate the surrounding mention
 // without losing word-boundary discipline (e.g. must NOT match
@@ -16170,7 +16170,7 @@ func TestHandlePendingPermission_ApproveAllWithMention(t *testing.T) {
 }
 
 // ─── Audio / Video routing (t-20260615-cqjbk1) ────────────────────────
-// `lark-connect send --audio` / `--video` must reach AudioSender /
+// `lark-agent-bot send --audio` / `--video` must reach AudioSender /
 // VideoSender — NOT SendFile. PR #1202 made the CLI flags exist but
 // silently routed clips through SendFile, defeating the
 // transcoding-and-render-as-native-bubble pipeline.

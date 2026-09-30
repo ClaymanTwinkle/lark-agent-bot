@@ -13,7 +13,7 @@ import (
 
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // ─── Issue #1618: fail-closed group filter + supervised retry ─────────────

@@ -215,11 +215,11 @@ func TestRunHookCommand(t *testing.T) {
 		}
 	})
 
-	t.Run("env strips LARK_CONNECT_PERMISSION_HOOK_SKIP", func(t *testing.T) {
-		t.Setenv("LARK_CONNECT_PERMISSION_HOOK_SKIP", "1")
+	t.Run("env strips LARK_AGENT_BOT_PERMISSION_HOOK_SKIP", func(t *testing.T) {
+		t.Setenv("LARK_AGENT_BOT_PERMISSION_HOOK_SKIP", "1")
 		// The hook prints "allow" only if the skip flag is absent.
 		decision, err := runHookCommand(context.Background(),
-			`if [ -n "$LARK_CONNECT_PERMISSION_HOOK_SKIP" ]; then echo deny; else echo allow; fi`, map[string]any{})
+			`if [ -n "$LARK_AGENT_BOT_PERMISSION_HOOK_SKIP" ]; then echo deny; else echo allow; fi`, map[string]any{})
 		if err != nil {
 			t.Fatal(err)
 		}

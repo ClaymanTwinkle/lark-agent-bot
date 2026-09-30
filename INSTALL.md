@@ -1,14 +1,14 @@
-# lark-connect Installation & Configuration Guide
+# lark-agent-bot Installation & Configuration Guide
 
-> **This document is designed to be read by AI coding agents (Claude Code, Cursor, Gemini CLI, etc.) to help users install and configure lark-connect.** You can feed this file directly to your AI agent.
+> **This document is designed to be read by AI coding agents (Claude Code, Cursor, Gemini CLI, etc.) to help users install and configure lark-agent-bot.** You can feed this file directly to your AI agent.
 
-## What is lark-connect?
+## What is lark-agent-bot?
 
-lark-connect bridges local AI coding assistants to **Feishu / Lark** (platform types `feishu` and `lark`).
+lark-agent-bot bridges local AI coding assistants to **Feishu / Lark** (platform types `feishu` and `lark`).
 
-GitHub: https://github.com/ClaymanTwinkle/lark-connect
+GitHub: https://github.com/ClaymanTwinkle/lark-agent-bot
 
-**IMPORTANT: If you are an AI agent helping a user install lark-connect, use interactive tools (like AskUserQuestion) to guide them through configuration choices:**
+**IMPORTANT: If you are an AI agent helping a user install lark-agent-bot, use interactive tools (like AskUserQuestion) to guide them through configuration choices:**
 - Agent selection (Claude Code, Cursor, Gemini, etc.)
 - Platform selection (Feishu or Lark)
 - App credentials (App ID / App Secret), API keys and authentication tokens
@@ -16,45 +16,45 @@ GitHub: https://github.com/ClaymanTwinkle/lark-connect
 
 Don't guess values—always ask the user to choose via interactive prompts.
 
-## Step 1: Install lark-connect
+## Step 1: Install lark-agent-bot
 
 ### Option A: npm (recommended for most users)
 
 ```bash
-npm install -g lark-connect
+npm install -g lark-agent-bot
 ```
 
-After installation, the `lark-connect` binary will be available globally.
+After installation, the `lark-agent-bot` binary will be available globally.
 
 ### Option B: Download binary from GitHub Releases
 
-Go to https://github.com/ClaymanTwinkle/lark-connect/releases and download the archive for your platform. Each release provides:
+Go to https://github.com/ClaymanTwinkle/lark-agent-bot/releases and download the archive for your platform. Each release provides:
 
-- Linux / macOS: `lark-connect-<tag>-<os>-<arch>.tar.gz` (`<os>` = `linux` or `darwin`)
-- Windows: `lark-connect-<tag>-windows-<arch>.zip`
+- Linux / macOS: `lark-agent-bot-<tag>-<os>-<arch>.tar.gz` (`<os>` = `linux` or `darwin`)
+- Windows: `lark-agent-bot-<tag>-windows-<arch>.zip`
 - `checksums.txt` (SHA-256 of all archives)
 
-`<tag>` is the release tag (e.g. `v0.1.0`) and `<arch>` is `amd64` or `arm64`. Each archive contains a single binary named `lark-connect` (`lark-connect.exe` on Windows). Keep that name: lark-connect puts its own directory on the agents' `PATH` so they can run `lark-connect send`, and `lark-connect update` / `/upgrade` install updates under this name. (Archives up to v0.2.4 used the versioned name inside; the first update renames it.)
+`<tag>` is the release tag (e.g. `v0.1.0`) and `<arch>` is `amd64` or `arm64`. Each archive contains a single binary named `lark-agent-bot` (`lark-agent-bot.exe` on Windows). Keep that name: lark-agent-bot puts its own directory on the agents' `PATH` so they can run `lark-agent-bot send`, and `lark-agent-bot update` / `/upgrade` install updates under this name. (Archives up to v0.2.4 used the versioned name inside; the first update renames it.)
 
 ```bash
 # Example for Linux amd64 — set TAG to the release you chose:
 TAG=v0.1.0
 OS=linux      # linux | darwin
 ARCH=amd64    # amd64 | arm64
-curl -LO https://github.com/ClaymanTwinkle/lark-connect/releases/download/${TAG}/lark-connect-${TAG}-${OS}-${ARCH}.tar.gz
-curl -LO https://github.com/ClaymanTwinkle/lark-connect/releases/download/${TAG}/checksums.txt
+curl -LO https://github.com/ClaymanTwinkle/lark-agent-bot/releases/download/${TAG}/lark-agent-bot-${TAG}-${OS}-${ARCH}.tar.gz
+curl -LO https://github.com/ClaymanTwinkle/lark-agent-bot/releases/download/${TAG}/checksums.txt
 sha256sum -c checksums.txt --ignore-missing   # optional: verify the download (macOS: shasum -a 256 -c ...)
-tar xzf lark-connect-${TAG}-${OS}-${ARCH}.tar.gz
-chmod +x lark-connect
-sudo mv lark-connect /usr/local/bin/lark-connect
+tar xzf lark-agent-bot-${TAG}-${OS}-${ARCH}.tar.gz
+chmod +x lark-agent-bot
+sudo mv lark-agent-bot /usr/local/bin/lark-agent-bot
 ```
 
-On Windows, extract the `.zip` and place `lark-connect.exe` in a directory on your `PATH`.
+On Windows, extract the `.zip` and place `lark-agent-bot.exe` in a directory on your `PATH`.
 
 On macOS, you may need to remove the quarantine attribute:
 
 ```bash
-xattr -d com.apple.quarantine /usr/local/bin/lark-connect
+xattr -d com.apple.quarantine /usr/local/bin/lark-agent-bot
 ```
 
 ### Option C: Build from source
@@ -62,15 +62,15 @@ xattr -d com.apple.quarantine /usr/local/bin/lark-connect
 Requires Go 1.25+ and Node.js/npm (`make build` also builds the embedded Web UI; use `make build-noweb` to skip it).
 
 ```bash
-git clone https://github.com/ClaymanTwinkle/lark-connect.git
-cd lark-connect
+git clone https://github.com/ClaymanTwinkle/lark-agent-bot.git
+cd lark-agent-bot
 make build
-# Binary will be at ./lark-connect
+# Binary will be at ./lark-agent-bot
 ```
 
 ## Step 2: Install your AI Agent
 
-lark-connect supports multiple local coding agents. Install at least one:
+lark-agent-bot supports multiple local coding agents. Install at least one:
 
 ```bash
 # Claude Code
@@ -106,22 +106,22 @@ qodercli --version
 
 ## Step 3: Create config.toml
 
-> **💡 Recommended: Use the Web UI** — After installing, run `lark-connect web` to configure the web admin and open the dashboard in your browser. You can visually create projects, add Feishu / Lark bots, manage API providers, and even chat with your agent directly from the browser — no need to edit TOML files by hand. **Note:** `lark-connect web` only configures and opens the browser — you still need to run `lark-connect` separately to start the service.
+> **💡 Recommended: Use the Web UI** — After installing, run `lark-agent-bot web` to configure the web admin and open the dashboard in your browser. You can visually create projects, add Feishu / Lark bots, manage API providers, and even chat with your agent directly from the browser — no need to edit TOML files by hand. **Note:** `lark-agent-bot web` only configures and opens the browser — you still need to run `lark-agent-bot` separately to start the service.
 
-If you prefer manual configuration, lark-connect looks for config in this order:
+If you prefer manual configuration, lark-agent-bot looks for config in this order:
 1. `-config <path>` flag (explicit)
 2. `./config.toml` (current directory)
-3. `~/.lark-connect/config.toml` (global, **recommended**)
+3. `~/.lark-agent-bot/config.toml` (global, **recommended**)
 
-If no config file exists, running `lark-connect` will auto-create a starter template at `~/.lark-connect/config.toml`.
+If no config file exists, running `lark-agent-bot` will auto-create a starter template at `~/.lark-agent-bot/config.toml`.
 
 **Manual config location:**
 
 ```bash
-mkdir -p ~/.lark-connect
+mkdir -p ~/.lark-agent-bot
 # If you cloned the repo, copy the example:
-cp config.example.toml ~/.lark-connect/config.toml
-# Or just run lark-connect once — it will create a starter config automatically
+cp config.example.toml ~/.lark-agent-bot/config.toml
+# Or just run lark-agent-bot once — it will create a starter config automatically
 ```
 
 You can also use a local config in the current directory:
@@ -173,7 +173,7 @@ work_dir = "/absolute/path/to/your/project"
 
 ## Step 4: Configure Feishu / Lark
 
-lark-connect supports Feishu (`type = "feishu"`, https://open.feishu.cn) and Lark international (`type = "lark"`, https://open.larksuite.com). Either way you create a bot app in the developer console and copy its credentials into config.toml.
+lark-agent-bot supports Feishu (`type = "feishu"`, https://open.feishu.cn) and Lark international (`type = "lark"`, https://open.larksuite.com). Either way you create a bot app in the developer console and copy its credentials into config.toml.
 
 ---
 
@@ -185,13 +185,13 @@ Connection: WebSocket long connection (SDK auto-negotiates)
 
 ```bash
 # Recommended: unified entry
-lark-connect feishu setup --project my-project
-lark-connect feishu setup --project my-project --app cli_xxx:sec_xxx
+lark-agent-bot feishu setup --project my-project
+lark-agent-bot feishu setup --project my-project --app cli_xxx:sec_xxx
 
 # Force modes (usually unnecessary)
-lark-connect feishu new --project my-project
+lark-agent-bot feishu new --project my-project
 
-lark-connect feishu bind --project my-project --app cli_xxx:sec_xxx
+lark-agent-bot feishu bind --project my-project --app cli_xxx:sec_xxx
 ```
 
 Notes:
@@ -199,7 +199,7 @@ Notes:
   - no credentials => same as `new`
   - with `--app`/`--app-id` => same as `bind`
 - `setup/new` prints a terminal QR code + URL for mobile scanning.
-- If `--project` does not exist, lark-connect creates it automatically.
+- If `--project` does not exist, lark-agent-bot creates it automatically.
 - This flow fills `app_id` / `app_secret`; in QR onboarding flow, Feishu usually pre-configures permissions and event subscriptions.
 - Still verify app publish status and availability scope in Feishu Open Platform.
 
@@ -251,36 +251,36 @@ See the Lark example in [config.example.toml](config.example.toml) for all optio
 
 ---
 
-## Step 5: Run lark-connect
+## Step 5: Run lark-agent-bot
 
 **Open the Web UI (recommended):**
 
 ```bash
-lark-connect web    # configure web admin & open browser (does NOT start lark-connect)
-lark-connect        # start the service
+lark-agent-bot web    # configure web admin & open browser (does NOT start lark-agent-bot)
+lark-agent-bot        # start the service
 ```
 
-> **Note:** `lark-connect web` only configures the web admin and opens the dashboard in your browser — it does **not** start the lark-connect service itself. You still need to run `lark-connect` (or `lark-connect --config <path>`) separately to actually start the bridge. Think of it as two steps: configure first, then run.
+> **Note:** `lark-agent-bot web` only configures the web admin and opens the dashboard in your browser — it does **not** start the lark-agent-bot service itself. You still need to run `lark-agent-bot` (or `lark-agent-bot --config <path>`) separately to actually start the bridge. Think of it as two steps: configure first, then run.
 
-**Important: If you are running inside a Claude Code session** (e.g., Claude Code helped you install and configure lark-connect), you must unset the `CLAUDECODE` environment variable before starting, otherwise Claude Code will refuse to launch as a subprocess:
+**Important: If you are running inside a Claude Code session** (e.g., Claude Code helped you install and configure lark-agent-bot), you must unset the `CLAUDECODE` environment variable before starting, otherwise Claude Code will refuse to launch as a subprocess:
 
 ```bash
-unset CLAUDECODE && lark-connect
+unset CLAUDECODE && lark-agent-bot
 ```
 
-Alternatively, open a **separate terminal** and run lark-connect there — this avoids the issue entirely.
+Alternatively, open a **separate terminal** and run lark-agent-bot there — this avoids the issue entirely.
 
 **Normal startup:**
 
 ```bash
 # Run with config.toml in current directory
-lark-connect
+lark-agent-bot
 
 # Or specify config path
-lark-connect -config /path/to/config.toml
+lark-agent-bot -config /path/to/config.toml
 
 # Check version
-lark-connect --version
+lark-agent-bot --version
 ```
 
 You should see logs like:
@@ -288,7 +288,7 @@ You should see logs like:
 ```
 level=INFO msg="platform started" project=my-project platform=feishu
 level=INFO msg="engine started" project=my-project agent=claudecode platforms=1
-level=INFO msg="lark-connect is running" projects=1
+level=INFO msg="lark-agent-bot is running" projects=1
 ```
 
 ## Step 6: Chat Commands
@@ -317,7 +317,7 @@ During a session, Claude may ask for tool permissions. Reply:
 
 ## Step 7: Enable Natural Language Scheduling (Non-Claude-Code Agents)
 
-lark-connect supports scheduled tasks (cron jobs). You can always create them via slash commands (`/cron add ...`) or CLI (`lark-connect cron add ...`), but to let the agent **understand natural language** like "every day at 6am, summarize trending repos", the agent needs to know about lark-connect's cron CLI.
+lark-agent-bot supports scheduled tasks (cron jobs). You can always create them via slash commands (`/cron add ...`) or CLI (`lark-agent-bot cron add ...`), but to let the agent **understand natural language** like "every day at 6am, summarize trending repos", the agent needs to know about lark-agent-bot's cron CLI.
 
 **Claude Code** handles this automatically via `--append-system-prompt` — no extra setup needed.
 
@@ -335,59 +335,59 @@ lark-connect supports scheduled tasks (cron jobs). You can always create them vi
 **Content to add** (copy-paste into the file):
 
 ```markdown
-# lark-connect Integration
+# lark-agent-bot Integration
 
-This project is managed via lark-connect, a bridge to Feishu / Lark.
+This project is managed via lark-agent-bot, a bridge to Feishu / Lark.
 
 ## Scheduled tasks (cron)
 When the user asks you to do something on a schedule (e.g. "every day at 6am",
 "every Monday morning"), use the Bash/shell tool to run:
 
-  lark-connect cron add --cron "<min> <hour> <day> <month> <weekday>" --prompt "<task description>" --desc "<short label>"
+  lark-agent-bot cron add --cron "<min> <hour> <day> <month> <weekday>" --prompt "<task description>" --desc "<short label>"
 
 Environment variables CC_PROJECT and CC_SESSION_KEY are already set — do NOT
 specify --project or --session-key.
 
 Examples:
-  lark-connect cron add --cron "0 6 * * *" --prompt "Collect GitHub trending repos and send a summary" --desc "Daily GitHub Trending"
-  lark-connect cron add --cron "0 9 * * 1" --prompt "Generate a weekly project status report" --desc "Weekly Report"
+  lark-agent-bot cron add --cron "0 6 * * *" --prompt "Collect GitHub trending repos and send a summary" --desc "Daily GitHub Trending"
+  lark-agent-bot cron add --cron "0 9 * * 1" --prompt "Generate a weekly project status report" --desc "Weekly Report"
 
 To list, run, edit, or delete cron jobs:
-  lark-connect cron list
-  lark-connect cron exec <job-id>
-  lark-connect cron edit <job-id> <field> <value>
-  lark-connect cron del <job-id>
+  lark-agent-bot cron list
+  lark-agent-bot cron exec <job-id>
+  lark-agent-bot cron edit <job-id> <field> <value>
+  lark-agent-bot cron del <job-id>
 
 Use `cron exec <job-id>` to run an existing scheduled task immediately; this is different from the `--exec <command>` flag used when creating a shell-command cron job.
 Use `cron edit` to modify a single field instead of delete-and-recreate.
 Common editable fields: cron_expr, prompt, exec, description, enabled (true/false), mute (true/false), timeout_mins (int).
-Run `lark-connect cron edit --help` for the full field list.
+Run `lark-agent-bot cron edit --help` for the full field list.
 
 Examples:
-  lark-connect cron exec abc123
-  lark-connect cron edit abc123 cron_expr "0 9 * * *"
-  lark-connect cron edit abc123 enabled false
-  lark-connect cron edit abc123 prompt "Updated daily summary task"
+  lark-agent-bot cron exec abc123
+  lark-agent-bot cron edit abc123 cron_expr "0 9 * * *"
+  lark-agent-bot cron edit abc123 enabled false
+  lark-agent-bot cron edit abc123 prompt "Updated daily summary task"
 
 ## Send message to current chat
 To proactively send a message back to the user's chat session (use --stdin heredoc for long/multi-line messages):
 
-  lark-connect send --stdin <<'CCEOF'
+  lark-agent-bot send --stdin <<'CCEOF'
   your message here (any special characters are safe)
   CCEOF
 
 For short single-line messages:
 
-  lark-connect send -m "short message"
+  lark-agent-bot send -m "short message"
 ```
 
-After adding this file, the agent will be able to translate natural language scheduling requests into `lark-connect cron add` commands automatically.
+After adding this file, the agent will be able to translate natural language scheduling requests into `lark-agent-bot cron add` commands automatically.
 
-> **Tip:** You may want to add `AGENTS.md` / `.cursorrules` / `GEMINI.md` to your `.gitignore` if you don't want lark-connect instructions committed to version control.
+> **Tip:** You may want to add `AGENTS.md` / `.cursorrules` / `GEMINI.md` to your `.gitignore` if you don't want lark-agent-bot instructions committed to version control.
 
 ## Multi-Project Setup
 
-A single lark-connect process can manage multiple projects. Each project has its own agent, work directory, and Feishu / Lark bot app(s):
+A single lark-agent-bot process can manage multiple projects. Each project has its own agent, work directory, and Feishu / Lark bot app(s):
 
 ```toml
 [[projects]]
@@ -505,61 +505,61 @@ app_secret = "xxx"
 ### Check current version
 
 ```bash
-lark-connect --version
+lark-agent-bot --version
 ```
 
 ### Self-update
 
 ```bash
-lark-connect update          # download and install the latest release
-lark-connect update --pre    # include pre-releases
+lark-agent-bot update          # download and install the latest release
+lark-agent-bot update --pre    # include pre-releases
 ```
 
-`lark-connect update` downloads the `lark-connect-<tag>-<os>-<arch>` archive for your platform from GitHub Releases and replaces the running binary.
+`lark-agent-bot update` downloads the `lark-agent-bot-<tag>-<os>-<arch>` archive for your platform from GitHub Releases and replaces the running binary.
 
 ### npm users
 
 ```bash
-npm update -g lark-connect
+npm update -g lark-agent-bot
 ```
 
 ### Binary users
 
-Run `lark-connect update`, or check the latest release at https://github.com/ClaymanTwinkle/lark-connect/releases, download the archive for your platform, and replace the binary as described in [Step 1, Option B](#option-b-download-binary-from-github-releases).
+Run `lark-agent-bot update`, or check the latest release at https://github.com/ClaymanTwinkle/lark-agent-bot/releases, download the archive for your platform, and replace the binary as described in [Step 1, Option B](#option-b-download-binary-from-github-releases).
 
 ### Source users
 
 ```bash
-cd lark-connect
+cd lark-agent-bot
 git pull
 make build
 ```
 
-After upgrading, restart the running lark-connect process.
+After upgrading, restart the running lark-agent-bot process.
 
 ## Step 8: Run as Background Service (Optional)
 
-You can run lark-connect as a daemon managed by the OS init system (Linux systemd user service, macOS launchd LaunchAgent, Windows Task Scheduler task).
+You can run lark-agent-bot as a daemon managed by the OS init system (Linux systemd user service, macOS launchd LaunchAgent, Windows Task Scheduler task).
 
 ### Install the daemon
 
 ```bash
-lark-connect daemon install --config ~/.lark-connect/config.toml
+lark-agent-bot daemon install --config ~/.lark-agent-bot/config.toml
 ```
 
 You can also point the daemon at the directory that contains `config.toml`:
 
 ```bash
-lark-connect daemon install --work-dir ~/.lark-connect
+lark-agent-bot daemon install --work-dir ~/.lark-agent-bot
 ```
 
 Optional flags: `--config PATH`, `--log-file PATH`, `--log-max-size N` (MB), `--work-dir DIR`, `--force` (overwrite existing unit). `--config` points to a config file, while `--work-dir` points to the directory containing `config.toml`.
 
 ### Linux systemd: Keep service running after SSH disconnect
 
-When installed as a user-level systemd service (non-root), lark-connect runs under `user@UID.service`. By default, systemd stops this service when your last login session ends (e.g., SSH disconnect). This is controlled by the "linger" setting.
+When installed as a user-level systemd service (non-root), lark-agent-bot runs under `user@UID.service`. By default, systemd stops this service when your last login session ends (e.g., SSH disconnect). This is controlled by the "linger" setting.
 
-To keep lark-connect running persistently, enable linger for your user:
+To keep lark-agent-bot running persistently, enable linger for your user:
 
 ```bash
 sudo loginctl enable-linger $USER
@@ -570,7 +570,7 @@ After enabling linger, `user@UID.service` remains active even when you log out. 
 Alternatively, you can install as a system-level service (requires root):
 
 ```bash
-sudo lark-connect daemon install --config ~/.lark-connect/config.toml
+sudo lark-agent-bot daemon install --config ~/.lark-agent-bot/config.toml
 ```
 
 System-level services are independent of login sessions.
@@ -578,32 +578,32 @@ System-level services are independent of login sessions.
 ### Control the service
 
 ```bash
-lark-connect daemon start
-lark-connect daemon stop
-lark-connect daemon restart
-lark-connect daemon status
+lark-agent-bot daemon start
+lark-agent-bot daemon stop
+lark-agent-bot daemon restart
+lark-agent-bot daemon status
 ```
 
 ### View logs
 
 ```bash
-lark-connect daemon logs           # tail current log
-lark-connect daemon logs -f         # follow (like tail -f)
-lark-connect daemon logs -n 100     # last 100 lines
-lark-connect daemon logs --log-file /path/to/log  # custom log file
+lark-agent-bot daemon logs           # tail current log
+lark-agent-bot daemon logs -f         # follow (like tail -f)
+lark-agent-bot daemon logs -n 100     # last 100 lines
+lark-agent-bot daemon logs --log-file /path/to/log  # custom log file
 ```
 
 Logs auto-rotate at the configured max size and keep one backup.
 
-On Windows, `daemon install` creates a native Task Scheduler task named `lark-connect`.
+On Windows, `daemon install` creates a native Task Scheduler task named `lark-agent-bot`.
 The task runs at user logon and is also started immediately after installation. The
-installer writes a small PowerShell launcher under `~/.lark-connect` so the scheduled
+installer writes a small PowerShell launcher under `~/.lark-agent-bot` so the scheduled
 task uses the selected config directory, log file, PATH, and proxy environment.
 
 ### Uninstall
 
 ```bash
-lark-connect daemon uninstall
+lark-agent-bot daemon uninstall
 ```
 
 ## Additional Features
@@ -620,10 +620,10 @@ The following additional features are available:
 - **Voice Reply (TTS)**: Text-to-speech via Qwen / OpenAI / MiniMax / MiMo / local providers. Requires `ffmpeg` and `[tts]` config.
 - **Image Messages**: Send images to Claude Code for multimodal analysis
 - **API Provider Management**: Runtime switching between API providers via `/provider` command or CLI
-- **CLI Send**: `lark-connect send` to inject messages into active sessions from external processes
+- **CLI Send**: `lark-agent-bot send` to inject messages into active sessions from external processes
 
 ## Troubleshooting
 
 - **"session already in use"** — A previous Claude Code process may still be running. Use `/new` to start a fresh session.
-- **No response from bot** — Check `lark-connect` logs. Set `level = "debug"` in `[log]` for verbose output.
-- **macOS binary won't open** — Run `xattr -d com.apple.quarantine /usr/local/bin/lark-connect` (or wherever you placed the binary) to remove quarantine flag.
+- **No response from bot** — Check `lark-agent-bot` logs. Set `level = "debug"` in `[log]` for verbose output.
+- **macOS binary won't open** — Run `xattr -d com.apple.quarantine /usr/local/bin/lark-agent-bot` (or wherever you placed the binary) to remove quarantine flag.

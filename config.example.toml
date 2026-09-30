@@ -1,5 +1,5 @@
-# lark-connect configuration
-# lark-connect 配置文件
+# lark-agent-bot configuration
+# lark-agent-bot 配置文件
 #
 # Copy this file to config.toml and fill in your credentials.
 # 复制此文件为 config.toml，填入你的凭证信息。
@@ -9,9 +9,9 @@
 # 例如：app_secret = "${FEISHU_APP_SECRET}"
 #
 # Each [[projects]] entry binds one code directory to its own agent + platforms.
-# A single lark-connect process can manage multiple projects simultaneously.
+# A single lark-agent-bot process can manage multiple projects simultaneously.
 # 每个 [[projects]] 将一个代码目录绑定到独立的 agent 和平台。
-# 单个 lark-connect 进程可以同时管理多个项目。
+# 单个 lark-agent-bot 进程可以同时管理多个项目。
 
 # =============================================================================
 # Global Settings / 全局设置
@@ -34,38 +34,38 @@
 # 初始化命令，会添加到每条 shell 命令前面。用于加载 profile，使自定义函数和别名可用。
 # shell_profile = "source ~/.zshrc"
 
-# Session data storage directory (default: ~/.lark-connect)
+# Session data storage directory (default: ~/.lark-agent-bot)
 # Stores conversation history and session state as JSON files.
-# 会话数据存储目录（默认 ~/.lark-connect），以 JSON 文件保存对话历史和会话状态。
+# 会话数据存储目录（默认 ~/.lark-agent-bot），以 JSON 文件保存对话历史和会话状态。
 # data_dir = "/path/to/custom/dir"
 
-# Attachment send-back switch for `lark-connect send --image/--file`.
+# Attachment send-back switch for `lark-agent-bot send --image/--file`.
 # Independent from the agent's /mode. Set to "off" to block IM image/file send-back.
-# `lark-connect send --message` without attachments is unaffected.
-# 附件回传开关，用于控制 `lark-connect send --image/--file`。
+# `lark-agent-bot send --message` without attachments is unaffected.
+# 附件回传开关，用于控制 `lark-agent-bot send --image/--file`。
 # 它与 agent 的 /mode 独立；设为 "off" 会禁用通过 IM 回传图片/文件。
-# 不带附件的 `lark-connect send --message` 不受影响。
+# 不带附件的 `lark-agent-bot send --message` 不受影响。
 # attachment_send = "on"
 
-# Maximum size of a single attachment (in MiB) for `lark-connect send
+# Maximum size of a single attachment (in MiB) for `lark-agent-bot send
 # --file/--image/--audio/--video` and the /send API. Default: 50 (i.e. 50 MiB).
 # Set 0 to keep the default. Raise it to send larger files; the /send request
 # body limit scales with this value to fit base64-encoded attachments.
 # Can also be overridden by the CC_MAX_ATTACHMENT_SIZE_MB env var (same MiB
 # unit; takes precedence over this option when set).
-# `lark-connect send` 单个附件的最大大小（单位 MiB）。默认 50（即 50 MiB），设 0 保持默认。
+# `lark-agent-bot send` 单个附件的最大大小（单位 MiB）。默认 50（即 50 MiB），设 0 保持默认。
 # 调大可发送更大文件；/send 请求体上限会随之按 base64 膨胀自动放大。
 # 也可用环境变量 CC_MAX_ATTACHMENT_SIZE_MB 覆盖（同样单位 MiB；设置后优先级高于本配置项）。
 # max_attachment_size_mb = 50
 
 # Stale busy-lock self-heal threshold (minutes). When a message arrives, the
 # session is busy, the agent process is dead, and the lock has been held longer
-# than this, lark-connect dumps goroutine stacks to the OS temp dir, breaks the
+# than this, lark-agent-bot dumps goroutine stacks to the OS temp dir, breaks the
 # lock, and processes the message in a fresh turn. Live agents are never
 # touched (process-alive gate), so long-running turns are safe at any value.
 # Default: 2 (just above the 120s graceful-stop wait). 0 disables the breaker.
 # 会话忙锁自愈阈值（分钟）。消息到达时会话忙、agent 进程已死、且锁持有超过该时长时，
-# lark-connect 会把 goroutine 栈转储到系统临时目录、破锁并在新 turn 中处理该消息。
+# lark-agent-bot 会把 goroutine 栈转储到系统临时目录、破锁并在新 turn 中处理该消息。
 # 存活的长任务永远不会被触碰（进程存活门控），任何取值都安全。
 # 默认 2（略高于 120 秒优雅停止等待）。设 0 关闭该自愈。
 # busy_timeout_mins = 2
@@ -83,7 +83,7 @@ level = "info" # debug, info, warn, error
 #
 # Remote presets URL (fetches recommended providers list from GitHub/Gitee)
 # 远程预设列表 URL（从 GitHub/Gitee 拉取推荐服务商）
-# provider_presets_url = "https://raw.githubusercontent.com/ClaymanTwinkle/lark-connect/main/provider-presets.json"
+# provider_presets_url = "https://raw.githubusercontent.com/ClaymanTwinkle/lark-agent-bot/main/provider-presets.json"
 
 # [[providers]]
 # name = "anthropic"
@@ -171,7 +171,7 @@ level = "info" # debug, info, warn, error
 
 # Auto-reset the active session after the user has been inactive for a while.
 # Unlike idle_timeout_mins, this does not detect stuck agent execution. It
-# rotates to a fresh lark-connect session when the user comes back after being idle.
+# rotates to a fresh lark-agent-bot session when the user comes back after being idle.
 # This avoids "context drift", where stale chat history (failed commands,
 # debugging noise, abandoned tangents) gets re-ingested via --continue every
 # time the workspace pool evicts the session, and starts to dominate the model's
@@ -187,14 +187,14 @@ level = "info" # debug, info, warn, error
 # reset_on_idle_mins = 30   # default when unset / 未设置时的默认值；设为 0 表示禁用
 
 # Close an idle live agent process after a clean turn while preserving the
-# lark-connect session and saved agent session ID. The next message in the same
+# lark-agent-bot session and saved agent session ID. The next message in the same
 # chat/thread starts a new agent process and resumes the same conversation.
 # This is per chat session/thread, unlike workspace_idle_timeout_mins which
 # reaps an entire workspace. Set to 0 or leave unset to disable.
 # Unlike reset_on_idle_mins, this defaults to disabled because closing a live
 # agent process is an opt-in resource optimization.
 # 在单次对话正常完成后，如果该聊天会话/主题长时间没有新消息，则关闭对应的 live agent
-# 进程，但保留 lark-connect 会话和已保存的 agent_session_id。下次同一会话有消息时会
+# 进程，但保留 lark-agent-bot 会话和已保存的 agent_session_id。下次同一会话有消息时会
 # 重新启动 agent 进程并续接原会话。这是按会话/主题生效，不同于按 workspace 回收的
 # workspace_idle_timeout_mins。设为 0 或不设置表示禁用。
 # 与 reset_on_idle_mins 不同，此项默认禁用，因为关闭 live agent 进程属于显式开启的资源优化。
@@ -208,7 +208,7 @@ level = "info" # debug, info, warn, error
 #
 # Spawn a project's agent command under a different Unix user via
 # `sudo -n -iu <user>`. This provides OS-level file-system isolation from
-# the supervisor user that runs lark-connect itself, so a misbehaving agent
+# the supervisor user that runs lark-agent-bot itself, so a misbehaving agent
 # cannot read files outside the target user's permission scope.
 #
 # Currently supported by: claudecode.
@@ -221,15 +221,15 @@ level = "info" # debug, info, warn, error
 #        # install claude CLI, set up ~/.claude/settings.json, PGSSL certs,
 #        # ~/.pgpass, plugin state, anything the agent needs.
 #   2. Grant the supervisor user passwordless sudo to the target:
-#        # /etc/sudoers.d/lark-connect
+#        # /etc/sudoers.d/lark-agent-bot
 #        partseeker-orchestrator ALL=(partseeker-coder) NOPASSWD: ALL
 #   3. Ensure the target user does NOT have passwordless sudo to anywhere
 #      else. `sudo -n -iu partseeker-coder -- sudo -n true` must fail.
 #   4. Ensure the target user can read AND write the project's work_dir.
-#   5. Run `lark-connect doctor user-isolation` to audit the setup before
-#      starting lark-connect.
+#   5. Run `lark-agent-bot doctor user-isolation` to audit the setup before
+#      starting lark-agent-bot.
 #
-# lark-connect refuses to start if any preflight gate fails (missing sudo,
+# lark-agent-bot refuses to start if any preflight gate fails (missing sudo,
 # target can escalate, work_dir inaccessible) or if the isolation probe
 # detects that the target user can read another user's secrets.
 #
@@ -303,18 +303,18 @@ level = "info" # debug, info, warn, error
 # =============================================================================
 # Relay Settings / Relay 设置
 # =============================================================================
-# Bot-to-bot relay settings. timeout_secs controls how long lark-connect waits for
-# the target bot to finish responding during `lark-connect relay send`.
+# Bot-to-bot relay settings. timeout_secs controls how long lark-agent-bot waits for
+# the target bot to finish responding during `lark-agent-bot relay send`.
 # visibility controls the extra group-chat echo only; the caller still receives
 # the target response from the relay command when visibility is "none".
-# Bot 间 relay 设置。timeout_secs 控制 `lark-connect relay send` 等待目标 bot
+# Bot 间 relay 设置。timeout_secs 控制 `lark-agent-bot relay send` 等待目标 bot
 # 完成回复的最长时间。visibility 只控制群内额外可见消息；设为 "none" 时调用方
 # 仍会从 relay 命令拿到目标回复。
 
 # [relay]
 # timeout_secs = 120        # Max relay wait in seconds; 0 = disabled (default: 120) / relay 最大等待秒数；0 = 禁用（默认 120）
 # visibility = "full"       # "full" (default), "summary", or "none" / 群内可见消息：完整、摘要或不显示
-# peers_dir = "/srv/lark-connect/relay-peers"  # Registry shared by local lark-connect processes so relay reaches projects in other processes; all processes must use the same dir (default: <home>/.lark-connect/relay-peers) / 本机各 lark-connect 进程共享的登记目录，relay 靠它找到其他进程里的项目，各进程必须一致（默认 <home>/.lark-connect/relay-peers）
+# peers_dir = "/srv/lark-agent-bot/relay-peers"  # Registry shared by local lark-agent-bot processes so relay reaches projects in other processes; all processes must use the same dir (default: <home>/.lark-agent-bot/relay-peers) / 本机各 lark-agent-bot 进程共享的登记目录，relay 靠它找到其他进程里的项目，各进程必须一致（默认 <home>/.lark-agent-bot/relay-peers）
 
 # =============================================================================
 # Auto-Compress (after each turn) / 自动压缩（每轮结束后）
@@ -342,14 +342,14 @@ level = "info" # debug, info, warn, error
 # allow_heuristic = false  # decide from the text-length heuristic when an agent that
 #                          # CAN report exact usage has not reported it yet. Off by
 #                          # default: wait for the exact number instead. The heuristic
-#                          # counts only lark-connect's own history text, ignoring tool
+#                          # counts only lark-agent-bot's own history text, ignoring tool
 #                          # results and the fixed system-prompt+tools overhead, so it
 #                          # is routinely several times off. Agents with no usage
 #                          # reporting at all always use the heuristic — for them it is
 #                          # the only mechanism available, and this flag does not apply.
 #                          # 当「有能力上报精确用量的 agent」暂时还没上报时，是否退回文本
 #                          # 长度启发式估算。默认关闭：宁可等到精确值。该启发式只统计
-#                          # lark-connect 自身的对话文本，忽略 tool_result 与系统提示词/
+#                          # lark-agent-bot 自身的对话文本，忽略 tool_result 与系统提示词/
 #                          # 工具定义的固定开销，误差常达数倍。完全没有用量上报能力的
 #                          # agent 始终使用启发式——那是它们唯一的机制，本开关对其无效。
 
@@ -463,12 +463,12 @@ level = "info" # debug, info, warn, error
 # [[hooks]]
 # event = "error"
 # type = "http"
-# url = "https://my-server.com/lark-connect/on-error"
+# url = "https://my-server.com/lark-agent-bot/on-error"
 #
 # [[hooks]]
 # event = "*"
 # type = "http"
-# url = "https://my-server.com/lark-connect/events"
+# url = "https://my-server.com/lark-agent-bot/events"
 
 # =============================================================================
 # Speech-to-Text (Voice Messages) / 语音转文字（语音消息）
@@ -544,15 +544,15 @@ level = "info" # debug, info, warn, error
 # # 备选：MiniMax TTS（T2A v2 流式 API）
 # # Docs: https://platform.minimaxi.com/document/T2A%20V2
 # [tts.minimax]
-# api_key  = "your-minimax-api-key" # optional: if empty, lark-connect reads ~/.lark-connect/config/minimax.json
+# api_key  = "your-minimax-api-key" # optional: if empty, lark-agent-bot reads ~/.lark-agent-bot/config/minimax.json
 # base_url = ""              # optional: default "https://api.minimaxi.com" / 留空使用默认地址
 # model    = "speech-2.8-hd" # "speech-2.8-hd" | "speech-2.8"
 # config_file = ""           # optional MiniMax JSON config path; default data_dir/config/minimax.json
 #
 # # Per-project/agent voice overrides. Keys match [[projects]].name.
 # # 每个项目/Agent 可单独覆盖音色；key 与 [[projects]].name 一致。
-# # Agent tool command: lark-connect send --tts <text>
-# # Agent 工具命令：lark-connect send --tts <文本>
+# # Agent tool command: lark-agent-bot send --tts <text>
+# # Agent 工具命令：lark-agent-bot send --tts <文本>
 # [tts.agents.assistant]
 # voice_id = "Chinese (Mandarin)_Crisp_Girl"
 # speed = 0.98
@@ -573,10 +573,10 @@ level = "info" # debug, info, warn, error
 # =============================================================================
 # Daemon Mode / 守护进程模式
 # =============================================================================
-# Run lark-connect as a background service (systemd user / launchd LaunchAgent).
-# 将 lark-connect 作为后台服务运行（systemd 用户服务 / launchd LaunchAgent）。
+# Run lark-agent-bot as a background service (systemd user / launchd LaunchAgent).
+# 将 lark-agent-bot 作为后台服务运行（systemd 用户服务 / launchd LaunchAgent）。
 #
-# CLI: lark-connect daemon install|uninstall|start|stop|restart|status|logs
+# CLI: lark-agent-bot daemon install|uninstall|start|stop|restart|status|logs
 # Install: --log-file PATH, --log-max-size N (MB), --work-dir DIR, --force
 # Logs: -f/--follow, -n N, --log-file PATH
 # 配置均通过 CLI 参数，无需在此文件中设置。
@@ -662,9 +662,9 @@ level = "info" # debug, info, warn, error
 #   /commands del finduser
 #   /commands         — list all custom commands
 #
-# In addition, lark-connect auto-discovers .md files from the agent's commands
+# In addition, lark-agent-bot auto-discovers .md files from the agent's commands
 # directory (e.g. .claude/commands/*.md, .gemini/commands/*.md).
-# 此外，lark-connect 还会自动发现 Agent 的 commands 目录下的 .md 文件。
+# 此外，lark-agent-bot 还会自动发现 Agent 的 commands 目录下的 .md 文件。
 
 # =============================================================================
 # Banned Words / 违禁词
@@ -754,10 +754,10 @@ name = "my-backend"
 #                                                     # 禁用该项目的指定命令
 #
 # filter_external_sessions: when true, /list /switch /delete only show sessions
-# created by lark-connect, hiding sessions from direct CLI usage in the same work_dir.
+# created by lark-agent-bot, hiding sessions from direct CLI usage in the same work_dir.
 # Default false = show all sessions from the agent.
 # filter_external_sessions = false
-# filter_external_sessions：为 true 时，/list /switch /delete 仅显示由 lark-connect 创建的会话，
+# filter_external_sessions：为 true 时，/list /switch /delete 仅显示由 lark-agent-bot 创建的会话，
 # 隐藏在相同 work_dir 下通过直接 CLI 创建的会话。默认 false = 显示 agent 的全部会话。
 #
 # shell = "/bin/fish"                        # Per-project shell override / 项目级 shell 覆盖
@@ -873,7 +873,7 @@ mode = "auto" # "auto" (default when unset) | "default" (manual) | "acceptEdits"
 # max_context_tokens = 400000
 
 # Optional: override the context-window size used by the "ctx N%" indicator
-# in IM replies. By default lark-connect uses the window Claude Code reports
+# in IM replies. By default lark-agent-bot uses the window Claude Code reports
 # in each turn's result (modelUsage.contextWindow); before the first turn
 # completes it infers 200K vs 1M from the model id (anything containing
 # `[1m]` is treated as 1M). Set this when running against a custom router /
@@ -942,8 +942,8 @@ mode = "auto" # "auto" (default when unset) | "default" (manual) | "acceptEdits"
 # router_url = "http://127.0.0.1:3456"  # Claude Code Router URL (default: http://127.0.0.1:3456)
 # router_api_key = "your-router-api-key" # Optional: API key if router requires authentication / 可选：如果 router 需要认证
 #
-# When router_url is set, lark-connect will automatically:
-# 设置 router_url 后，lark-connect 会自动：
+# When router_url is set, lark-agent-bot will automatically:
+# 设置 router_url 后，lark-agent-bot 会自动：
 #   - Set ANTHROPIC_BASE_URL to router_url
 #   - Set NO_PROXY=127.0.0.1 to prevent proxy interference
 #   - Disable telemetry and cost warnings for cleaner integration
@@ -960,7 +960,7 @@ mode = "auto" # "auto" (default when unset) | "default" (manual) | "acceptEdits"
 # provider_refs = ["minimaxi", "dashscope"]
 
 # API Providers — switch between them via /provider command in chat
-# or via CLI: lark-connect provider add --project my-backend --name relay --api-key sk-xxx
+# or via CLI: lark-agent-bot provider add --project my-backend --name relay --api-key sk-xxx
 # API Provider 管理 — 可通过聊天命令 /provider 或 CLI 命令切换
 #
 # [[projects.agent.providers]]
@@ -995,7 +995,7 @@ mode = "auto" # "auto" (default when unset) | "default" (manual) | "acceptEdits"
 # # Only use it for non-Claude models: current Claude models (Opus 5.5, Fable 5.x)
 # # reject thinking {type: "disabled"} with HTTP 400.
 # # 部分第三方 Provider（如硅基流动）不支持 Claude 的 adaptive thinking，
-# # 设置 thinking = "disabled" 后 lark-connect 会通过本地代理自动改写请求。
+# # 设置 thinking = "disabled" 后 lark-agent-bot 会通过本地代理自动改写请求。
 # # 仅用于非 Claude 模型：当前 Claude 模型（Opus 5.5、Fable 5.x）收到
 # # thinking {type: "disabled"} 会直接返回 HTTP 400。
 # [[projects.agent.providers]]
@@ -1044,10 +1044,10 @@ mode = "auto" # "auto" (default when unset) | "default" (manual) | "acceptEdits"
 # # thinking = "disabled"
 
 # Reference normalization and rendering / 本地引用标准化与展示优化
-# Disabled by default. When enabled, lark-connect can normalize Codex / Claude Code
+# Disabled by default. When enabled, lark-agent-bot can normalize Codex / Claude Code
 # local file references (paths, line refs, markdown file links) and re-render them
 # into a more readable platform-friendly form before sending to supported IMs.
-# 默认关闭。启用后，lark-connect 可对 Codex / Claude Code 的本地文件引用
+# 默认关闭。启用后，lark-agent-bot 可对 Codex / Claude Code 的本地文件引用
 # （路径、行号引用、Markdown 文件链接）做标准化，并在发送到支持的平台前
 # 重新渲染为更易读的展示形式。
 #
@@ -1072,8 +1072,8 @@ mode = "auto" # "auto" (default when unset) | "default" (manual) | "acceptEdits"
 #    添加 im.message.receive_v1 事件，选择 WebSocket 长连接模式
 # 4. Fill in app_id and app_secret below / 填入下方 app_id 和 app_secret
 # Quick setup via CLI:
-#   lark-connect feishu setup --project <project_name>
-# （可通过 CLI 快速配置：lark-connect feishu setup --project <project_name>）
+#   lark-agent-bot feishu setup --project <project_name>
+# （可通过 CLI 快速配置：lark-agent-bot feishu setup --project <project_name>）
 # Note: No WebSocket URL needed — the SDK auto-negotiates the connection.
 # 注意：无需配置 WebSocket URL，SDK 会自动通过凭证建立连接。
 
@@ -1129,12 +1129,12 @@ app_secret = "your-feishu-app-secret"
 #                           # 其他机器人的 app_id -> 显示名。用于标注引用的机器人消息，并允许这些机器人给本机器人派活。
 # image_batch_window_ms = 500  # Coalesce window for consecutive images from the same session (default: 500ms).
 #                              # When the Feishu mobile client sends multiple images, each arrives as a separate
-#                              # event; lark-connect buffers them and dispatches a single multi-image message once
+#                              # event; lark-agent-bot buffers them and dispatches a single multi-image message once
 #                              # no new image arrives within this window. Raise it (e.g. 800–1200ms) if your
 #                              # network or device routinely sends images more than 500ms apart and they still
 #                              # split into multiple agent turns; lower it for snappier single-image responses.
 #                              # 来自同一会话的连续图片消息的合批窗口（默认 500ms）。飞书手机端连续发图时每张
-#                              # 都是独立事件，lark-connect 会在窗口内将它们合并成一条多图消息再分发；如果你的
+#                              # 都是独立事件，lark-agent-bot 会在窗口内将它们合并成一条多图消息再分发；如果你的
 #                              # 网络或设备发送间隔超过 500ms 且仍被拆成多轮，可调高（如 800–1200ms）；如果
 #                              # 只是单图发送，希望响应更快，也可以适当调低。
 
@@ -1294,10 +1294,10 @@ app_secret = "your-feishu-app-secret"
 # reasoning_effort = "high"  # "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
 #
 # Optional: project system prompt / 可选：项目系统提示
-# Codex has no native system-prompt flag, so lark-connect injects this as a
+# Codex has no native system-prompt flag, so lark-agent-bot injects this as a
 # preamble prepended to your first message of each new session (resumed
 # sessions are not re-injected).
-# Codex 没有原生的系统提示参数，lark-connect 会将其作为前导内容注入到每个新
+# Codex 没有原生的系统提示参数，lark-agent-bot 会将其作为前导内容注入到每个新
 # 会话的第一条消息之前（恢复的会话不会重复注入）。
 # system_prompt = "You are a helpful AI assistant that specializes in Python development."
 #
@@ -1401,7 +1401,7 @@ app_secret = "your-feishu-app-secret"
 # startup_wait_ms = 2000       # milliseconds to wait after init_command before accepting messages (default: 2000 when init_command is set)
 # prompt_pattern = '[\$#>%]\s*$'  # regex to detect shell prompt = command done (default shown)
 # poll_interval_ms = 200       # output poll interval in milliseconds (default: 200)
-# window_per_session = false   # When true, each lark-connect session gets its OWN tmux window
+# window_per_session = false   # When true, each lark-agent-bot session gets its OWN tmux window
 #                              # (own init_command/agent instance) instead of sharing one pane.
 #                              # Enable this for true isolation when the platform splits sessions
 #                              # (e.g. per-thread sessions); otherwise all sessions
@@ -1465,8 +1465,8 @@ app_secret = "your-feishu-app-secret"
 # =============================================================================
 # Requires: npm install -g @mariozechner/pi-coding-agent
 # 需要安装：npm install -g @mariozechner/pi-coding-agent
-# Pi is an AI coding agent that speaks two protocols to lark-connect:
-# Pi 是 AI 编程 agent，通过两种协议与 lark-connect 通信：
+# Pi is an AI coding agent that speaks two protocols to lark-agent-bot:
+# Pi 是 AI 编程 agent，通过两种协议与 lark-agent-bot 通信：
 #
 #   - "json" mode (default): one-shot `pi --mode json` per turn. No UI
 #     forwarding — any tool call that needs permission is silently
@@ -1486,12 +1486,12 @@ app_secret = "your-feishu-app-secret"
 #     Pi。**这是你想要的模式。**
 #
 # Pi extensions that need user interaction must use the standard UI methods
-# (ctx.ui.confirm, ctx.ui.select, ctx.ui.input) so lark-connect can intercept
+# (ctx.ui.confirm, ctx.ui.select, ctx.ui.input) so lark-agent-bot can intercept
 # them. If you write your own extensions, do NOT roll custom stdin prompts —
-# they will be invisible to lark-connect and silently dropped.
+# they will be invisible to lark-agent-bot and silently dropped.
 # 需要与用户交互的 Pi 扩展必须使用标准 UI 方法（ctx.ui.confirm、
-# ctx.ui.select、ctx.ui.input），lark-connect 才能截获。如果你自己写
-# 扩展，不要自己往 stdin 里塞 prompt——lark-connect 看不到，会被静默丢弃。
+# ctx.ui.select、ctx.ui.input），lark-agent-bot 才能截获。如果你自己写
+# 扩展，不要自己往 stdin 里塞 prompt——lark-agent-bot 看不到，会被静默丢弃。
 #
 # Configuration options:
 # - rpc = true|false: enable RPC mode (default: false)
@@ -1523,18 +1523,18 @@ app_secret = "your-feishu-app-secret"
 # Project: Devin CLI (Cognition, https://cli.devin.ai/) / 使用 Devin CLI
 # =============================================================================
 # Devin speaks the Agent Client Protocol (ACP) over stdio via its `devin acp`
-# subcommand. lark-connect ships a first-class `type = "devin"` agent that pins
+# subcommand. lark-agent-bot ships a first-class `type = "devin"` agent that pins
 # the command / args / display name so you don't have to.
-# Devin 通过 `devin acp` 子命令使用 ACP 协议与 lark-connect 通信。lark-connect 内置
+# Devin 通过 `devin acp` 子命令使用 ACP 协议与 lark-agent-bot 通信。lark-agent-bot 内置
 # `type = "devin"` 的一级支持：无需手动指定 command/args，默认值就能跑通。
 #
 # Prerequisites / 前置条件:
 #   1. Install Devin CLI per the official docs at https://cli.devin.ai/
 #      安装 Devin CLI，见官方文档 https://cli.devin.ai/
 #   2. Run `devin auth login` once — credentials are stored locally and the
-#      ACP subprocess reads them automatically. lark-connect never sees the token.
+#      ACP subprocess reads them automatically. lark-agent-bot never sees the token.
 #      运行一次 `devin auth login` 完成登录；ACP 子进程会自动读取本地凭证，
-#      lark-connect 全程不接触 token。
+#      lark-agent-bot 全程不接触 token。
 #   3. Windsurf Enterprise users can alternatively inject WINDSURF_API_KEY
 #      via the agent env option (see below).
 #      Windsurf 企业版用户也可以通过下面的 env 注入 WINDSURF_API_KEY。
@@ -1598,7 +1598,7 @@ app_secret = "your-feishu-app-secret"
 
 # --- Example: OpenClaw (Gateway-backed ACP bridge) ---
 # Docs: https://docs.openclaw.ai/cli/acp
-# Install the OpenClaw CLI, run a Gateway, then point lark-connect at `openclaw acp`.
+# Install the OpenClaw CLI, run a Gateway, then point lark-agent-bot at `openclaw acp`.
 #
 # IMPORTANT: Remote OpenClaw requires pairing authorization before use!
 #
@@ -1606,7 +1606,7 @@ app_secret = "your-feishu-app-secret"
 #   1. Start OpenClaw gateway: openclaw acp --url wss://your-gateway:18789
 #   2. In another terminal, run: openclaw pair
 #   3. Approve the pairing request in the OpenClaw UI
-#   4. Now lark-connect can communicate with the authorized gateway
+#   4. Now lark-agent-bot can communicate with the authorized gateway
 #
 # Without pairing, OpenClaw will return empty responses ("pairing required" error).
 # Reference: https://zhuanlan.zhihu.com/p/2005687480976970296
@@ -1773,7 +1773,7 @@ app_secret = "your-feishu-app-secret"
 # GitHub Copilot CLI uses --headless --stdio for JSON-RPC communication.
 # GitHub Copilot CLI 使用 --headless --stdio 进行 JSON-RPC 通信。
 # The generic ACP configuration above is also supported; this first-class agent
-# adds lark-connect model/mode switching plus session list/delete integration.
+# adds lark-agent-bot model/mode switching plus session list/delete integration.
 
 # [[projects]]
 # name = "my-copilot-project"

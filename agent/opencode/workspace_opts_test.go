@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // TestWorkspaceAgentOptions_PreservesProjectEnv is a regression test for the

@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	defaultPresetsURL          = "https://raw.githubusercontent.com/ClaymanTwinkle/lark-connect/main/provider-presets.json"
-	fallbackPresetsURL         = "https://cdn.jsdelivr.net/gh/ClaymanTwinkle/lark-connect@main/provider-presets.json"
+	defaultPresetsURL          = "https://raw.githubusercontent.com/ClaymanTwinkle/lark-agent-bot/main/provider-presets.json"
+	fallbackPresetsURL         = "https://cdn.jsdelivr.net/gh/ClaymanTwinkle/lark-agent-bot@main/provider-presets.json"
 	presetsCacheTTL            = 6 * time.Hour
 	presetsHTTPTimeout         = 15 * time.Second
 	presetsFallbackHTTPTimeout = 10 * time.Second

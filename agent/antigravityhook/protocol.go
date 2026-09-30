@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	EnvAddress = "LARK_CONNECT_AGY_PERMISSION_ADDR"
-	EnvToken   = "LARK_CONNECT_AGY_PERMISSION_TOKEN"
+	EnvAddress = "LARK_AGENT_BOT_AGY_PERMISSION_ADDR"
+	EnvToken   = "LARK_AGENT_BOT_AGY_PERMISSION_TOKEN"
 
 	maxHookInput          = 4 << 20
 	bridgeDialTimeout     = 5 * time.Second
@@ -28,7 +28,7 @@ type BridgeResponse struct {
 	Reason   string `json:"reason,omitempty"`
 }
 
-// Relay forwards one Agy hook invocation to the owning lark-connect session.
+// Relay forwards one Agy hook invocation to the owning lark-agent-bot session.
 func Relay(in io.Reader, out io.Writer, address, token string) error {
 	if strings.TrimSpace(address) == "" || strings.TrimSpace(token) == "" {
 		return fmt.Errorf("permission bridge environment is missing")

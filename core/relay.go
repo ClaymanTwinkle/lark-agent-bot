@@ -71,7 +71,7 @@ func (rm *RelayManager) RegisterEngine(name string, e *Engine) {
 }
 
 // EnablePeers publishes this process's projects in reg under socket and lets
-// relay reach projects that other lark-connect processes registered there.
+// relay reach projects that other lark-agent-bot processes registered there.
 func (rm *RelayManager) EnablePeers(reg *RelayPeerRegistry, socket string) {
 	rm.mu.Lock()
 	rm.peers = reg
@@ -234,7 +234,7 @@ func (rm *RelayManager) engineNamesLocked() []string {
 }
 
 // HasTarget reports whether relay can reach project, either in this process
-// or in another lark-connect process registered as a peer.
+// or in another lark-agent-bot process registered as a peer.
 func (rm *RelayManager) HasTarget(name string) bool {
 	if rm.HasEngine(name) {
 		return true
@@ -449,7 +449,7 @@ func (rm *RelayManager) sendToPeer(ctx context.Context, socket string, req Relay
 	return &resp, nil
 }
 
-// HandlePeer runs a relay request that another lark-connect process forwarded
+// HandlePeer runs a relay request that another lark-agent-bot process forwarded
 // to a project in this process, and posts the response echo into the group as
 // the target bot.
 func (rm *RelayManager) HandlePeer(ctx context.Context, req RelayPeerRequest) (*RelayResponse, error) {

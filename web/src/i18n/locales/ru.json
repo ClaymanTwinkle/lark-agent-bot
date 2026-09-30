@@ -167,8 +167,8 @@
     "rawConfig": "Сырой конфиг"
   },
   "login": {
-    "title": "Lark-Connect Admin",
-    "subtitle": "Подключитесь к вашему серверу Lark-Connect",
+    "title": "Lark-Agent-Bot Admin",
+    "subtitle": "Подключитесь к вашему серверу Lark-Agent-Bot",
     "token": "API-токен",
     "serverUrl": "URL сервера",
     "connect": "Подключиться",

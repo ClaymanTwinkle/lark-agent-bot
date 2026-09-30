@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // TestParseCursorUsage_NormalCamelCase covers the happy-path payload shape

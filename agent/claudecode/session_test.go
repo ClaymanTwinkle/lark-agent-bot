@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func TestHandleControlRequestBypassModesStillEmitAskUserQuestion(t *testing.T) {
@@ -568,22 +568,22 @@ func TestBuildAppendSystemPrompt(t *testing.T) {
 }
 
 // TestEnsureSharedSystemPromptFile_WritesOnceAndReuses covers the 99%
-// case for the #1376 workaround. The lark-connect default
+// case for the #1376 workaround. The lark-agent-bot default
 // AgentSystemPrompt is written once to <ccDataDir>/agent-prompts/
-// lark-connect-system.md and reused across spawns — no per-spawn write,
+// lark-agent-bot-system.md and reused across spawns — no per-spawn write,
 // no cleanup. claude only reads the file, so reuse is safe under
 // concurrent spawns.
 func TestEnsureSharedSystemPromptFile_WritesOnceAndReuses(t *testing.T) {
 	dir := t.TempDir()
-	content := "## lark-connect prompt\n" + makeFiller(10*1024)
+	content := "## lark-agent-bot prompt\n" + makeFiller(10*1024)
 
 	// First call must create the file.
 	path1, err := ensureSharedSystemPromptFile(dir, content)
 	if err != nil {
 		t.Fatalf("first ensure: %v", err)
 	}
-	if !strings.HasSuffix(filepath.ToSlash(path1), "agent-prompts/lark-connect-system.md") {
-		t.Errorf("path %q does not end in agent-prompts/lark-connect-system.md", path1)
+	if !strings.HasSuffix(filepath.ToSlash(path1), "agent-prompts/lark-agent-bot-system.md") {
+		t.Errorf("path %q does not end in agent-prompts/lark-agent-bot-system.md", path1)
 	}
 	got, err := os.ReadFile(path1)
 	if err != nil {
@@ -619,7 +619,7 @@ func TestEnsureSharedSystemPromptFile_WritesOnceAndReuses(t *testing.T) {
 }
 
 // TestEnsureSharedSystemPromptFile_RewritesOnContentChange covers
-// lark-connect upgrades: when AgentSystemPrompt content changes between
+// lark-agent-bot upgrades: when AgentSystemPrompt content changes between
 // releases, the shared file must be refreshed automatically.
 func TestEnsureSharedSystemPromptFile_RewritesOnContentChange(t *testing.T) {
 	dir := t.TempDir()
@@ -649,7 +649,7 @@ func TestEnsureSharedSystemPromptFile_EmptyDirUsesTempDir(t *testing.T) {
 		t.Fatalf("ensure with empty dir: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Remove(path) })
-	if !strings.Contains(filepath.ToSlash(path), "/agent-prompts/lark-connect-system.md") {
+	if !strings.Contains(filepath.ToSlash(path), "/agent-prompts/lark-agent-bot-system.md") {
 		t.Errorf("unexpected fallback path: %q", path)
 	}
 }
@@ -684,7 +684,7 @@ func TestWriteTempAppendPromptFile_UniquePerCall(t *testing.T) {
 
 // TestWriteTempAppendPromptFile_ReadableByOtherUser guards the
 // run_as_user regression from issue #1429. os.CreateTemp defaults to
-// 0600 owned by the lark-connect process user; when the agent is
+// 0600 owned by the lark-agent-bot process user; when the agent is
 // spawned as a different OS user (via run_as_user), a 0600 root-owned
 // file is unreadable and the agent exits with EACCES before reading
 // any prompt at all. The fix is to chmod 0o644 immediately after
@@ -897,14 +897,14 @@ func TestHelperProcess(t *testing.T) {
 		//   1. asserts --replay-user-messages is NOT in argv (its presence
 		//      would make the CLI exit after the first message and break
 		//      `/compact`, `/clear`, `/resume`).
-		//   2. emits a system + result event on startup so lark-connect
+		//   2. emits a system + result event on startup so lark-agent-bot
 		//      recognises the session as live.
 		//   3. reads stdin line-by-line, treating each line as a new user
 		//      turn, and replies with a `type:"result"` event containing
 		//      the line's text — proving the process stayed alive across
 		//      turns instead of exiting after the first one.
 		//   4. exits cleanly only when stdin closes (which is exactly how
-		//      lark-connect's Close() and the #1338 idle reaper will end
+		//      lark-agent-bot's Close() and the #1338 idle reaper will end
 		//      the session).
 		for _, a := range os.Args {
 			if a == "--replay-user-messages" {
@@ -938,7 +938,7 @@ func TestHelperProcess(t *testing.T) {
 			if line == "" {
 				continue
 			}
-			// lark-connect's Send() wraps every user message in the
+			// lark-agent-bot's Send() wraps every user message in the
 			// envelope `{"type":"user","message":{"role":"user","content":"<text>"}}`.
 			// Unwrap it so the echoed `result` field carries the human-
 			// readable text and the regression test can assert ordering

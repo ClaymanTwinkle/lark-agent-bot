@@ -12,12 +12,12 @@ export default function Footer() {
 
   return (
     <footer className="shrink-0 mt-4 pt-3 pb-1 text-center text-xs text-gray-400 dark:text-gray-500 select-none">
-      <span>© {year} Lark-Connect</span>
+      <span>© {year} Lark-Agent-Bot</span>
       {version && <span className="mx-1.5">·</span>}
       {version && <span>{version.startsWith('v') ? version : `v${version}`}</span>}
       <span className="mx-1.5">·</span>
       <a
-        href="https://github.com/ClaymanTwinkle/lark-connect"
+        href="https://github.com/ClaymanTwinkle/lark-agent-bot"
         target="_blank"
         rel="noopener noreferrer"
         className="hover:text-accent transition-colors"

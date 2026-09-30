@@ -1,4 +1,4 @@
-package larkconnect
+package larkagentbot
 
 import _ "embed"
 

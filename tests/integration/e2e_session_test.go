@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/config"
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/config"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // testConfigPath returns the path to config.test.toml co-located with this

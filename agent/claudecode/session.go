@@ -20,13 +20,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // claudeSession manages a long-running Claude Code process using
 // --input-format stream-json and --permission-prompt-tool stdio.
 //
-// In "bypassPermissions" mode, permission requests that reach lark-connect
+// In "bypassPermissions" mode, permission requests that reach lark-agent-bot
 // are auto-approved here, so the mode also works when the CLI itself cannot
 // run in it (the CLI refuses --dangerously-skip-permissions under root, and
 // only switches to it mid-session when launched with that flag).
@@ -49,7 +49,7 @@ type claudeSession struct {
 	// modeMu serializes live permission-mode switches (SetLiveMode) so the
 	// CLI's mode and the local auto-approve flags never interleave.
 	modeMu sync.Mutex
-	// ctrlMu guards pendingCtrl: control requests lark-connect sent to the
+	// ctrlMu guards pendingCtrl: control requests lark-agent-bot sent to the
 	// CLI that still wait for their control_response, keyed by request_id.
 	ctrlMu      sync.Mutex
 	pendingCtrl map[string]chan map[string]any
@@ -124,7 +124,7 @@ type claudeSession struct {
 	// promptFilePath is the per-spawn temp file holding the merged
 	// content for --append-system-prompt-file when this session needs
 	// platform- or user-specific append text that the shared
-	// lark-connect-system.md cannot represent. Removed on Close. Empty
+	// lark-agent-bot-system.md cannot represent. Removed on Close. Empty
 	// when the session reuses the shared file (the common 99% case)
 	// or when there is nothing to append.
 	promptFilePath string
@@ -136,20 +136,20 @@ type claudeSession struct {
 func (cs *claudeSession) StartupWarning() string { return cs.startupWarning }
 
 // sharedSystemPromptRelPath is the location under ccDataDir where the
-// shared lark-connect system prompt file lives. Reused across every spawn
+// shared lark-agent-bot system prompt file lives. Reused across every spawn
 // that doesn't need per-session customization (the 99% case).
-const sharedSystemPromptRelPath = "agent-prompts/lark-connect-system.md"
+const sharedSystemPromptRelPath = "agent-prompts/lark-agent-bot-system.md"
 
 // ensureSharedSystemPromptFile lazily writes <ccDataDir>/agent-prompts/
-// lark-connect-system.md with the lark-connect default AgentSystemPrompt
+// lark-agent-bot-system.md with the lark-agent-bot default AgentSystemPrompt
 // content, returning the path. The file is the workaround for the
-// Windows 8192-byte command-line limit (issue #1376): lark-connect's
+// Windows 8192-byte command-line limit (issue #1376): lark-agent-bot's
 // built-in prompt is ~9KB on its own, so passing it inline via
 // --append-system-prompt blows past the cap regardless of whether the
 // user configured any customization.
 //
 // The file is only (re)written when missing or when its content differs
-// from the current AgentSystemPrompt() — this lets lark-connect upgrades
+// from the current AgentSystemPrompt() — this lets lark-agent-bot upgrades
 // refresh the prompt automatically without per-spawn overhead. claude
 // only reads the file at startup and never writes it, so there is no
 // concurrent-write race even when multiple sessions spawn at once.
@@ -193,7 +193,7 @@ func writeTempAppendPromptFile(ccDataDir, content string) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	f, err := os.CreateTemp(dir, "lark-connect-system-*.md")
+	f, err := os.CreateTemp(dir, "lark-agent-bot-system-*.md")
 	if err != nil {
 		return "", err
 	}
@@ -202,7 +202,7 @@ func writeTempAppendPromptFile(ccDataDir, content string) (string, error) {
 		_ = os.Remove(f.Name())
 		return "", err
 	}
-	// os.CreateTemp defaults to mode 0600 owned by the lark-connect process
+	// os.CreateTemp defaults to mode 0600 owned by the lark-agent-bot process
 	// user (often root when launched by systemd). When the agent is spawned
 	// under run_as_user, the target user is different and gets EACCES on
 	// 0600 root-owned files (issue #1429). The shared prompt file already
@@ -226,7 +226,7 @@ func writeTempAppendPromptFile(ccDataDir, content string) (string, error) {
 // next spawn would mistake for valid content.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
-	f, err := os.CreateTemp(dir, ".lark-connect-system-*.tmp")
+	f, err := os.CreateTemp(dir, ".lark-agent-bot-system-*.tmp")
 	if err != nil {
 		return err
 	}
@@ -252,7 +252,7 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
-// buildAppendSystemPrompt concatenates the lark-connect functionality prompt,
+// buildAppendSystemPrompt concatenates the lark-agent-bot functionality prompt,
 // platform formatting instructions, and the user's custom append prompt into
 // the single string passed to Claude's --append-system-prompt-file flag.
 // That flag only honors its last occurrence (a second flag overwrites the
@@ -276,7 +276,7 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	sessionCtx, cancel := context.WithCancel(ctx)
 
 	// Claude Code rejects bypassPermissions when running as root.
-	// Downgrade to "auto" which auto-approves internally in lark-connect.
+	// Downgrade to "auto" which auto-approves internally in lark-agent-bot.
 	var rootDowngradeWarning string
 	if mode == "bypassPermissions" && os.Geteuid() == 0 {
 		slog.Warn("claudeSession: bypassPermissions not allowed under root, downgrading to auto mode")
@@ -311,7 +311,7 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	case "", core.ContinueSession:
 		// Truly fresh session — no resume, no continue.
 	default:
-		// Resuming a known session ID — this is lark-connect's own session
+		// Resuming a known session ID — this is lark-agent-bot's own session
 		// from a previous connection, safe to resume directly.
 		innerArgs = append(innerArgs, "--resume", sessionID)
 	}
@@ -332,7 +332,7 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 		innerArgs = append(innerArgs, "--system-prompt", systemPrompt)
 	}
 
-	// Append the lark-connect functionality prompt, platform formatting hints,
+	// Append the lark-agent-bot functionality prompt, platform formatting hints,
 	// and the user's custom append prompt — via Claude's
 	// --append-system-prompt-file flag (not --append-system-prompt). Writing
 	// to a file avoids the Windows 8192-byte command-line limit (#1376):
@@ -341,7 +341,7 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	//
 	// Two paths exist to keep the common case zero-overhead:
 	//   • 99% case (no platform formatting, no user append) — reuse the
-	//     shared lark-connect-system.md file written once at startup; no
+	//     shared lark-agent-bot-system.md file written once at startup; no
 	//     per-spawn write, no cleanup needed.
 	//   • 1% edge case (Slack/Weixin/MAX platform formatting or user-set
 	//     append_system_prompt) — write a per-spawn temp file containing
@@ -352,7 +352,7 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	var promptFilePath string
 	var promptFileIsShared bool
 	// Issue #1655: when a.language is non-empty, this session gets the
-	// localized lark-connect system prompt. When empty (legacy callers),
+	// localized lark-agent-bot system prompt. When empty (legacy callers),
 	// AgentSystemPromptForLang returns the English default — same bytes as
 	// the pre-PR buildAppendSystemPrompt(core.AgentSystemPrompt(), ...) call.
 	if appended := buildAppendSystemPrompt(core.AgentSystemPromptForLang(lang), platformPrompt, appendSystemPrompt); appended != "" {
@@ -433,18 +433,18 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	// 100% CPU after their parent's stdio pipe closes.
 	prepareCmdForKill(cmd)
 	// Filter out CLAUDECODE env var to prevent "nested session" detection,
-	// since lark-connect is a bridge, not a nested Claude Code session.
+	// since lark-agent-bot is a bridge, not a nested Claude Code session.
 	env := filterEnv(os.Environ(), "CLAUDECODE")
 	if len(extraEnv) > 0 {
 		env = core.MergeEnv(env, extraEnv)
 	}
 	// Signal to PermissionRequest hooks that they are running inside
-	// lark-connect. Hooks can check this env var to skip LLM calls on
+	// lark-agent-bot. Hooks can check this env var to skip LLM calls on
 	// the Claude Code side (the hook result is ignored anyway when
-	// --permission-prompt-tool stdio is active). lark-connect runs the
+	// --permission-prompt-tool stdio is active). lark-agent-bot runs the
 	// hook itself without this env var, so the real work happens only
 	// once.
-	env = core.MergeEnv(env, []string{"LARK_CONNECT_PERMISSION_HOOK_SKIP=1"})
+	env = core.MergeEnv(env, []string{"LARK_AGENT_BOT_PERMISSION_HOOK_SKIP=1"})
 	// Carry the intended working directory across the sudo -i boundary so the
 	// re-chdir wrapper in BuildSpawnCommand can restore it (sudo -i would
 	// otherwise leave the agent in the target user's HOME). Only meaningful
@@ -455,7 +455,7 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	}
 	// When run_as_user is set, strip the supervisor's environment down to
 	// the allowlist before passing it to sudo. sudo --preserve-env also
-	// enforces this, but filtering here makes the lark-connect spawn argv
+	// enforces this, but filtering here makes the lark-agent-bot spawn argv
 	// the single source of truth.
 	env = core.FilterEnvForSpawn(env, spawnOpts)
 	cmd.Env = env
@@ -524,7 +524,7 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	}
 
 	// Only remember the prompt path for cleanup when it is the per-spawn
-	// temp variant. The shared lark-connect-system.md file is reused across
+	// temp variant. The shared lark-agent-bot-system.md file is reused across
 	// all sessions and must never be deleted by an individual session's
 	// Close.
 	var cleanupPromptPath string
@@ -902,7 +902,7 @@ func tailUsageFromTranscript(path string, windowBytes int64, override int) (usag
 // Why this exists: every `--resume` spawns a NEW claudeSession whose lastUsage
 // starts nil, so the first auto-compress decision of every resumed process had
 // no exact number and silently fell back to the text-length heuristic. The
-// heuristic counts lark-connect's own history text (which excludes tool results
+// heuristic counts lark-agent-bot's own history text (which excludes tool results
 // and the fixed system-prompt + tools overhead) and is routinely several times
 // off — measured at 574,797 while the same session's real API-reported prompt
 // never exceeded 229,783. Reading the transcript gives the exact number the
@@ -1355,7 +1355,7 @@ func (cs *claudeSession) Send(prompt string, messageID string, images []core.Ima
 		})
 	}
 
-	attachDir := filepath.Join(cs.workDir, ".lark-connect", "attachments")
+	attachDir := filepath.Join(cs.workDir, ".lark-agent-bot", "attachments")
 	if err := os.MkdirAll(attachDir, 0o755); err != nil {
 		slog.Warn("claudeSession: mkdir attachments failed", "error", err, "path", attachDir)
 	}
@@ -1536,7 +1536,7 @@ const controlRequestTimeout = 30 * time.Second
 // and an error with the CLI's message and error_code when the CLI refuses.
 func (cs *claudeSession) sendControlRequest(request map[string]any) (map[string]any, error) {
 	subtype, _ := request["subtype"].(string)
-	id := fmt.Sprintf("lark_connect_%d", cs.ctrlSeq.Add(1))
+	id := fmt.Sprintf("lark_agent_bot_%d", cs.ctrlSeq.Add(1))
 	ch := make(chan map[string]any, 1)
 	cs.ctrlMu.Lock()
 	if cs.pendingCtrl == nil {
@@ -1577,7 +1577,7 @@ func (cs *claudeSession) sendControlRequest(request map[string]any) (map[string]
 }
 
 // handleControlResponse delivers the CLI's answer to a control request that
-// lark-connect sent (see sendControlRequest).
+// lark-agent-bot sent (see sendControlRequest).
 func (cs *claudeSession) handleControlResponse(raw map[string]any) {
 	resp, _ := raw["response"].(map[string]any)
 	id, _ := resp["request_id"].(string)

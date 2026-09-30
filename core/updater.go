@@ -23,9 +23,9 @@ import (
 )
 
 const (
-	githubReleasesAPI = "https://api.github.com/repos/ClaymanTwinkle/lark-connect/releases"
-	githubLatestPage  = "https://github.com/ClaymanTwinkle/lark-connect/releases/latest"
-	githubDownload    = "https://github.com/ClaymanTwinkle/lark-connect/releases/download"
+	githubReleasesAPI = "https://api.github.com/repos/ClaymanTwinkle/lark-agent-bot/releases"
+	githubLatestPage  = "https://github.com/ClaymanTwinkle/lark-agent-bot/releases/latest"
+	githubDownload    = "https://github.com/ClaymanTwinkle/lark-agent-bot/releases/download"
 )
 
 type ReleaseInfo struct {
@@ -102,7 +102,7 @@ func latestTagFromRedirect(pageURL string) (tag, releaseURL string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	req.Header.Set("User-Agent", "lark-connect-updater")
+	req.Header.Set("User-Agent", "lark-agent-bot-updater")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -129,7 +129,7 @@ func fetchReleasesFrom(apiURL string) ([]ReleaseInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "lark-connect-updater")
+	req.Header.Set("User-Agent", "lark-agent-bot-updater")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)
@@ -158,7 +158,7 @@ func SelfUpdate(tag string) error {
 	if goos == "windows" {
 		ext = ".zip"
 	}
-	filename := fmt.Sprintf("lark-connect-%s-%s-%s%s", tag, goos, goarch, ext)
+	filename := fmt.Sprintf("lark-agent-bot-%s-%s-%s%s", tag, goos, goarch, ext)
 
 	url := fmt.Sprintf("%s/%s/%s", githubDownload, tag, filename)
 	slog.Info("updater: downloading", "url", url)
@@ -194,7 +194,7 @@ func downloadFile(url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "lark-connect-updater")
+	req.Header.Set("User-Agent", "lark-agent-bot-updater")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -227,11 +227,11 @@ func extractBinaryFromTarGz(data []byte) ([]byte, error) {
 			return nil, err
 		}
 		name := filepath.Base(hdr.Name)
-		if strings.HasPrefix(name, "lark-connect") && hdr.Typeflag == tar.TypeReg {
+		if strings.HasPrefix(name, "lark-agent-bot") && hdr.Typeflag == tar.TypeReg {
 			return io.ReadAll(tr)
 		}
 	}
-	return nil, fmt.Errorf("lark-connect binary not found in archive")
+	return nil, fmt.Errorf("lark-agent-bot binary not found in archive")
 }
 
 func extractBinaryFromZip(data []byte) ([]byte, error) {
@@ -241,7 +241,7 @@ func extractBinaryFromZip(data []byte) ([]byte, error) {
 	}
 	for _, f := range r.File {
 		name := filepath.Base(f.Name)
-		if strings.HasPrefix(name, "lark-connect") && !f.FileInfo().IsDir() {
+		if strings.HasPrefix(name, "lark-agent-bot") && !f.FileInfo().IsDir() {
 			rc, err := f.Open()
 			if err != nil {
 				return nil, err
@@ -250,7 +250,7 @@ func extractBinaryFromZip(data []byte) ([]byte, error) {
 			return io.ReadAll(rc)
 		}
 	}
-	return nil, fmt.Errorf("lark-connect binary not found in zip archive")
+	return nil, fmt.Errorf("lark-agent-bot binary not found in zip archive")
 }
 
 func replaceBinary(newBinary []byte) error {
@@ -262,9 +262,9 @@ func replaceBinary(newBinary []byte) error {
 	return err
 }
 
-// InstallBinary installs newBinary as the standard lark-connect executable
+// InstallBinary installs newBinary as the standard lark-agent-bot executable
 // next to the running one (see replaceBinaryAt) and returns its path. It is
-// the install step shared by /upgrade and the `lark-connect update` command.
+// the install step shared by /upgrade and the `lark-agent-bot update` command.
 func InstallBinary(newBinary []byte) (string, error) {
 	execPath, err := runningExecutablePath()
 	if err != nil {
@@ -274,13 +274,13 @@ func InstallBinary(newBinary []byte) (string, error) {
 }
 
 // StandardBinaryName is the file name every install and update uses, so
-// agents can always call the `lark-connect` command from the directory the
+// agents can always call the `lark-agent-bot` command from the directory the
 // engine puts on their PATH.
 func StandardBinaryName() string {
 	if runtime.GOOS == "windows" {
-		return "lark-connect.exe"
+		return "lark-agent-bot.exe"
 	}
-	return "lark-connect"
+	return "lark-agent-bot"
 }
 
 // installTargetPath is where an update installs the binary: the standard
@@ -344,7 +344,7 @@ func backupPath(path string) string {
 	return oldPath
 }
 
-// replaceBinaryAt installs newBinary as lark-connect[.exe] in execPath's
+// replaceBinaryAt installs newBinary as lark-agent-bot[.exe] in execPath's
 // directory and returns that path. The binary it replaces is kept as a
 // ".old" backup. When the running executable has another name (e.g. the
 // versioned name from an old release archive), it is renamed to a backup
@@ -352,7 +352,7 @@ func backupPath(path string) string {
 // stale build.
 func replaceBinaryAt(execPath string, newBinary []byte) (string, error) {
 	target := installTargetPath(execPath)
-	tmpFile, err := os.CreateTemp(filepath.Dir(target), "lark-connect-update-*")
+	tmpFile, err := os.CreateTemp(filepath.Dir(target), "lark-agent-bot-update-*")
 	if err != nil {
 		return "", fmt.Errorf("create temp file: %w", err)
 	}
@@ -447,12 +447,12 @@ func upgradeAlreadyInstalled(target string) (string, bool) {
 	return installed, true
 }
 
-// parseVersionOutput extracts the version from `lark-connect --version`
-// output ("lark-connect v1.2.3\ncommit: ...").
+// parseVersionOutput extracts the version from `lark-agent-bot --version`
+// output ("lark-agent-bot v1.2.3\ncommit: ...").
 func parseVersionOutput(out string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
 	fields := strings.Fields(line)
-	if len(fields) < 2 || fields[0] != "lark-connect" {
+	if len(fields) < 2 || fields[0] != "lark-agent-bot" {
 		return ""
 	}
 	return fields[1]

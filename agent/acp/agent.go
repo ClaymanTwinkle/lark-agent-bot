@@ -10,7 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func init() {
@@ -54,7 +54,7 @@ type Agent struct {
 
 // sessionCallbacks lets a running acpSession report what it learned
 // during the handshake back to its parent Agent. The session is owned
-// by lark-connect's engine (not the agent), so without this the agent
+// by lark-agent-bot's engine (not the agent), so without this the agent
 // would never see availableModes / capability advertisements.
 type sessionCallbacks interface {
 	reportModes(block acpModesBlock)
@@ -267,7 +267,7 @@ func (a *Agent) CLIDisplayName() string {
 
 // -- ModeSwitcher --
 //
-// lark-connect's engine treats ModeSwitcher as the point of truth for
+// lark-agent-bot's engine treats ModeSwitcher as the point of truth for
 // both displaying `/mode` options and applying a mode selection. For
 // the generic ACP adapter we keep the Key == ACP modeId so downstream
 // `session/set_mode` calls don't need any translation.
@@ -288,7 +288,7 @@ func (a *Agent) SetMode(mode string) {
 	slog.Info("acp: mode changed for future sessions", "mode", normalised)
 }
 
-// GetMode returns the mode lark-connect will treat as "current" when
+// GetMode returns the mode lark-agent-bot will treat as "current" when
 // rendering the `/mode` picker or applying SetLiveMode.
 //
 // Precedence: the most recent explicit SetMode wins (that's the user's

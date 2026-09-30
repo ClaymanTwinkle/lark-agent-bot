@@ -11,9 +11,9 @@ const zlib = require("zlib");
 
 const PACKAGE = require("./package.json");
 const VERSION = `v${PACKAGE.version}`;
-const NAME = "lark-connect";
+const NAME = "lark-agent-bot";
 
-const GITHUB_REPO = "ClaymanTwinkle/lark-connect";
+const GITHUB_REPO = "ClaymanTwinkle/lark-agent-bot";
 
 const PLATFORM_MAP = {
   darwin: "darwin",
@@ -51,7 +51,7 @@ function fetch(url, redirects = 5) {
     if (redirects <= 0) return reject(new Error("Too many redirects"));
     const mod = url.startsWith("https") ? https : http;
     mod
-      .get(url, { headers: { "User-Agent": "lark-connect-npm" } }, (res) => {
+      .get(url, { headers: { "User-Agent": "lark-agent-bot-npm" } }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           return resolve(fetch(res.headers.location, redirects - 1));
         }
@@ -71,16 +71,16 @@ function fetch(url, redirects = 5) {
 async function download(urls) {
   for (const url of urls) {
     try {
-      console.log(`[lark-connect] Downloading from ${url}`);
+      console.log(`[lark-agent-bot] Downloading from ${url}`);
       const data = await fetch(url);
-      console.log(`[lark-connect] Downloaded ${(data.length / 1024 / 1024).toFixed(1)} MB`);
+      console.log(`[lark-agent-bot] Downloaded ${(data.length / 1024 / 1024).toFixed(1)} MB`);
       return data;
     } catch (err) {
-      console.warn(`[lark-connect] Failed: ${err.message}, trying next source...`);
+      console.warn(`[lark-agent-bot] Failed: ${err.message}, trying next source...`);
     }
   }
   throw new Error(
-    `[lark-connect] Could not download binary from any source.\n` +
+    `[lark-agent-bot] Could not download binary from any source.\n` +
       `  Tried: ${urls.join(", ")}\n` +
       `  You can download manually from https://github.com/${GITHUB_REPO}/releases`
   );
@@ -151,7 +151,7 @@ function isNewerOrEqual(installed, expected) {
 
 async function main() {
   const { platform, arch, ext, filename } = getPlatformInfo();
-  console.log(`[lark-connect] Platform: ${platform}/${arch}`);
+  console.log(`[lark-agent-bot] Platform: ${platform}/${arch}`);
 
   const binDir = path.join(__dirname, "bin");
   fs.mkdirSync(binDir, { recursive: true });
@@ -164,19 +164,19 @@ async function main() {
       const out = execSync(`"${binaryPath}" --version`, { encoding: "utf8", timeout: 5000 });
       const expectedVer = VERSION.slice(1); // remove leading "v"
       if (out.includes(expectedVer)) {
-        console.log(`[lark-connect] Binary ${VERSION} already installed, skipping.`);
+        console.log(`[lark-agent-bot] Binary ${VERSION} already installed, skipping.`);
         return;
       }
       // Don't downgrade: if existing binary is newer, keep it
       const match = out.match(/(\d+\.\d+\.\d+[^\s]*)/);
       if (match && isNewerOrEqual(match[1], expectedVer)) {
-        console.log(`[lark-connect] Binary ${match[1]} is newer than ${VERSION}, skipping.`);
+        console.log(`[lark-agent-bot] Binary ${match[1]} is newer than ${VERSION}, skipping.`);
         return;
       }
-      console.log(`[lark-connect] Existing binary is outdated, upgrading to ${VERSION}...`);
+      console.log(`[lark-agent-bot] Existing binary is outdated, upgrading to ${VERSION}...`);
       fs.unlinkSync(binaryPath);
     } catch {
-      console.log(`[lark-connect] Replacing existing binary with ${VERSION}...`);
+      console.log(`[lark-agent-bot] Replacing existing binary with ${VERSION}...`);
       fs.unlinkSync(binaryPath);
     }
   }
@@ -197,19 +197,19 @@ async function main() {
   if (platform === "darwin") {
     try {
       execSync(`xattr -d com.apple.quarantine "${binaryPath}"`, { stdio: "pipe" });
-      console.log(`[lark-connect] Removed macOS quarantine attribute`);
+      console.log(`[lark-agent-bot] Removed macOS quarantine attribute`);
     } catch {
       // xattr fails if the attribute doesn't exist, which is fine
     }
   }
 
-  console.log(`[lark-connect] Installed to ${binaryPath}`);
+  console.log(`[lark-agent-bot] Installed to ${binaryPath}`);
 }
 
 main().catch((err) => {
   console.error(err.message);
   console.error(
-    "[lark-connect] Installation failed. You can install manually:\n" +
+    "[lark-agent-bot] Installation failed. You can install manually:\n" +
       `  https://github.com/${GITHUB_REPO}/releases/tag/${VERSION}`
   );
   process.exit(1);

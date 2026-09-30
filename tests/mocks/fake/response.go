@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // TestUsageReport creates a test usage report.

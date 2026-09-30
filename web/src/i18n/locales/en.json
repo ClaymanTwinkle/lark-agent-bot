@@ -167,8 +167,8 @@
     "rawConfig": "Raw Config"
   },
   "login": {
-    "title": "Lark-Connect Admin",
-    "subtitle": "Connect to your Lark-Connect instance",
+    "title": "Lark-Agent-Bot Admin",
+    "subtitle": "Connect to your Lark-Agent-Bot instance",
     "token": "API token",
     "serverUrl": "Server URL",
     "connect": "Connect",
@@ -263,7 +263,7 @@
     "longPollTimeout": "Long poll timeout (ms)",
     "listen": "Listen address",
     "publicUrl": "Public webhook URL",
-    "publicUrlHint": "Public URL for gateway to reach lark-connect webhook",
+    "publicUrlHint": "Public URL for gateway to reach lark-agent-bot webhook",
     "registerUrl": "Register URL",
     "registerUrlHint": "Optional: gateway endpoint to register webhook callback",
     "eventsPath": "Events path (long poll)",

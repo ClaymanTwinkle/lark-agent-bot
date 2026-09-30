@@ -578,7 +578,7 @@ func TestLoad_DefaultsDataDir(t *testing.T) {
 		t.Fatalf("Load() error: %v", err)
 	}
 
-	want := filepath.Join(dir, ".lark-connect")
+	want := filepath.Join(dir, ".lark-agent-bot")
 	if cfg.DataDir != want {
 		t.Fatalf("Load() data_dir = %q, want %q", cfg.DataDir, want)
 	}
@@ -1359,7 +1359,7 @@ const relayConfigFixture = `
 [relay]
 timeout_secs = 300
 visibility = "none"
-peers_dir = "/srv/lark-connect/relay-peers"
+peers_dir = "/srv/lark-agent-bot/relay-peers"
 
 [[projects]]
 name = "alpha"
@@ -1987,8 +1987,8 @@ func TestLoadRelayTimeoutConfig(t *testing.T) {
 	if cfg.Relay.Visibility != "none" {
 		t.Fatalf("cfg.Relay.Visibility = %q, want none", cfg.Relay.Visibility)
 	}
-	if cfg.Relay.PeersDir != "/srv/lark-connect/relay-peers" {
-		t.Fatalf("cfg.Relay.PeersDir = %q, want /srv/lark-connect/relay-peers", cfg.Relay.PeersDir)
+	if cfg.Relay.PeersDir != "/srv/lark-agent-bot/relay-peers" {
+		t.Fatalf("cfg.Relay.PeersDir = %q, want /srv/lark-agent-bot/relay-peers", cfg.Relay.PeersDir)
 	}
 }
 

@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a bug to help us improve lark-connect
+description: Report a bug to help us improve lark-agent-bot
 title: "[Bug] "
 labels: ["bug"]
 
@@ -12,8 +12,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: lark-connect Version
-      description: Run `lark-connect --version` to get the version.
+      label: lark-agent-bot Version
+      description: Run `lark-agent-bot --version` to get the version.
       placeholder: "e.g. v0.3.0"
     validations:
       required: true
@@ -50,7 +50,7 @@ body:
     attributes:
       label: Installation Method
       options:
-        - npm (npm install -g lark-connect)
+        - npm (npm install -g lark-agent-bot)
         - Binary download (GitHub Releases)
         - Build from source
     validations:
@@ -72,7 +72,7 @@ body:
       description: Steps to reproduce the behavior.
       placeholder: |
         1. Configure config.toml with ...
-        2. Run `lark-connect`
+        2. Run `lark-agent-bot`
         3. Send message '...' in the chat
         4. See error ...
     validations:

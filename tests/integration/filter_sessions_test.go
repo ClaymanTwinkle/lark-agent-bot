@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // skipUnlessBinaryAvailable skips if the agent binary is not in PATH.
@@ -115,7 +115,7 @@ func writeClaudeCodeSessionFixture(t *testing.T, projectDir, sessionID, userProm
 }
 
 // setupFilterSessionTest creates a real agent with fixture session files and
-// wires it into a real Engine. Some sessions are tracked by lark-connect (via
+// wires it into a real Engine. Some sessions are tracked by lark-agent-bot (via
 // SessionManager), others are "external" (exist on disk but not tracked).
 // This tests the full pipeline: real agent adapter → ListSessions → Engine filtering.
 func setupFilterSessionTest(t *testing.T, agentType string, filterEnabled bool) (

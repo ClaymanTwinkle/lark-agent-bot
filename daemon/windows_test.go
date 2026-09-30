@@ -21,9 +21,9 @@ func TestStrictPowerShellStopsOnCmdletErrors(t *testing.T) {
 
 func TestBuildWindowsTaskScript(t *testing.T) {
 	cfg := Config{
-		BinaryPath: `C:\Program Files\lark-connect\lark-connect.exe`,
-		WorkDir:    `C:\Users\me\.lark-connect`,
-		LogFile:    `C:\Users\me\.lark-connect\logs\lark-connect.log`,
+		BinaryPath: `C:\Program Files\lark-agent-bot\lark-agent-bot.exe`,
+		WorkDir:    `C:\Users\me\.lark-agent-bot`,
+		LogFile:    `C:\Users\me\.lark-agent-bot\logs\lark-agent-bot.log`,
 		LogMaxSize: 10 * 1024 * 1024,
 		EnvPATH:    `C:\Program Files\nodejs;C:\Users\me\AppData\Local\Programs`,
 		EnvExtra: map[string]string{
@@ -34,14 +34,14 @@ func TestBuildWindowsTaskScript(t *testing.T) {
 
 	script := buildWindowsTaskScript(cfg)
 	for _, want := range []string{
-		`$env:CC_LOG_FILE = 'C:\Users\me\.lark-connect\logs\lark-connect.log'`,
+		`$env:CC_LOG_FILE = 'C:\Users\me\.lark-agent-bot\logs\lark-agent-bot.log'`,
 		`$env:CC_LOG_MAX_SIZE = '10485760'`,
 		`$env:PATH = 'C:\Program Files\nodejs;C:\Users\me\AppData\Local\Programs'`,
 		`$env:HTTPS_PROXY = 'http://127.0.0.1:7890'`,
 		`$env:http_proxy = 'http://127.0.0.1:7890'`,
-		`Set-Location -LiteralPath 'C:\Users\me\.lark-connect'`,
+		`Set-Location -LiteralPath 'C:\Users\me\.lark-agent-bot'`,
 		`while ($true) {`,
-		`& 'C:\Program Files\lark-connect\lark-connect.exe'`,
+		`& 'C:\Program Files\lark-agent-bot\lark-agent-bot.exe'`,
 		`if ($exitCode -eq 0) { exit 0 }`,
 		`Start-Sleep -Seconds 10`,
 	} {
@@ -60,7 +60,7 @@ func withHeadlessConsole(t *testing.T, supported bool) {
 
 func TestWindowsTaskActionRunsHidden(t *testing.T) {
 	withHeadlessConsole(t, true)
-	got := windowsTaskAction(`C:\Users\me\.lark-connect\lark-connect-daemon.ps1`)
+	got := windowsTaskAction(`C:\Users\me\.lark-agent-bot\lark-agent-bot-daemon.ps1`)
 	// Regression: powershell.exe launched by the task got a visible Windows
 	// Terminal window on Windows 11; closing it stopped the service.
 	if !strings.HasPrefix(got, `conhost.exe --headless powershell.exe `) {
@@ -71,7 +71,7 @@ func TestWindowsTaskActionRunsHidden(t *testing.T) {
 		`-NoProfile`,
 		`-NonInteractive`,
 		`-ExecutionPolicy Bypass`,
-		`-File "C:\Users\me\.lark-connect\lark-connect-daemon.ps1"`,
+		`-File "C:\Users\me\.lark-agent-bot\lark-agent-bot-daemon.ps1"`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("windowsTaskAction() missing %q: %q", want, got)
@@ -81,7 +81,7 @@ func TestWindowsTaskActionRunsHidden(t *testing.T) {
 
 func TestWindowsTaskActionWithoutHeadlessConsole(t *testing.T) {
 	withHeadlessConsole(t, false)
-	got := windowsTaskAction(`C:\Users\me\.lark-connect\lark-connect-daemon.ps1`)
+	got := windowsTaskAction(`C:\Users\me\.lark-agent-bot\lark-agent-bot-daemon.ps1`)
 	if !strings.HasPrefix(got, `powershell.exe -WindowStyle Hidden `) {
 		t.Fatalf("windowsTaskAction() = %q, want PowerShell started directly before Windows 10 1809", got)
 	}
@@ -98,7 +98,7 @@ func TestWindowsTaskCreateUsesLimitedInteractivePrincipal(t *testing.T) {
 		return "", nil
 	}
 
-	if err := createWindowsTask(`C:\Users\me\.lark-connect\lark-connect-daemon.ps1`); err != nil {
+	if err := createWindowsTask(`C:\Users\me\.lark-agent-bot\lark-agent-bot-daemon.ps1`); err != nil {
 		t.Fatalf("createWindowsTask() error = %v", err)
 	}
 	for _, want := range []string{
@@ -106,7 +106,7 @@ func TestWindowsTaskCreateUsesLimitedInteractivePrincipal(t *testing.T) {
 		`Register-ScheduledTask`,
 		`-LogonType Interactive`,
 		`-RunLevel Limited`,
-		`C:\Users\me\.lark-connect\lark-connect-daemon.ps1`,
+		`C:\Users\me\.lark-agent-bot\lark-agent-bot-daemon.ps1`,
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("create script missing %q:\n%s", want, script)
@@ -125,12 +125,12 @@ func TestWindowsTaskMatchesActionRequiresExactAction(t *testing.T) {
 		return "true", nil
 	}
 
-	if !windowsTaskMatchesAction(`C:\Users\me\.lark-connect\lark-connect-daemon.ps1`) {
+	if !windowsTaskMatchesAction(`C:\Users\me\.lark-agent-bot\lark-agent-bot-daemon.ps1`) {
 		t.Fatal("windowsTaskMatchesAction() = false, want true")
 	}
 	for _, want := range []string{
 		`$expectedExecute = 'conhost.exe'`,
-		`$expectedArgs = '--headless powershell.exe -WindowStyle Hidden -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\me\.lark-connect\lark-connect-daemon.ps1"'`,
+		`$expectedArgs = '--headless powershell.exe -WindowStyle Hidden -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\me\.lark-agent-bot\lark-agent-bot-daemon.ps1"'`,
 		`$action.Execute -ieq $expectedExecute`,
 		`$action.Arguments -eq $expectedArgs`,
 	} {
@@ -141,8 +141,8 @@ func TestWindowsTaskMatchesActionRequiresExactAction(t *testing.T) {
 }
 
 func TestPowerShellLiteralEscapesSingleQuotes(t *testing.T) {
-	got := powerShellLiteral(`C:\Users\O'Brien\.lark-connect`)
-	want := `'C:\Users\O''Brien\.lark-connect'`
+	got := powerShellLiteral(`C:\Users\O'Brien\.lark-agent-bot`)
+	want := `'C:\Users\O''Brien\.lark-agent-bot'`
 	if got != want {
 		t.Fatalf("powerShellLiteral() = %q, want %q", got, want)
 	}

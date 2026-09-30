@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // listSessionsProbeTimeout bounds how long we wait for a one-shot
@@ -133,7 +133,7 @@ func probeInitialize(ctx context.Context, tr *transport) (*acpInitializeResult, 
 			"fs":       map[string]any{"readTextFile": false, "writeTextFile": false},
 			"terminal": false,
 		},
-		"clientInfo": map[string]any{"name": "lark-connect", "version": "1.0.0"},
+		"clientInfo": map[string]any{"name": "lark-agent-bot", "version": "1.0.0"},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("acp: probe initialize: %w", err)

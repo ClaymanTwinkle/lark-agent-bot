@@ -1,6 +1,6 @@
 # 使用指南
 
-lark-connect 完整功能使用指南。
+lark-agent-bot 完整功能使用指南。
 
 ## 目录
 
@@ -201,10 +201,10 @@ env = { CLAUDE_CODE_USE_BEDROCK = "1", AWS_PROFILE = "bedrock" }
 ### CLI 命令
 
 ```bash
-lark-connect provider add --project my-backend --name relay --api-key sk-xxx --base-url https://api.relay.com
-lark-connect provider list --project my-backend
-lark-connect provider remove --project my-backend --name relay
-lark-connect provider import --project my-backend  # 从 cc-switch 导入
+lark-agent-bot provider add --project my-backend --name relay --api-key sk-xxx --base-url https://api.relay.com
+lark-agent-bot provider list --project my-backend
+lark-agent-bot provider remove --project my-backend --name relay
+lark-agent-bot provider import --project my-backend  # 从 cc-switch 导入
 ```
 
 ### 聊天命令
@@ -288,7 +288,7 @@ alias = "spark"
 - 不要把 `admin_from` 写到 `[projects.platforms.options]` 里，否则会被忽略。
 - 可先发送 `/whoami` 或 `/status` 获取当前 `User ID`，再把这个 ID 填到 `admin_from`。
 - 如果是个人单人使用，也可以设置 `admin_from = "*"`，但这会让所有已允许用户都拥有特权命令权限。
-- 修改 `config.toml` 后，需要重启 `lark-connect`。
+- 修改 `config.toml` 后，需要重启 `lark-agent-bot`。
 - 目录切换会作用于当前项目的下一次会话。
 - 相对路径基于当前 Agent 工作目录解析。
 - 目录历史按项目隔离，可通过序号快速切换。
@@ -462,12 +462,12 @@ enclosure_style = "code"
 
 ```bash
 # 推荐：统一入口
-lark-connect feishu setup --project my-project
-lark-connect feishu setup --project my-project --app cli_xxx:sec_xxx
+lark-agent-bot feishu setup --project my-project
+lark-agent-bot feishu setup --project my-project --app cli_xxx:sec_xxx
 
 # 强制模式（一般不需要）
-lark-connect feishu new --project my-project
-lark-connect feishu bind --project my-project --app cli_xxx:sec_xxx
+lark-agent-bot feishu new --project my-project
+lark-agent-bot feishu bind --project my-project --app cli_xxx:sec_xxx
 ```
 
 区别说明：
@@ -515,7 +515,7 @@ lark-connect feishu bind --project my-project --app cli_xxx:sec_xxx
 
 3. 启动：`ccr start`
 
-4. 配置 lark-connect：
+4. 配置 lark-agent-bot：
 ```toml
 [projects.agent.options]
 router_url = "http://127.0.0.1:3456"
@@ -526,16 +526,16 @@ router_api_key = "your-secret-key"
 
 ## Claude Code PermissionRequest Hooks
 
-如果你在 Claude Code 的 `settings.json` 中配置了 [PermissionRequest hooks](https://docs.anthropic.com/en/docs/claude-code/hooks)，lark-connect 会读取并执行它们——匹配的 hook 可以在请求到达消息平台之前自动批准或拒绝。
+如果你在 Claude Code 的 `settings.json` 中配置了 [PermissionRequest hooks](https://docs.anthropic.com/en/docs/claude-code/hooks)，lark-agent-bot 会读取并执行它们——匹配的 hook 可以在请求到达消息平台之前自动批准或拒绝。
 
 ### 为什么 hook 会被执行两次
 
-lark-connect 使用 `--permission-prompt-tool stdio` 模式启动 Claude Code，这意味着 Claude Code 自身执行 hook 的输出会被丢弃（stdout 被协议占用）。为了让你的 hook 真正生效，lark-connect 会从 `settings.json` 中读取 hook 定义，然后**独立重新执行一次**。
+lark-agent-bot 使用 `--permission-prompt-tool stdio` 模式启动 Claude Code，这意味着 Claude Code 自身执行 hook 的输出会被丢弃（stdout 被协议占用）。为了让你的 hook 真正生效，lark-agent-bot 会从 `settings.json` 中读取 hook 定义，然后**独立重新执行一次**。
 
 也就是说，每次权限请求你的 hook 命令会被执行**两次**：
 
 1. Claude Code 执行一次（结果丢弃）
-2. lark-connect 执行一次（结果生效）
+2. lark-agent-bot 执行一次（结果生效）
 
 ### LLM 类 hook 如何避免重复消耗
 
@@ -543,13 +543,13 @@ lark-connect 使用 `--permission-prompt-tool stdio` 模式启动 Claude Code，
 
 ```bash
 #!/bin/bash
-if [ -n "$LARK_CONNECT_PERMISSION_HOOK_SKIP" ]; then
-  exit 0  # lark-connect 会在不含此变量的环境下重新执行我们
+if [ -n "$LARK_AGENT_BOT_PERMISSION_HOOK_SKIP" ]; then
+  exit 0  # lark-agent-bot 会在不含此变量的环境下重新执行我们
 fi
 # ... 你的 hook 逻辑 ...
 ```
 
-lark-connect 启动 Claude Code 子进程时会在环境中设置 `LARK_CONNECT_PERMISSION_HOOK_SKIP=1`。当你的 hook 检测到这个变量时，说明它运行在 Claude Code 内部（结果会被丢弃）——跳过昂贵的逻辑即可。lark-connect 在自己执行 hook 时会剥离这个变量，所以第二次执行会正常运行。
+lark-agent-bot 启动 Claude Code 子进程时会在环境中设置 `LARK_AGENT_BOT_PERMISSION_HOOK_SKIP=1`。当你的 hook 检测到这个变量时，说明它运行在 Claude Code 内部（结果会被丢弃）——跳过昂贵的逻辑即可。lark-agent-bot 在自己执行 hook 时会剥离这个变量，所以第二次执行会正常运行。
 
 ---
 
@@ -633,7 +633,7 @@ speed = 0.96
 
 ## 图片、文件与语音回传
 
-当 Agent 在本地生成了图片、PDF、日志包、报表等文件，需要把结果直接发回当前聊天时，可以使用 `lark-connect send` 的附件模式。用户明确要求“发语音”时，Agent 也可以用同一个 CLI 走 TTS 合成并发送语音。
+当 Agent 在本地生成了图片、PDF、日志包、报表等文件，需要把结果直接发回当前聊天时，可以使用 `lark-agent-bot send` 的附件模式。用户明确要求“发语音”时，Agent 也可以用同一个 CLI 走 TTS 合成并发送语音。
 
 **当前支持平台：**
 - 飞书 / Lark
@@ -652,10 +652,10 @@ speed = 0.96
 /cron setup
 ```
 
-这两个命令写入的是同一份 lark-connect 指令。执行任意一个即可。这样 Agent 才会知道：
+这两个命令写入的是同一份 lark-agent-bot 指令。执行任意一个即可。这样 Agent 才会知道：
 - 普通文本回复直接正常输出
-- 生成附件后用 `lark-connect send --image/--file` 回传
-- 用户要求语音时用 `lark-connect send --tts` 回传
+- 生成附件后用 `lark-agent-bot send --image/--file` 回传
+- 用户要求语音时用 `lark-agent-bot send --tts` 回传
 
 如果你以前已经执行过 setup，也建议升级后重新执行一次，以刷新到最新指令。
 
@@ -667,15 +667,15 @@ speed = 0.96
 attachment_send = "off"
 ```
 
-默认值是 `on`。这个开关与 agent 的 `/mode` 独立，只影响 `lark-connect send --image/--file` 这条图片/文件回传路径。TTS 语音回传走 `[tts]` provider 配置，由 TTS 是否可用决定。
+默认值是 `on`。这个开关与 agent 的 `/mode` 独立，只影响 `lark-agent-bot send --image/--file` 这条图片/文件回传路径。TTS 语音回传走 `[tts]` provider 配置，由 TTS 是否可用决定。
 
 ### CLI 用法
 
 ```bash
-lark-connect send --image /absolute/path/to/chart.png
-lark-connect send --file /absolute/path/to/report.pdf
-lark-connect send --file /absolute/path/to/report.pdf --image /absolute/path/to/chart.png
-lark-connect send --tts "你好"
+lark-agent-bot send --image /absolute/path/to/chart.png
+lark-agent-bot send --file /absolute/path/to/report.pdf
+lark-agent-bot send --file /absolute/path/to/report.pdf --image /absolute/path/to/chart.png
+lark-agent-bot send --tts "你好"
 ```
 
 说明：
@@ -686,7 +686,7 @@ lark-connect send --tts "你好"
 - `--image` 和 `--file` 都可以重复多次。
 - 建议使用绝对路径，避免 Agent 当前工作目录变化导致找不到文件。
 - 如果设置了 `attachment_send = "off"`，图片/文件回传会被拒绝，但普通文本回复仍然正常。
-- 每个附件默认上限 **50 MiB**。可在 config.toml 用 `max_attachment_size_mb`（单位 MiB）调整，或用环境变量 `CC_MAX_ATTACHMENT_SIZE_MB` 覆盖该值（同样单位 MiB，设置后优先级更高），例如 `CC_MAX_ATTACHMENT_SIZE_MB=100 lark-connect send --file big.bin`。
+- 每个附件默认上限 **50 MiB**。可在 config.toml 用 `max_attachment_size_mb`（单位 MiB）调整，或用环境变量 `CC_MAX_ATTACHMENT_SIZE_MB` 覆盖该值（同样单位 MiB，设置后优先级更高），例如 `CC_MAX_ATTACHMENT_SIZE_MB=100 lark-agent-bot send --file big.bin`。
 
 ### 典型场景
 
@@ -700,7 +700,7 @@ lark-connect send --tts "你好"
 - 这个命令是给“附件和语音回传”用的，不要拿它代替普通文本回复。
 - 只能发送本机上 Agent 可访问到的文件。
 - 必须存在活跃会话；如果当前项目没有活动聊天上下文，命令会失败。
-- 目标平台在投递时还会校验自己的文件大小/类型上限；实际生效的是它与 `max_attachment_size_mb` 中**更小**的那个（通过了 lark-connect 的文件仍可能在投递时被平台拒绝）。
+- 目标平台在投递时还会校验自己的文件大小/类型上限；实际生效的是它与 `max_attachment_size_mb` 中**更小**的那个（通过了 lark-agent-bot 的文件仍可能在投递时被平台拒绝）。
 
 ---
 
@@ -726,11 +726,11 @@ lark-connect send --tts "你好"
 ### CLI 命令
 
 ```bash
-lark-connect cron add --cron "0 6 * * *" --prompt "总结 GitHub trending" --desc "每日趋势"
-lark-connect cron list
-lark-connect cron edit <job-id> <field> <value>   # 可改 cron_expr / prompt / enabled / mute / timeout_mins 等
-lark-connect cron exec <job-id>
-lark-connect cron del <job-id>
+lark-agent-bot cron add --cron "0 6 * * *" --prompt "总结 GitHub trending" --desc "每日趋势"
+lark-agent-bot cron list
+lark-agent-bot cron edit <job-id> <field> <value>   # 可改 cron_expr / prompt / enabled / mute / timeout_mins 等
+lark-agent-bot cron exec <job-id>
+lark-agent-bot cron del <job-id>
 ```
 
 可选：`--session-mode new-per-run` 每次触发使用新的 agent 会话（默认 `reuse` 与旧行为一致）。`--timeout-mins N` 设置单次调度最长等待分钟数（`0` 表示不限制；省略为 30 分钟）。
@@ -745,7 +745,7 @@ Claude Code 会自动创建定时任务。对依赖记忆文件的其他 Agent�
 
 ## Shell 配置
 
-默认情况下，lark-connect 在 Unix 上使用 `sh`，Windows 上使用 `powershell.exe` 来执行所有 shell 命令（`/shell`、cron exec、hooks 和 webhook exec）。你可以配置使用其他 shell。
+默认情况下，lark-agent-bot 在 Unix 上使用 `sh`，Windows 上使用 `powershell.exe` 来执行所有 shell 命令（`/shell`、cron exec、hooks 和 webhook exec）。你可以配置使用其他 shell。
 
 ### 支持的 Shell
 
@@ -806,7 +806,7 @@ shell_profile = "source ~/.config/fish/config.fish"
 
 ### 影响范围
 
-Shell 配置适用于 lark-connect 中所有命令执行路径：
+Shell 配置适用于 lark-agent-bot 中所有命令执行路径：
 
 - **`/shell` 命令** — 聊天中的交互式 shell 命令
 - **Cron exec 任务** — `[[cron]]` 中 `exec` 字段的定时任务
@@ -833,15 +833,15 @@ Shell 配置适用于 lark-connect 中所有命令执行路径：
 ### 机器人间通信
 
 ```bash
-lark-connect relay list                                  # 列出这个群里能派活的机器人
-lark-connect relay send --to gemini "你觉得这个架构怎么样？"
+lark-agent-bot relay list                                  # 列出这个群里能派活的机器人
+lark-agent-bot relay send --to gemini "你觉得这个架构怎么样？"
 ```
 
 Agent 会自己调用这两条命令：发现任务需要别的机器人时，先 `relay list`，再 `relay send`。群里会看到源机器人发出 `@gemini 你觉得…`，目标机器人做完后回一条 `@源机器人 <结果>`，结果同时返回给源机器人继续处理。这里的 `@` 是普通文本，不是飞书原生 @：不同应用看到的 open_id 不一样，一个机器人拿不到另一个应用机器人的 open_id。
 
 ### 跨进程
 
-目标项目不必和源项目在同一个 lark-connect 进程里。每个进程启动时把自己的项目登记到 `~/.lark-connect/relay-peers/`（可用 `[relay] peers_dir` 改位置），`/bind` 和 `relay send` 会通过对方进程的本地 socket 转发。在一个机器人里 `/bind` 另一个进程的项目，绑定会同步到对方，两边都能互相派活；`/bind -项目` 和 `/bind remove` 只影响当前机器人。
+目标项目不必和源项目在同一个 lark-agent-bot 进程里。每个进程启动时把自己的项目登记到 `~/.lark-agent-bot/relay-peers/`（可用 `[relay] peers_dir` 改位置），`/bind` 和 `relay send` 会通过对方进程的本地 socket 转发。在一个机器人里 `/bind` 另一个进程的项目，绑定会同步到对方，两边都能互相派活；`/bind -项目` 和 `/bind remove` 只影响当前机器人。
 
 - 目标机器人在 relay 模式下自动批准所有权限请求。
 - 一条任务最多转发 3 跳（A→B→A→B 到此为止），防止两个机器人互相推来推去。
@@ -854,13 +854,13 @@ Agent 会自己调用这两条命令：发现任务需要别的机器人时，�
 后台服务运行。
 
 ```bash
-lark-connect daemon install --config ~/.lark-connect/config.toml
-lark-connect daemon start
-lark-connect daemon stop
-lark-connect daemon restart
-lark-connect daemon status
-lark-connect daemon logs [-f]
-lark-connect daemon uninstall
+lark-agent-bot daemon install --config ~/.lark-agent-bot/config.toml
+lark-agent-bot daemon start
+lark-agent-bot daemon stop
+lark-agent-bot daemon restart
+lark-agent-bot daemon status
+lark-agent-bot daemon logs [-f]
+lark-agent-bot daemon uninstall
 ```
 
 ---
@@ -943,7 +943,7 @@ token = "your-secret-token"     # 登录 token；/web setup 会自动生成
 cors_origins = ["*"]            # 允许的 CORS 来源；留空则不设置 CORS 头
 ```
 
-然后重启 lark-connect。
+然后重启 lark-agent-bot。
 
 ### 构建选项
 
@@ -952,7 +952,7 @@ Web 前端资源默认编译进二进制。如果想排除（减小约 1MB）：
 ```bash
 make build-noweb
 # 或
-go build -tags 'no_web' ./cmd/lark-connect
+go build -tags 'no_web' ./cmd/lark-agent-bot
 ```
 
 使用 `no_web` 构建时，`/web` 命令会提示 Web 管理后台不可用。
@@ -968,7 +968,7 @@ API 与 Web UI 共用同一端口。基础 URL：`http://<host>:<port>/api/v1`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/api/v1/status` | 系统状态（版本、运行时间、已连接平台） |
-| `POST` | `/api/v1/restart` | 重启 lark-connect |
+| `POST` | `/api/v1/restart` | 重启 lark-agent-bot |
 | `POST` | `/api/v1/reload` | 重新加载配置 |
 | `GET` | `/api/v1/projects` | 项目列表 |
 | `GET` | `/api/v1/sessions?project=<name>` | 查询项目的会话列表 |
@@ -984,7 +984,7 @@ API 与 Web UI 共用同一端口。基础 URL：`http://<host>:<port>/api/v1`
 
 > **状态：Beta。** 此功能自 v1.2.2-beta.5 起可用，协议在后续版本中可能调整。
 
-Bridge 提供 WebSocket + REST 服务，让外部适配器（自定义 UI、机器人、脚本等）可以接入 lark-connect —— 发送消息、接收 Agent 事件、管理会话。
+Bridge 提供 WebSocket + REST 服务，让外部适配器（自定义 UI、机器人、脚本等）可以接入 lark-agent-bot —— 发送消息、接收 Agent 事件、管理会话。
 
 ### 通过聊天启用
 
@@ -1003,7 +1003,7 @@ path = "/bridge/ws"             # WebSocket 端点路径
 cors_origins = ["*"]            # 允许的 CORS 来源；留空则不设置 CORS
 ```
 
-然后重启 lark-connect。
+然后重启 lark-agent-bot。
 
 ### 认证方式
 
@@ -1078,10 +1078,10 @@ type = "feishu"  # 或 "lark"（Lark 国际版）
 下面这些是 issue 区里反复出现、维护者已经回答过的问题。每条都附上了
 原始 issue / PR 链接，方便继续深入。
 
-### lark-connect 是否支持 OpenClaw？(issue #501)
+### lark-agent-bot 是否支持 OpenClaw？(issue #501)
 
 支持。OpenClaw 通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.com/get-started/agents) 接入。
-lark-connect 内置了 `acp` agent 类型，可以和任何 ACP 兼容的 CLI 通信，
+lark-agent-bot 内置了 `acp` agent 类型，可以和任何 ACP 兼容的 CLI 通信，
 包括 OpenClaw 的 `openclaw acp` 子命令。
 
 最小配置示例（完整版见 `config.example.toml` 中 `# --- Example:
@@ -1101,14 +1101,14 @@ args = ["acp"]
 display_name = "OpenClaw ACP"
 ```
 
-**远端 Gateway 必须先完成配对授权。** 如果你把 lark-connect 指向
+**远端 Gateway 必须先完成配对授权。** 如果你把 lark-agent-bot 指向
 远程 OpenClaw Gateway（`args = ["acp", "--url", "wss://..."]`），
 必须先配对，否则所有回复都会是空消息：
 
 1. 启动 Gateway：`openclaw acp --url wss://your-gateway:18789`
 2. 另开终端执行：`openclaw pair`
 3. 在 OpenClaw UI 里同意配对请求
-4. 完成后 lark-connect 才能与已授权的 Gateway 通信
+4. 完成后 lark-agent-bot 才能与已授权的 Gateway 通信
 
 OpenClaw 回复空消息几乎都是漏掉了配对步骤（issue #432）。在排查其他
 原因之前，先重跑 `openclaw pair` 并在 UI 中重新授权一次。

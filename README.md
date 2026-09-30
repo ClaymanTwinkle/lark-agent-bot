@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="./docs/images/banner.svg" alt="lark-connect" width="800"/>
+  <img src="./docs/images/banner.svg" alt="lark-agent-bot" width="800"/>
 </p>
 
 <p align="center">
-  <a href="https://github.com/ClaymanTwinkle/lark-connect/releases"><img src="https://img.shields.io/github/v/release/ClaymanTwinkle/lark-connect?include_prereleases" alt="Release"/></a>
-  <a href="https://www.npmjs.com/package/lark-connect"><img src="https://img.shields.io/npm/v/lark-connect" alt="npm"/></a>
-  <a href="https://github.com/ClaymanTwinkle/lark-connect/actions/workflows/ci.yml"><img src="https://github.com/ClaymanTwinkle/lark-connect/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+  <a href="https://github.com/ClaymanTwinkle/lark-agent-bot/releases"><img src="https://img.shields.io/github/v/release/ClaymanTwinkle/lark-agent-bot?include_prereleases" alt="Release"/></a>
+  <a href="https://www.npmjs.com/package/lark-agent-bot"><img src="https://img.shields.io/npm/v/lark-agent-bot" alt="npm"/></a>
+  <a href="https://github.com/ClaymanTwinkle/lark-agent-bot/actions/workflows/ci.yml"><img src="https://github.com/ClaymanTwinkle/lark-agent-bot/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License"/></a>
 </p>
 
@@ -13,11 +13,13 @@
   English | <a href="./README.zh-CN.md">中文</a>
 </p>
 
-# lark-connect
+# lark-agent-bot
 
 Drive the AI coding agent on your own machine from Feishu / Lark.
 
-lark-connect bridges locally running agents — Claude Code, Codex, Cursor, Gemini CLI and more — to a Feishu / Lark bot. It talks to Feishu over a WebSocket long connection, so **no public IP is needed**. Review code, fix bugs, research, or run scheduled jobs from your phone.
+> Formerly `lark-connect`. Renamed to `lark-agent-bot` in v0.3.0; the command, npm package, config directory (`~/.lark-agent-bot`) and environment variables (`LARK_AGENT_BOT_*`) all changed with it.
+
+lark-agent-bot bridges locally running agents — Claude Code, Codex, Cursor, Gemini CLI and more — to a Feishu / Lark bot. It talks to Feishu over a WebSocket long connection, so **no public IP is needed**. Review code, fix bugs, research, or run scheduled jobs from your phone.
 
 > Derived from [chenhg5/cc-connect](https://github.com/chenhg5/cc-connect) (MIT), trimmed down to the Feishu / Lark platform only. All other messaging platforms were removed; every agent is kept.
 
@@ -33,22 +35,22 @@ lark-connect bridges locally running agents — Claude Code, Codex, Cursor, Gemi
 - **Scheduled tasks**: `/cron add 0 9 * * * summarize yesterday's commits`, or ask the agent in plain language
 - **Multi-project**: one process runs many projects, each with its own agent and Feishu bot
 - **Web admin**: manage projects, providers, sessions and cron jobs in the browser
-- **Self-update**: `lark-connect update`, or `/upgrade` in chat
+- **Self-update**: `lark-agent-bot update`, or `/upgrade` in chat
 
 ## Install
 
 ```bash
 # Option 1: npm (any OS)
-npm install -g lark-connect
+npm install -g lark-agent-bot
 
 # Option 2: download the archive for your OS from Releases, extract it and put the
-#           lark-connect binary (lark-connect.exe on Windows) on PATH
-#   https://github.com/ClaymanTwinkle/lark-connect/releases
-#   e.g. lark-connect-v0.1.0-linux-amd64.tar.gz, lark-connect-v0.1.0-windows-amd64.zip
+#           lark-agent-bot binary (lark-agent-bot.exe on Windows) on PATH
+#   https://github.com/ClaymanTwinkle/lark-agent-bot/releases
+#   e.g. lark-agent-bot-v0.1.0-linux-amd64.tar.gz, lark-agent-bot-v0.1.0-windows-amd64.zip
 
 # Option 3: build from source (Go 1.25+, Node.js 20+, pnpm)
-git clone https://github.com/ClaymanTwinkle/lark-connect.git
-cd lark-connect
+git clone https://github.com/ClaymanTwinkle/lark-agent-bot.git
+cd lark-agent-bot
 make build
 ```
 
@@ -67,13 +69,13 @@ Run this in the repository the agent should work in:
 
 ```bash
 cd /path/to/your/repo
-lark-connect feishu setup --project my-project
+lark-agent-bot feishu setup --project my-project
 ```
 
-Scan the QR code with the Feishu app. The bot is created and its `app_id` / `app_secret` are written to `~/.lark-connect/config.toml` (a missing project is created with the current directory as its work dir). To bind an existing app instead:
+Scan the QR code with the Feishu app. The bot is created and its `app_id` / `app_secret` are written to `~/.lark-agent-bot/config.toml` (a missing project is created with the current directory as its work dir). To bind an existing app instead:
 
 ```bash
-lark-connect feishu bind --project my-project --app cli_xxx:app_secret_xxx
+lark-agent-bot feishu bind --project my-project --app cli_xxx:app_secret_xxx
 ```
 
 Or edit the config by hand. Minimal example:
@@ -102,9 +104,9 @@ See [config.example.toml](config.example.toml) for every option and [docs/feishu
 ### 2. Run
 
 ```bash
-lark-connect                          # reads ./config.toml or ~/.lark-connect/config.toml
-lark-connect --config /path/to.toml   # explicit config file
-lark-connect daemon install           # install as a service (systemd / launchd / schtasks)
+lark-agent-bot                          # reads ./config.toml or ~/.lark-agent-bot/config.toml
+lark-agent-bot --config /path/to.toml   # explicit config file
+lark-agent-bot daemon install           # install as a service (systemd / launchd / schtasks)
 ```
 
 Then message the bot in Feishu. The web admin listens on `http://localhost:9820` by default.
@@ -123,7 +125,7 @@ Then message the bot in Feishu. The web admin listens on `http://localhost:9820`
 /help                           all commands
 ```
 
-Agents can send generated screenshots or reports back to the chat with `lark-connect send --image <path>` or `lark-connect send --file <path>`.
+Agents can send generated screenshots or reports back to the chat with `lark-agent-bot send --image <path>` or `lark-agent-bot send --file <path>`.
 
 More in [docs/usage.md](docs/usage.md).
 
@@ -139,9 +141,9 @@ git push origin v0.1.0
 Pushing a `v*` tag:
 
 1. builds the web admin and runs the tests;
-2. cross-compiles linux / macOS / windows binaries for amd64 and arm64, packs them as `lark-connect-<tag>-<os>-<arch>.tar.gz|.zip`, and writes `checksums.txt`;
+2. cross-compiles linux / macOS / windows binaries for amd64 and arm64, packs them as `lark-agent-bot-<tag>-<os>-<arch>.tar.gz|.zip`, and writes `checksums.txt`;
 3. creates the GitHub Release with those assets. Tags containing `-` (e.g. `v0.2.0-beta.1`) are marked as pre-releases;
-4. publishes the `lark-connect` npm package when the repository has an `NPM_TOKEN` secret (pre-releases go to the `beta` dist-tag).
+4. publishes the `lark-agent-bot` npm package when the repository has an `NPM_TOKEN` secret (pre-releases go to the `beta` dist-tag).
 
 The workflow can also be run manually from the Actions tab to rebuild an existing tag. To package locally: `make release-all VERSION=v0.1.0` (output in `dist/`).
 

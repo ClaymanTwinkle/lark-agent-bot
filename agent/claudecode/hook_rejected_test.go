@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func TestHandleUserEmitsHookRejectedFromStopFeedback(t *testing.T) {

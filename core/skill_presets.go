@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	defaultSkillPresetsURL          = "https://raw.githubusercontent.com/ClaymanTwinkle/lark-connect/main/skill-presets.json"
-	fallbackSkillPresetsURL         = "https://cdn.jsdelivr.net/gh/ClaymanTwinkle/lark-connect@main/skill-presets.json"
+	defaultSkillPresetsURL          = "https://raw.githubusercontent.com/ClaymanTwinkle/lark-agent-bot/main/skill-presets.json"
+	fallbackSkillPresetsURL         = "https://cdn.jsdelivr.net/gh/ClaymanTwinkle/lark-agent-bot@main/skill-presets.json"
 	skillPresetsCacheTTL            = 6 * time.Hour
 	skillPresetsHTTPTimeout         = 15 * time.Second
 	skillPresetsFallbackHTTPTimeout = 10 * time.Second

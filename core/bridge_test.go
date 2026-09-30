@@ -175,8 +175,8 @@ func TestBridge_RegisterSendsCapabilitiesSnapshotWhenAdapterSupportsIt(t *testin
 	if !ok {
 		t.Fatalf("host = %T, want object", msg["host"])
 	}
-	if host["lark_connect_version"] != "v2.0.0" {
-		t.Fatalf("lark_connect_version = %v, want %q", host["lark_connect_version"], "v2.0.0")
+	if host["lark_agent_bot_version"] != "v2.0.0" {
+		t.Fatalf("lark_agent_bot_version = %v, want %q", host["lark_agent_bot_version"], "v2.0.0")
 	}
 	projects, ok := msg["projects"].([]any)
 	if !ok || len(projects) != 1 {

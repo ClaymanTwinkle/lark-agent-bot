@@ -53,7 +53,7 @@ func TestMetaSaveLoad(t *testing.T) {
 		LogMaxSize:    1024,
 		LogMaxBackups: 3,
 		WorkDir:       "/tmp",
-		BinaryPath:    "/usr/local/bin/lark-connect",
+		BinaryPath:    "/usr/local/bin/lark-agent-bot",
 		InstalledAt:   NowISO(),
 	}
 

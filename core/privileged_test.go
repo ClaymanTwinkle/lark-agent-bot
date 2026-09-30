@@ -78,7 +78,7 @@ func TestHandleCommand_CommandsListNoAdmin(t *testing.T) {
 	msg := &Message{UserID: "u", Platform: "test", ReplyCtx: "rctx"}
 	handled := e.handleCommand(p, msg, "/commands list")
 	if !handled {
-		t.Fatal("/commands list must be handled by lark-connect")
+		t.Fatal("/commands list must be handled by lark-agent-bot")
 	}
 	for _, s := range p.getSent() {
 		if strings.Contains(strings.ToLower(s), "admin") &&

@@ -1,14 +1,14 @@
-# Contributing to lark-connect
+# Contributing to lark-agent-bot
 
-[中文](#为-lark-connect-做贡献) | [English](#contributing-to-lark-connect)
+[中文](#为-lark-agent-bot-做贡献) | [English](#contributing-to-lark-agent-bot)
 
 ## Before you open an issue or PR
 
-Search [Issues](https://github.com/ClaymanTwinkle/lark-connect/issues) and [Pull requests](https://github.com/ClaymanTwinkle/lark-connect/pulls) first, and retry on the latest release if you can.
+Search [Issues](https://github.com/ClaymanTwinkle/lark-agent-bot/issues) and [Pull requests](https://github.com/ClaymanTwinkle/lark-agent-bot/pulls) first, and retry on the latest release if you can.
 
 A helpful issue includes:
 
-- Version (`lark-connect --version`) and install method (npm / release archive / source)
+- Version (`lark-agent-bot --version`) and install method (npm / release archive / source)
 - OS and agent type (claudecode, codex, ...)
 - Feishu or Lark (international)
 - Minimal reproduction steps, expected vs. actual behavior
@@ -30,19 +30,19 @@ go test ./...
 
 ## Releases
 
-Maintainers release by pushing a `v*` tag; see the "Releasing" section of the [README](./README.md#releasing). The [GitHub Releases](https://github.com/ClaymanTwinkle/lark-connect/releases) page is the source of truth.
+Maintainers release by pushing a `v*` tag; see the "Releasing" section of the [README](./README.md#releasing). The [GitHub Releases](https://github.com/ClaymanTwinkle/lark-agent-bot/releases) page is the source of truth.
 
 ---
 
-# 为 lark-connect 做贡献
+# 为 lark-agent-bot 做贡献
 
 ## 提 Issue / PR 之前
 
-先搜索已有的 [Issues](https://github.com/ClaymanTwinkle/lark-connect/issues) 和 [Pull requests](https://github.com/ClaymanTwinkle/lark-connect/pulls)，尽量在最新版本上复现。
+先搜索已有的 [Issues](https://github.com/ClaymanTwinkle/lark-agent-bot/issues) 和 [Pull requests](https://github.com/ClaymanTwinkle/lark-agent-bot/pulls)，尽量在最新版本上复现。
 
 一个好的 Issue 包含：
 
-- 版本号（`lark-connect --version`）和安装方式（npm / Release 压缩包 / 源码）
+- 版本号（`lark-agent-bot --version`）和安装方式（npm / Release 压缩包 / 源码）
 - 操作系统和 Agent 类型（claudecode、codex 等）
 - 飞书还是 Lark 国际版
 - 最小复现步骤、期望行为与实际行为
@@ -64,4 +64,4 @@ go test ./...
 
 ## 发布
 
-维护者通过推送 `v*` 标签发布，详见 [README](./README.zh-CN.md#发布) 的"发布"一节。以 [GitHub Releases](https://github.com/ClaymanTwinkle/lark-connect/releases) 页面为准。
+维护者通过推送 `v*` 标签发布，详见 [README](./README.zh-CN.md#发布) 的"发布"一节。以 [GitHub Releases](https://github.com/ClaymanTwinkle/lark-agent-bot/releases) 页面为准。

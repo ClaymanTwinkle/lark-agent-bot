@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // ── buildJSONArgs (Issue #1723) ────────────────────────────────
@@ -57,9 +57,9 @@ func TestBuildJSONArgs_NoAttachmentsNoAtPrefix(t *testing.T) {
 
 func TestBuildJSONArgs_AttachmentsBecomeAtPathArgs(t *testing.T) {
 	paths := []string{
-		"/tmp/lark-connect/attach/a.png",
-		"/tmp/lark-connect/attach/b.pdf",
-		"/tmp/lark-connect/attach/c.docx",
+		"/tmp/lark-agent-bot/attach/a.png",
+		"/tmp/lark-agent-bot/attach/b.pdf",
+		"/tmp/lark-agent-bot/attach/c.docx",
 	}
 	args := buildJSONArgs(nil, "look at these", "", "", "", paths)
 
@@ -509,12 +509,12 @@ func TestBuildJSONArgs_OnlyImageAtFilesBecomeAtPath(t *testing.T) {
 	// argv entries. The test mirrors what Send() now passes to
 	// buildJSONArgs.
 	imagePaths := []string{
-		"/tmp/lark-connect/attach/img1.png",
-		"/tmp/lark-connect/attach/img2.jpg",
+		"/tmp/lark-agent-bot/attach/img1.png",
+		"/tmp/lark-agent-bot/attach/img2.jpg",
 	}
 	promptWithTrailer := promptWithFileRefs("describe", []string{
-		"/tmp/lark-connect/attach/log.txt",
-		"/tmp/lark-connect/attach/report.pdf",
+		"/tmp/lark-agent-bot/attach/log.txt",
+		"/tmp/lark-agent-bot/attach/report.pdf",
 	})
 	args := buildJSONArgs(nil, promptWithTrailer, "", "", "", imagePaths)
 
@@ -534,7 +534,7 @@ func TestBuildJSONArgs_OnlyImageAtFilesBecomeAtPath(t *testing.T) {
 			t.Errorf("@-arg[%d]: got %q, want %q", i, got[i], w)
 		}
 	}
-	for _, f := range []string{"/tmp/lark-connect/attach/log.txt", "/tmp/lark-connect/attach/report.pdf"} {
+	for _, f := range []string{"/tmp/lark-agent-bot/attach/log.txt", "/tmp/lark-agent-bot/attach/report.pdf"} {
 		// The non-image path may appear once in the prompt trailer
 		// (plain text reference), but never as a @<path> argv entry.
 		count := 0

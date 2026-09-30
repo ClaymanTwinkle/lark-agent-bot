@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // TestMessage creates a basic test message with sensible defaults.

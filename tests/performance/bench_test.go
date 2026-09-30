@@ -1,6 +1,6 @@
 //go:build performance
 
-// Package performance contains benchmark tests for lark-connect.
+// Package performance contains benchmark tests for lark-agent-bot.
 // These tests measure latency, throughput, and resource usage.
 //
 // Run with: go test -bench=. -benchmem -tags=performance ./tests/performance/...
@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
-	"github.com/ClaymanTwinkle/lark-connect/tests/mocks/fake"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/tests/mocks/fake"
 )
 
 // ---------------------------------------------------------------------------

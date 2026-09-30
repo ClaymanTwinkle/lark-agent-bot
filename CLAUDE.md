@@ -1,14 +1,14 @@
-# Lark-Connect Development Guide
+# Lark-Agent-Bot Development Guide
 
 ## Project Overview
 
-lark-connect is a bridge that connects AI coding agents (Claude Code, Codex, Gemini CLI, Cursor, etc.) with Feishu / Lark. Users interact with their coding agent through a Feishu / Lark bot. It is a Feishu-only fork of [cc-connect](https://github.com/chenhg5/cc-connect); the platform abstraction is kept so the engine stays platform-agnostic.
+lark-agent-bot is a bridge that connects AI coding agents (Claude Code, Codex, Gemini CLI, Cursor, etc.) with Feishu / Lark. Users interact with their coding agent through a Feishu / Lark bot. It is a Feishu-only fork of [cc-connect](https://github.com/chenhg5/cc-connect); the platform abstraction is kept so the engine stays platform-agnostic.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                cmd/lark-connect                 │  ← entry point, CLI, daemon
+│                cmd/lark-agent-bot                 │  ← entry point, CLI, daemon
 ├─────────────────────────────────────────────────┤
 │                     config/                     │  ← TOML config parsing
 ├─────────────────────────────────────────────────┤
@@ -195,7 +195,7 @@ make build EXCLUDE=cursor,gemini,iflow
 ### Direct build tag usage (without Make)
 
 ```bash
-go build -tags 'no_cursor no_gemini no_iflow' ./cmd/lark-connect
+go build -tags 'no_cursor no_gemini no_iflow' ./cmd/lark-agent-bot
 ```
 
 Available tags: `no_acp`, `no_antigravity`, `no_claudecode`, `no_codex`, `no_copilot`,
@@ -212,13 +212,13 @@ Available tags: `no_acp`, `no_antigravity`, `no_claudecode`, `no_codex`, `no_cop
 
 ## Adding a New Platform
 
-lark-connect intentionally ships only Feishu / Lark. If another platform is ever needed, follow the same plugin pattern:
+lark-agent-bot intentionally ships only Feishu / Lark. If another platform is ever needed, follow the same plugin pattern:
 
 
 1. Create `platform/newplatform/newplatform.go`
 2. Implement `core.Platform` interface (and optional interfaces as needed)
 3. Register in `init()`: `core.RegisterPlatform("newplatform", factory)`
-4. Create `cmd/lark-connect/plugin_platform_newplatform.go` with `//go:build !no_newplatform` tag
+4. Create `cmd/lark-agent-bot/plugin_platform_newplatform.go` with `//go:build !no_newplatform` tag
 5. Add `newplatform` to `ALL_PLATFORMS` in `Makefile`
 6. Add config example in `config.example.toml`
 7. Add unit tests
@@ -228,8 +228,8 @@ lark-connect intentionally ships only Feishu / Lark. If another platform is ever
 1. Create `agent/newagent/newagent.go`
 2. Implement `core.Agent` and `core.AgentSession` interfaces
 3. Register in `init()`: `core.RegisterAgent("newagent", factory)`
-4. Create `cmd/lark-connect/plugin_agent_newagent.go` with `//go:build !no_newagent` tag
+4. Create `cmd/lark-agent-bot/plugin_agent_newagent.go` with `//go:build !no_newagent` tag
 5. Add `newagent` to `ALL_AGENTS` in `Makefile`
-6. Optionally implement `AgentDoctorInfo` for `lark-connect doctor` support
+6. Optionally implement `AgentDoctorInfo` for `lark-agent-bot doctor` support
 7. Add config example in `config.example.toml`
 8. Add unit tests

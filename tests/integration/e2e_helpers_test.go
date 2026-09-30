@@ -5,8 +5,8 @@ package integration
 import (
 	"strings"
 
-	"github.com/ClaymanTwinkle/lark-connect/config"
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/config"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func joinMsgContent(msgs []mockMessage) string {

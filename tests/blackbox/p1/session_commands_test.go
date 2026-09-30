@@ -3,7 +3,7 @@
 // Package p1 contains P1 blackbox tests.
 //
 // Session commands (/help, /current, /name, /switch, /delete, /status, /version)
-// are dispatched by lark-connect's engine directly, so they respond within
+// are dispatched by lark-agent-bot's engine directly, so they respond within
 // seconds regardless of agent speed.
 //
 // Run:
@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
-	"github.com/ClaymanTwinkle/lark-connect/tests/blackbox/helper"
-	bbplatform "github.com/ClaymanTwinkle/lark-connect/tests/blackbox/platform"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/tests/blackbox/helper"
+	bbplatform "github.com/ClaymanTwinkle/lark-agent-bot/tests/blackbox/platform"
 )
 
 const cmdTimeout = 30 * time.Second // engine-handled commands are near-instant

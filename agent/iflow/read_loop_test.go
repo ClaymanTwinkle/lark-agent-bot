@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
-	"github.com/ClaymanTwinkle/lark-connect/internal/testutil"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/internal/testutil"
 )
 
 func TestMain(m *testing.M) {

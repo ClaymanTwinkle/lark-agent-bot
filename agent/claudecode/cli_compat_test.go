@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // Regression: Claude Code removed --max-context-tokens ("unknown option"
@@ -250,7 +250,7 @@ func assertModeFlags(t *testing.T, cs *claudeSession, mode string) {
 	}
 }
 
-// Regression: SetLiveMode used to flip only lark-connect's own flags, so a
+// Regression: SetLiveMode used to flip only lark-agent-bot's own flags, so a
 // CLI launched in bypassPermissions / acceptEdits / dontAsk kept not asking
 // after a "successful" switch to a stricter mode, and auto / plan needed a
 // restart. The CLI itself must now be switched.

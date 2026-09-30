@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/tests/blackbox/helper"
+	"github.com/ClaymanTwinkle/lark-agent-bot/tests/blackbox/helper"
 )
 
 // ── P1-30: 历史会话全部可见 ───────────────────────────────────────────────────

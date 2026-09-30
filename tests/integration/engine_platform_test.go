@@ -1,6 +1,6 @@
 //go:build integration
 
-// Package integration contains integration tests for lark-connect.
+// Package integration contains integration tests for lark-agent-bot.
 // These tests verify component interactions and require specific setup.
 // Run with: go test -tags=integration ./tests/integration/...
 package integration
@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
-	"github.com/ClaymanTwinkle/lark-connect/tests/mocks"
-	"github.com/ClaymanTwinkle/lark-connect/tests/mocks/fake"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/tests/mocks"
+	"github.com/ClaymanTwinkle/lark-agent-bot/tests/mocks/fake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

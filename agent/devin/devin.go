@@ -1,5 +1,5 @@
 // Package devin integrates Devin CLI (https://cli.devin.ai/) as a
-// first-class lark-connect agent.
+// first-class lark-agent-bot agent.
 //
 // Devin speaks the Agent Client Protocol (ACP) over stdio via its
 // `devin acp` subcommand, so the transport and session plumbing is
@@ -13,13 +13,13 @@
 //     "acp", human-readable display name "Devin" — while leaving every
 //     underlying ACP option (mode, auth_method, env, work_dir, etc.)
 //     overridable from project config.
-//  3. Reports Name() = "devin" so lark-connect's session store keys,
+//  3. Reports Name() = "devin" so lark-agent-bot's session store keys,
 //     audit logs, and /doctor output attribute activity to Devin
 //     rather than to the generic "acp" adapter.
 //
 // Authentication is delegated entirely to the local Devin CLI: after a
 // one-time `devin auth login`, the spawned `devin acp` subprocess
-// reads the credentials stored on disk, so lark-connect never needs to
+// reads the credentials stored on disk, so lark-agent-bot never needs to
 // see or forward any API tokens. Windsurf Enterprise users can
 // alternatively inject WINDSURF_API_KEY via the agent env option.
 package devin
@@ -27,8 +27,8 @@ package devin
 import (
 	"strings"
 
-	"github.com/ClaymanTwinkle/lark-connect/agent/acp"
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/agent/acp"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func init() {

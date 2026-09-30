@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 const codexRolloutTailBytes int64 = 1 << 20

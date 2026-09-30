@@ -19,7 +19,7 @@ func TestPlatformPrompt_TellsAgentWhichBotsItCanHandWorkTo(t *testing.T) {
 	e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
 
 	prompt := e.platformPrompt(p)
-	for _, want := range []string{"Codex, Gemini", `lark-connect send --message "@Codex `, "do not hand it on"} {
+	for _, want := range []string{"Codex, Gemini", `lark-agent-bot send --message "@Codex `, "do not hand it on"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt missing %q:\n%s", want, prompt)
 		}

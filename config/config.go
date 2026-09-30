@@ -84,7 +84,7 @@ var configMu sync.Mutex
 var ConfigPath string
 
 type Config struct {
-	DataDir        string `toml:"data_dir"` // session store directory, default ~/.lark-connect
+	DataDir        string `toml:"data_dir"` // session store directory, default ~/.lark-agent-bot
 	AttachmentSend string `toml:"attachment_send"`
 	// Quiet is legacy: when true and [display] does not set thinking_messages / tool_messages,
 	// engines behave as if those flags were false. Per-project quiet overrides when set.
@@ -130,7 +130,7 @@ type Config struct {
 	// available. Example: "source ~/.zshrc"
 	ShellProfile string `toml:"shell_profile,omitempty"`
 	// MaxAttachmentSizeMB is the per-file size limit, in MiB, for attachments
-	// sent through `lark-connect send --file/--image/--audio/--video` and the
+	// sent through `lark-agent-bot send --file/--image/--audio/--video` and the
 	// /send API. 0 (the default) means use core.DefaultMaxAttachmentSize
 	// (50 MiB). Raise it to send larger files; the request body limit on the
 	// API side scales with this value to account for base64 expansion.
@@ -259,7 +259,7 @@ type RoleConfig struct {
 type RelayConfig struct {
 	TimeoutSecs *int   `toml:"timeout_secs"`         // max seconds to wait for relay response; 0 = disabled; default 120
 	Visibility  string `toml:"visibility,omitempty"` // "full" (default), "summary", or "none" for group visibility echoes
-	PeersDir    string `toml:"peers_dir,omitempty"`  // registry shared with other local lark-connect processes; default ~/.lark-connect/relay-peers
+	PeersDir    string `toml:"peers_dir,omitempty"`  // registry shared with other local lark-agent-bot processes; default ~/.lark-agent-bot/relay-peers
 }
 
 // SpeechConfig configures speech-to-text for voice messages.
@@ -322,7 +322,7 @@ type TTSConfig struct {
 }
 
 // TTSAgentConfig overrides global [tts] synthesis parameters for one project.
-// Keys are project names, which map naturally to lark-connect's agent workspaces
+// Keys are project names, which map naturally to lark-agent-bot's agent workspaces
 // (for example assistant, reviewer).
 type TTSAgentConfig struct {
 	Provider     string  `toml:"provider,omitempty"`
@@ -469,7 +469,7 @@ type AutoCompressConfig struct {
 	//
 	// This does not apply to agents with no usage reporting at all: for them the
 	// heuristic is the only mechanism that has ever existed, and removing it
-	// would silently disable auto-compress for most of lark-connect's agents.
+	// would silently disable auto-compress for most of lark-agent-bot's agents.
 	AllowHeuristic bool `toml:"allow_heuristic,omitempty"`
 }
 
@@ -497,7 +497,7 @@ type ProjectConfig struct {
 	Platforms                    []PlatformConfig   `toml:"platforms"`
 	Heartbeat                    HeartbeatConfig    `toml:"heartbeat"`
 	AutoCompress                 AutoCompressConfig `toml:"auto_compress"`
-	// ResetOnIdleMins automatically rotates to a new lark-connect session after
+	// ResetOnIdleMins automatically rotates to a new lark-agent-bot session after
 	// the current session has been inactive for the specified number of minutes.
 	// 0 or nil disables the behavior.
 	ResetOnIdleMins *int `toml:"reset_on_idle_mins,omitempty"`
@@ -507,7 +507,7 @@ type ProjectConfig struct {
 	// RunAsUser, when set, causes the agent command for this project to be
 	// spawned under a different Unix user via `sudo -n -iu <user> --`. This
 	// provides OS-level file-system isolation from the supervisor user who
-	// runs lark-connect itself. Requires passwordless sudo to the target user
+	// runs lark-agent-bot itself. Requires passwordless sudo to the target user
 	// and is POSIX-only. See docs/usage.md "Running agents as a different
 	// Unix user" for setup and migration.
 	RunAsUser string `toml:"run_as_user,omitempty"`
@@ -559,7 +559,7 @@ type ProjectConfig struct {
 	Display    *DisplayConfig  `toml:"display,omitempty"`
 	References ReferenceConfig `toml:"references,omitempty"`
 	// FilterExternalSessions: when true, /list only shows sessions created by
-	// lark-connect, hiding sessions created by direct CLI usage in the same work_dir.
+	// lark-agent-bot, hiding sessions created by direct CLI usage in the same work_dir.
 	// Default is false (show all sessions).
 	FilterExternalSessions *bool `toml:"filter_external_sessions,omitempty"`
 	// Shell overrides the global shell for this project. See Config.Shell.
@@ -644,9 +644,9 @@ func load(path string) (*Config, error) {
 	expandHomeInConfig(cfg)
 	if cfg.DataDir == "" {
 		if home, err := os.UserHomeDir(); err == nil {
-			cfg.DataDir = filepath.Join(home, ".lark-connect")
+			cfg.DataDir = filepath.Join(home, ".lark-agent-bot")
 		} else {
-			cfg.DataDir = ".lark-connect"
+			cfg.DataDir = ".lark-agent-bot"
 		}
 	}
 	cfg.AttachmentSend = strings.ToLower(strings.TrimSpace(cfg.AttachmentSend))
@@ -659,7 +659,7 @@ func load(path string) (*Config, error) {
 
 // LoadPermissive loads the config file and performs all validation except the
 // "at least one platform per project" check. Use this for commands (like
-// `lark-connect web`) that should work even before platforms are configured.
+// `lark-agent-bot web`) that should work even before platforms are configured.
 func LoadPermissive(path string) (*Config, error) {
 	cfg, err := load(path)
 	if err != nil {
@@ -1040,7 +1040,7 @@ func EffectiveCardMode(cfg *Config, proj *ProjectConfig) string {
 }
 
 // validatePermissive is like validate but skips the "at least one platform"
-// requirement so that commands like `lark-connect web` can operate on agent-only
+// requirement so that commands like `lark-agent-bot web` can operate on agent-only
 // configs before platforms have been set up.
 func (c *Config) validatePermissive() error {
 	return c.validateInternal(true)

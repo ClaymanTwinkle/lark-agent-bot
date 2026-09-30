@@ -104,7 +104,7 @@ func TestRestartNotify_DispatchesAfterPlatformReady(t *testing.T) {
 	engine := NewEngine("test", &stubAgent{}, []Platform{plat}, "", LangEnglish)
 
 	// Queue the notify BEFORE marking ready — this mirrors the real
-	// startup order in cmd/lark-connect/main.go where SetPendingRestartNotify
+	// startup order in cmd/lark-agent-bot/main.go where SetPendingRestartNotify
 	// is called right after e.Start() returns.
 	engine.SetPendingRestartNotify(&RestartRequest{
 		Platform:   "telegram",
@@ -288,7 +288,7 @@ func (p *panickingRestartStub) Send(_ context.Context, _ any, _ string) error {
 // TestRestartNotify_PanicInSendRecovered verifies that a panic inside
 // runPendingRestartNotify's dispatch path (e.g. a platform adapter panicking
 // in Send during ReconstructReplyCtx / Send) is caught by the new
-// defer-recover and does NOT crash the lark-connect process. Before #1686 P1-A,
+// defer-recover and does NOT crash the lark-agent-bot process. Before #1686 P1-A,
 // this kind of panic would propagate up and kill the daemon because no
 // higher-level recover() existed in the restart-notify goroutine.
 //

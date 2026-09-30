@@ -1,6 +1,6 @@
 //go:build smoke
 
-// Package e2e contains smoke and regression tests for lark-connect.
+// Package e2e contains smoke and regression tests for lark-agent-bot.
 // These tests verify core functionality using real components where possible,
 // and mocks where necessary (e.g., platform network calls).
 package e2e
@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/config"
-	"github.com/ClaymanTwinkle/lark-connect/core"
-	"github.com/ClaymanTwinkle/lark-connect/tests/mocks"
-	"github.com/ClaymanTwinkle/lark-connect/tests/mocks/fake"
+	"github.com/ClaymanTwinkle/lark-agent-bot/config"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/tests/mocks"
+	"github.com/ClaymanTwinkle/lark-agent-bot/tests/mocks/fake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -32,7 +32,7 @@ func TestSmoke_ConfigLoading(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.toml")
 
 	configContent := `
-data_dir = "~/.lark-connect"
+data_dir = "~/.lark-agent-bot"
 
 [[projects]]
 name = "test-project"
@@ -55,7 +55,7 @@ level = "info"
 	require.NoError(t, err)
 
 	// Verify basic config fields
-	assert.Equal(t, "~/.lark-connect", cfg.DataDir)
+	assert.Equal(t, "~/.lark-agent-bot", cfg.DataDir)
 	assert.Len(t, cfg.Projects, 1)
 	assert.Equal(t, "test-project", cfg.Projects[0].Name)
 	assert.Equal(t, "claudecode", cfg.Projects[0].Agent.Type)

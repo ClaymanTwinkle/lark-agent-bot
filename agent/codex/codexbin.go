@@ -14,7 +14,7 @@ import (
 //
 // It runs before every spawn, not once at startup: the Codex desktop app
 // installs its CLI under a per-version directory and deletes the old one on
-// update, so a path resolved at startup goes stale while lark-connect keeps
+// update, so a path resolved at startup goes stale while lark-agent-bot keeps
 // running. A bare cmd is looked up in PATH first; when the default "codex" is
 // not there, the newest CLI bundled with the desktop app is used.
 func resolveCodexBin(cmd string) (bin string, fromDesktop bool, err error) {
@@ -82,7 +82,7 @@ func newestDesktopCodex(root string) string {
 // withBinDirOnPath adds bin's directory to the front of PATH in env, the way
 // PATH looked when the desktop CLI was found through it, so anything the CLI
 // looks up next to itself by name still resolves. The effective PATH is the
-// last PATH entry in env (lark-connect injects one per session), falling back
+// last PATH entry in env (lark-agent-bot injects one per session), falling back
 // to the process environment.
 func withBinDirOnPath(env []string, bin string) []string {
 	current := os.Getenv("PATH")

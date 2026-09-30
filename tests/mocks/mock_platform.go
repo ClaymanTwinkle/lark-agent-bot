@@ -1,10 +1,10 @@
-// Package mocks provides mock implementations for testing lark-connect components.
+// Package mocks provides mock implementations for testing lark-agent-bot components.
 package mocks
 
 import (
 	"context"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 	"github.com/stretchr/testify/mock"
 )
 

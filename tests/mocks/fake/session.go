@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // FakeAgentSession is a fake implementation of AgentSession for testing.

@@ -241,8 +241,8 @@ func TestParseClaudeUsageResetTime_AllowsMonthDayWholeHour(t *testing.T) {
 }
 
 func TestAgentGetUsageSmoke(t *testing.T) {
-	if os.Getenv("LARK_CONNECT_SMOKE_CLAUDE_USAGE") == "" {
-		t.Skip("set LARK_CONNECT_SMOKE_CLAUDE_USAGE=1 to run")
+	if os.Getenv("LARK_AGENT_BOT_SMOKE_CLAUDE_USAGE") == "" {
+		t.Skip("set LARK_AGENT_BOT_SMOKE_CLAUDE_USAGE=1 to run")
 	}
 	if _, err := os.Stat("/usr/bin/env"); err != nil {
 		t.Skipf("environment not suitable: %v", err)

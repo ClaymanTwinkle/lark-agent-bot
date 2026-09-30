@@ -17,7 +17,7 @@ import (
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 	callback "github.com/larksuite/oapi-sdk-go/v3/event/dispatcher/callback"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 )
@@ -1134,7 +1134,7 @@ func TestBuildRichCard_UsesCodexRuntimeToolDescriptors(t *testing.T) {
 		{Kind: core.ToolStepKindTool, Name: "functions.exec_command", Summary: `{"cmd":"pwd"}`},
 		{Kind: core.ToolStepKindTool, Name: "functions.write_stdin", Summary: `{"chars":"q"}`},
 		{Kind: core.ToolStepKindTool, Name: "functions.exec_command", Summary: `{"cmd":"git status --short"}`},
-		{Kind: core.ToolStepKindTool, Name: "functions.exec_command", Summary: `{"cmd":"ps aux | grep lark-connect"}`},
+		{Kind: core.ToolStepKindTool, Name: "functions.exec_command", Summary: `{"cmd":"ps aux | grep lark-agent-bot"}`},
 		{Kind: core.ToolStepKindTool, Name: "apply_patch", Summary: "/tmp/file.go"},
 		{Kind: core.ToolStepKindTool, Name: "multi_tool_use.parallel", Summary: "3 tool calls"},
 		{Kind: core.ToolStepKindTool, Name: "tool_search_tool", Summary: "search available tools"},
@@ -1574,7 +1574,7 @@ func TestFeishuCardAPIErrorClassification(t *testing.T) {
 
 func TestBuildPreviewCardJSON_NormalTextFallback(t *testing.T) {
 	cardJSON := buildPreviewCardJSON("plain progress text")
-	if strings.Contains(cardJSON, "lark-connect · 进度") {
+	if strings.Contains(cardJSON, "lark-agent-bot · 进度") {
 		t.Fatalf("normal text should use default card template, got %q", cardJSON)
 	}
 	if !strings.Contains(cardJSON, "\"tag\":\"markdown\"") {

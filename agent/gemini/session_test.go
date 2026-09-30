@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // sanitizeFileName mirrors the logic in geminiSession.Send for file name sanitization.
 func sanitizeFileName(fileName string, index int) string {
 	fname := filepath.Base(fileName)
 	if fname == "" || fname == "." || fname == ".." {
-		fname = fmt.Sprintf("lark-connect-file-%d", index)
+		fname = fmt.Sprintf("lark-agent-bot-file-%d", index)
 	}
 	return fname
 }
@@ -33,9 +33,9 @@ func TestSanitizeFileName(t *testing.T) {
 		{"path traversal", "../../etc/passwd", 0, true, "passwd"},
 		{"deep traversal", "../../../tmp/evil.sh", 1, true, "evil.sh"},
 		{"absolute path", "/etc/shadow", 0, true, "shadow"},
-		{"empty name", "", 2, true, "lark-connect-file-2"},
-		{"dot only", ".", 3, true, "lark-connect-file-3"},
-		{"double dot", "..", 4, true, "lark-connect-file-4"},
+		{"empty name", "", 2, true, "lark-agent-bot-file-2"},
+		{"dot only", ".", 3, true, "lark-agent-bot-file-3"},
+		{"double dot", "..", 4, true, "lark-agent-bot-file-4"},
 		{"subdir file", "subdir/file.txt", 0, true, "file.txt"},
 		{"slash path", "dir/subdir/evil.dll", 0, true, "evil.dll"},
 	}
@@ -405,7 +405,7 @@ func TestSlugify(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"lark-connect", "lark-connect"},
+		{"lark-agent-bot", "lark-agent-bot"},
 		{"Daily", "daily"},
 		{"My Project", "my-project"},
 		{"hello_world", "hello-world"},

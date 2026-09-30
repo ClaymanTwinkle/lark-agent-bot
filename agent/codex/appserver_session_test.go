@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func TestAppServerApprovalsReviewer_RejectsMissingOrWrongReviewer(t *testing.T) {
@@ -696,12 +696,12 @@ func TestAppServerReadLoop_DeliversLinesOver10MB(t *testing.T) {
 	}
 }
 
-// lark-connect's own tool instructions (send, cron, timer, relay) reach the
+// lark-agent-bot's own tool instructions (send, cron, timer, relay) reach the
 // Codex thread as developer instructions on both thread/start and
 // thread/resume, which builds on the same params.
 func TestAppServerThreadParams_IncludeDeveloperInstructions(t *testing.T) {
-	s := &appServerSession{mode: "default", developerInstructions: "use lark-connect send"}
-	if got := s.threadRequestParams()["developerInstructions"]; got != "use lark-connect send" {
+	s := &appServerSession{mode: "default", developerInstructions: "use lark-agent-bot send"}
+	if got := s.threadRequestParams()["developerInstructions"]; got != "use lark-agent-bot send" {
 		t.Fatalf("developerInstructions = %v, want the tool instructions", got)
 	}
 
@@ -731,8 +731,8 @@ func TestNewAgentToolInstructionsFollowLanguage(t *testing.T) {
 		if got != want {
 			t.Fatalf("language %q: tool instructions differ from AgentSystemPromptForLang", lang)
 		}
-		if !strings.Contains(got, "lark-connect send") {
-			t.Fatalf("language %q: instructions do not mention lark-connect send", lang)
+		if !strings.Contains(got, "lark-agent-bot send") {
+			t.Fatalf("language %q: instructions do not mention lark-agent-bot send", lang)
 		}
 	}
 }

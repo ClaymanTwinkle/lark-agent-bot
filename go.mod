@@ -1,4 +1,4 @@
-module github.com/ClaymanTwinkle/lark-connect
+module github.com/ClaymanTwinkle/lark-agent-bot
 
 go 1.25.0
 

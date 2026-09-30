@@ -25,7 +25,7 @@
 //     these are the user-facing surfaces.
 //  5. Keep each test self-contained (own t.TempDir(), own engine).
 //
-// Full inventory: projects/lark-connect/agents/qa-cursor/release-gate/CUJ-INVENTORY.md
+// Full inventory: projects/lark-agent-bot/agents/qa-cursor/release-gate/CUJ-INVENTORY.md
 package core
 
 import (
@@ -284,7 +284,7 @@ func newCUJEnv(t *testing.T) *cujEnv {
 	// the test body returns, which made t.TempDir's single RemoveAll fail with
 	// "directory not empty" (seen in the v0.2.5 release run). Stop the engine
 	// first, then retry the removal until late writes have settled.
-	dir, err := os.MkdirTemp("", "lark-connect-cuj-*")
+	dir, err := os.MkdirTemp("", "lark-agent-bot-cuj-*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -627,7 +627,7 @@ func TestCUJ_B9_SearchFindsKeywordInHistory(t *testing.T) {
 }
 
 // ===========================================================================
-// CUJ-D7 · outgoing_rate_limit throttles bursts so lark-connect does not get
+// CUJ-D7 · outgoing_rate_limit throttles bursts so lark-agent-bot does not get
 // the bot banned by IM platforms for spamming. Throttle is end-to-end:
 // SendToSession → waitOutgoing → p.Send.
 //
@@ -872,7 +872,7 @@ func TestCUJ_E5_TimerDisappearsAfterFiring(t *testing.T) {
 }
 
 // ===========================================================================
-// CUJ-B12 · After lark-connect restarts, the user's session, history, agent
+// CUJ-B12 · After lark-agent-bot restarts, the user's session, history, agent
 // session ID, and cron jobs all survive — the user can continue as if
 // nothing happened.
 //
@@ -1679,7 +1679,7 @@ func TestCUJ_D6_InboundRateLimitDrops(t *testing.T) {
 	n := len(env.agent.sessions)
 	env.agent.mu.Unlock()
 	// With limit=2, the agent should not see all 5 — at most 2 sessions
-	// (or 1 if lark-connect reuses session per burst).
+	// (or 1 if lark-agent-bot reuses session per burst).
 	if n > 2 {
 		t.Fatalf("rate_limit failed: agent received %d session starts for 5 fast messages", n)
 	}
@@ -2057,7 +2057,7 @@ func TestCUJ_G6_NetworkFlapLinkedToPlatformLayer(t *testing.T) {
 // SPRINT 2 · H organization (multi-platform/multi-project remaining)
 // ===========================================================================
 
-// CUJ-H1 · Two projects in one lark-connect: sessions/messages do not cross
+// CUJ-H1 · Two projects in one lark-agent-bot: sessions/messages do not cross
 // project boundaries. Covered at integration level.
 func TestCUJ_H1_MultiProjectLinkedToIntegration(t *testing.T) {
 	t.Log("CUJ-H1: covered by release-gate TestCC_MULTI_01_multi_project")

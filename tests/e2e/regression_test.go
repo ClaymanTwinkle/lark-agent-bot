@@ -1,6 +1,6 @@
 //go:build regression
 
-// Package e2e contains smoke and regression tests for lark-connect.
+// Package e2e contains smoke and regression tests for lark-agent-bot.
 // Regression tests cover critical functionality paths and should be run
 // before each release.
 package e2e
@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
-	"github.com/ClaymanTwinkle/lark-connect/tests/mocks"
-	"github.com/ClaymanTwinkle/lark-connect/tests/mocks/fake"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/tests/mocks"
+	"github.com/ClaymanTwinkle/lark-agent-bot/tests/mocks/fake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -1012,7 +1012,7 @@ func TestRegression_DiscordEmbed(t *testing.T) {
 			{Name: "Duration", Value: "1.5s", Inline: true},
 		},
 	}
-	embed.Footer.Text = "lark-connect v1.0"
+	embed.Footer.Text = "lark-agent-bot v1.0"
 
 	// Verify structure
 	assert.Equal(t, "Test Result", embed.Title)
@@ -1022,7 +1022,7 @@ func TestRegression_DiscordEmbed(t *testing.T) {
 	assert.Equal(t, "Status", embed.Fields[0].Name)
 	assert.Equal(t, "Success", embed.Fields[0].Value)
 	assert.True(t, embed.Fields[0].Inline)
-	assert.Equal(t, "lark-connect v1.0", embed.Footer.Text)
+	assert.Equal(t, "lark-agent-bot v1.0", embed.Footer.Text)
 
 	t.Log("Discord embed: PASS")
 }

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // --- Agent: mode cache & SetMode/GetMode ---------------------------
@@ -54,7 +54,7 @@ func TestAgent_reportModes_populatesCache(t *testing.T) {
 	}
 }
 
-// Regression: after `/mode plan`, lark-connect's engine calls SetMode("plan")
+// Regression: after `/mode plan`, lark-agent-bot's engine calls SetMode("plan")
 // then reads back GetMode() to decide what to display and apply via
 // SetLiveMode. The pending SetMode MUST win over the previously-cached
 // currentModeId, otherwise /mode reports the wrong mode name and the

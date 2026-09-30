@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/agent/antigravityhook"
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/agent/antigravityhook"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func TestAgyPermissionBridgePreservesHooksAndRelaysDecisions(t *testing.T) {
@@ -62,7 +62,7 @@ func TestAgyPermissionBridgePreservesHooksAndRelaysDecisions(t *testing.T) {
 		t.Fatal("overlay does not preserve existing hook")
 	}
 	if _, ok := overlayHooks[agyPermissionHookName]; !ok {
-		t.Fatal("overlay does not contain lark-connect permission hook")
+		t.Fatal("overlay does not contain lark-agent-bot permission hook")
 	}
 
 	testBridgeDecision(t, bridge, events, "allow", "", "allow", "")

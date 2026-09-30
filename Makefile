@@ -1,6 +1,6 @@
-APP        := lark-connect
-MODULE     := github.com/ClaymanTwinkle/lark-connect
-CMD        := ./cmd/lark-connect
+APP        := lark-agent-bot
+MODULE     := github.com/ClaymanTwinkle/lark-agent-bot
+CMD        := ./cmd/lark-agent-bot
 DIST       := dist
 
 VERSION    ?= v0.1.0
@@ -166,7 +166,7 @@ release-all: web clean
 	@echo "Packaging archives..."
 	@# Archives keep the versioned name, but the binary inside is always
 	@# $(APP)[.exe] so an unpacked install is callable as `$(APP)` right away
-	@# (agents run `$(APP) send` from the directory lark-connect puts on PATH).
+	@# (agents run `$(APP) send` from the directory lark-agent-bot puts on PATH).
 	@cd $(DIST) && for f in $(APP)-*; do \
 		case "$$f" in \
 			*.tar.gz|*.zip) continue ;; \

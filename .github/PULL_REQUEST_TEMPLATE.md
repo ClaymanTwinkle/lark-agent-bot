@@ -41,7 +41,7 @@ The reviewer will use the checklist at the bottom to gate merge.
 ### Critical User Journeys (CUJ) impact
 
 <!-- See AGENTS.md → "Critical User Journeys (CUJ)" and the inventory in
-     projects/lark-connect/agents/qa-cursor/release-gate/CUJ-INVENTORY.md.
+     projects/lark-agent-bot/agents/qa-cursor/release-gate/CUJ-INVENTORY.md.
      Mark which CUJ groups this PR touches: -->
 
 - [ ] No CUJ touched (small refactor, doc change, etc.)

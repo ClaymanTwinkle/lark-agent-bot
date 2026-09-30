@@ -17,7 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // antigravitySession manages multi-turn conversations with the Antigravity CLI (agy).
@@ -93,7 +93,7 @@ func (as *antigravitySession) Send(prompt string, messageID string, images []cor
 	}
 
 	// Save images and files into the workspace
-	attachDir := filepath.Join(as.workDir, ".lark-connect", "attachments")
+	attachDir := filepath.Join(as.workDir, ".lark-agent-bot", "attachments")
 	if (len(images) > 0 || len(files) > 0) && os.MkdirAll(attachDir, 0o755) != nil {
 		attachDir = os.TempDir()
 	}

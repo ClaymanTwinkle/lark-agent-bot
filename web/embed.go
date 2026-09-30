@@ -7,7 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 //go:embed all:dist

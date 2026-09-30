@@ -16,11 +16,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/agent/antigravityhook"
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/agent/antigravityhook"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
-const agyPermissionHookName = "lark-connect-permission-bridge"
+const agyPermissionHookName = "lark-agent-bot-permission-bridge"
 
 type agyHookInput struct {
 	ConversationID string `json:"conversationId"`
@@ -50,7 +50,7 @@ type agyPermissionBridge struct {
 
 func newAgyPermissionBridge(ctx context.Context, events chan<- core.Event) (*agyPermissionBridge, error) {
 	bridgeCtx, cancel := context.WithCancel(ctx)
-	rootDir, err := os.MkdirTemp("", "lark-connect-agy-permission-")
+	rootDir, err := os.MkdirTemp("", "lark-agent-bot-agy-permission-")
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("create permission bridge directory: %w", err)
@@ -131,7 +131,7 @@ func createAgyConfigOverlay(rootDir string) (string, error) {
 
 	executable, err := os.Executable()
 	if err != nil {
-		return "", fmt.Errorf("resolve lark-connect executable for Agy hook: %w", err)
+		return "", fmt.Errorf("resolve lark-agent-bot executable for Agy hook: %w", err)
 	}
 	bridgeHook, err := json.Marshal(map[string]any{
 		"PreToolUse": []any{
@@ -229,11 +229,11 @@ func (b *agyPermissionBridge) handleConnection(conn net.Conn) {
 
 	var request antigravityhook.BridgeRequest
 	if err := json.NewDecoder(io.LimitReader(conn, 4<<20)).Decode(&request); err != nil {
-		b.writeResponse(conn, antigravityhook.BridgeResponse{Decision: "deny", Reason: "invalid lark-connect permission bridge request"})
+		b.writeResponse(conn, antigravityhook.BridgeResponse{Decision: "deny", Reason: "invalid lark-agent-bot permission bridge request"})
 		return
 	}
 	if !bridgeTokenEqual(request.Token, b.token) {
-		b.writeResponse(conn, antigravityhook.BridgeResponse{Decision: "deny", Reason: "lark-connect permission bridge authentication failed"})
+		b.writeResponse(conn, antigravityhook.BridgeResponse{Decision: "deny", Reason: "lark-agent-bot permission bridge authentication failed"})
 		return
 	}
 	_ = conn.SetDeadline(time.Time{})
@@ -269,7 +269,7 @@ func (b *agyPermissionBridge) handleConnection(conn net.Conn) {
 	select {
 	case b.events <- event:
 	case <-b.ctx.Done():
-		b.writeResponse(conn, antigravityhook.BridgeResponse{Decision: "deny", Reason: "lark-connect session closed"})
+		b.writeResponse(conn, antigravityhook.BridgeResponse{Decision: "deny", Reason: "lark-agent-bot session closed"})
 		return
 	}
 
@@ -285,7 +285,7 @@ func (b *agyPermissionBridge) handleConnection(conn net.Conn) {
 		}
 		b.writeResponse(conn, response)
 	case <-b.ctx.Done():
-		b.writeResponse(conn, antigravityhook.BridgeResponse{Decision: "deny", Reason: "lark-connect session closed"})
+		b.writeResponse(conn, antigravityhook.BridgeResponse{Decision: "deny", Reason: "lark-agent-bot session closed"})
 	}
 }
 

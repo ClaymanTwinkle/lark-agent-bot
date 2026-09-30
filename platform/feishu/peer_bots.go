@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // Bots in the same group can hand work to each other with a real @: Feishu
@@ -101,7 +101,7 @@ func (p *Platform) resolveOutboundMentions(ctx context.Context, rc replyContext,
 	return p.resolveMentionsInContent(ctx, rc.chatID, content)
 }
 
-// ReplyWithAt implements core.AtMentionSender (`lark-connect send --at-users
+// ReplyWithAt implements core.AtMentionSender (`lark-agent-bot send --at-users
 // / --at-all`): the IDs become native @ mentions in a text message.
 func (p *Platform) ReplyWithAt(ctx context.Context, rctx any, content string, atUsers []string, atAll bool) error {
 	rc, ok := rctx.(replyContext)

@@ -167,8 +167,8 @@
     "rawConfig": "原始配置"
   },
   "login": {
-    "title": "Lark-Connect 管理后台",
-    "subtitle": "连接到您的 Lark-Connect 实例",
+    "title": "Lark-Agent-Bot 管理后台",
+    "subtitle": "连接到您的 Lark-Agent-Bot 实例",
     "token": "API 令牌",
     "serverUrl": "服务器地址",
     "connect": "连接",
@@ -263,7 +263,7 @@
     "longPollTimeout": "长轮询超时（毫秒）",
     "listen": "监听地址",
     "publicUrl": "公网 Webhook URL",
-    "publicUrlHint": "供 Gateway 回调 lark-connect 的公网地址",
+    "publicUrlHint": "供 Gateway 回调 lark-agent-bot 的公网地址",
     "registerUrl": "注册 URL",
     "registerUrlHint": "可选：向 Gateway 注册 Webhook 的接口地址",
     "eventsPath": "事件拉取路径（长轮询）",

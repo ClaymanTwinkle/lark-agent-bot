@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
-	"github.com/ClaymanTwinkle/lark-connect/internal/testutil"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/internal/testutil"
 )
 
 func TestSlugify(t *testing.T) {
@@ -18,7 +18,7 @@ func TestSlugify(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"lark-connect", "lark-connect"},
+		{"lark-agent-bot", "lark-agent-bot"},
 		{"Daily", "daily"},
 		{"My Project", "my-project"},
 		{"hello_world", "hello-world"},

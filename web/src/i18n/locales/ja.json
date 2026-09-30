@@ -167,8 +167,8 @@
     "rawConfig": "生の設定"
   },
   "login": {
-    "title": "Lark-Connect 管理コンソール",
-    "subtitle": "Lark-Connect インスタンスに接続",
+    "title": "Lark-Agent-Bot 管理コンソール",
+    "subtitle": "Lark-Agent-Bot インスタンスに接続",
     "token": "API トークン",
     "serverUrl": "サーバー URL",
     "connect": "接続",
@@ -263,7 +263,7 @@
     "longPollTimeout": "ロングポーリングタイムアウト（ms）",
     "listen": "リッスンアドレス",
     "publicUrl": "公開 Webhook URL",
-    "publicUrlHint": "Gateway が lark-connect にコールバックする公開 URL",
+    "publicUrlHint": "Gateway が lark-agent-bot にコールバックする公開 URL",
     "registerUrl": "登録 URL",
     "registerUrlHint": "任意：Webhook を Gateway に登録するエンドポイント",
     "eventsPath": "イベント取得パス（ロングポーリング）",

@@ -3,7 +3,7 @@ package claudecode
 import (
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func TestNew_ParsesProjectEnvFromOpts(t *testing.T) {

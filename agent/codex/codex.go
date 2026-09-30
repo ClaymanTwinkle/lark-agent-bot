@@ -15,8 +15,8 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/ClaymanTwinkle/lark-connect/agent/internal/skillroots"
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/agent/internal/skillroots"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func init() {
@@ -42,7 +42,7 @@ type Agent struct {
 	sessionEnv      []string
 	mu              sync.RWMutex
 
-	// toolInstructions tells the agent how to use lark-connect's own
+	// toolInstructions tells the agent how to use lark-agent-bot's own
 	// commands (send, cron, timer, relay). The app-server backend passes it
 	// as the thread's developer instructions.
 	toolInstructions string
@@ -129,7 +129,7 @@ func normalizeBackend(raw string) string {
 func normalizeAppServerURL(raw string) string {
 	url := strings.TrimSpace(raw)
 	if url == "" {
-		// Default to the stdio transport: lark-connect's app_server backend
+		// Default to the stdio transport: lark-agent-bot's app_server backend
 		// speaks JSON-RPC over the stdio pipes, and on codex 0.152+ a ws://
 		// --listen value leaves stdio unresponsive (see #1781). Users who
 		// need a WebSocket listener can still set app_server_url explicitly.
@@ -486,7 +486,7 @@ func (a *Agent) SetPlatformPrompt(prompt string) {
 	a.platformPrompt = prompt
 }
 
-// developerInstructions joins lark-connect's tool instructions and the
+// developerInstructions joins lark-agent-bot's tool instructions and the
 // platform prompt into the app-server thread's developer instructions.
 func developerInstructions(toolInstructions, platformPrompt string) string {
 	toolInstructions = strings.TrimSpace(toolInstructions)
@@ -850,7 +850,7 @@ func (a *Agent) activeProviderCodexConfig() (name string, apiKey string, wireAPI
 	return p.Name, p.APIKey, p.CodexWireAPI, p.CodexHTTPHeaders
 }
 
-// HasSystemPromptSupport reports whether lark-connect's tool instructions
+// HasSystemPromptSupport reports whether lark-agent-bot's tool instructions
 // reach the agent natively: the app-server backend sends them as the
 // thread's developer instructions. The exec backend still needs them in the
 // project's AGENTS.md.

@@ -16,7 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func init() {
@@ -26,7 +26,7 @@ func init() {
 // Agent drives the Antigravity CLI (agy) in headless mode.
 //
 // Modes (maps to agy approval and sandbox flags):
-//   - "default":   ask for each tool through the lark-connect permission bridge
+//   - "default":   ask for each tool through the lark-agent-bot permission bridge
 //   - "yolo":      auto-approve all tools (--dangerously-skip-permissions)
 //   - "plan":      read-only plan mode with terminal sandbox constraints (--sandbox)
 type Agent struct {
@@ -284,7 +284,7 @@ func (a *Agent) GetMode() string {
 
 func (a *Agent) PermissionModes() []core.PermissionModeInfo {
 	return []core.PermissionModeInfo{
-		{Key: "default", Name: "Default", NameZh: "默认", Desc: "Ask for approval through lark-connect on each tool use", DescZh: "每次工具调用都通过 lark-connect 请求确认"},
+		{Key: "default", Name: "Default", NameZh: "默认", Desc: "Ask for approval through lark-agent-bot on each tool use", DescZh: "每次工具调用都通过 lark-agent-bot 请求确认"},
 		{Key: "yolo", Name: "YOLO", NameZh: "全自动", Desc: "Auto-approve all tool calls", DescZh: "自动批准所有工具调用"},
 		{Key: "plan", Name: "Plan", NameZh: "规划模式", Desc: "Read-only plan mode in sandbox", DescZh: "只读沙箱规划模式"},
 	}

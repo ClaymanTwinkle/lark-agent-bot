@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/internal/testutil"
+	"github.com/ClaymanTwinkle/lark-agent-bot/internal/testutil"
 )
 
 func TestMain(m *testing.M) {

@@ -263,9 +263,9 @@ func runHookCommand(
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	// Strip the skip flag so the hook does real work when lark-connect
+	// Strip the skip flag so the hook does real work when lark-agent-bot
 	// calls it (even if the host environment has it set).
-	cmd.Env = filterEnv(os.Environ(), "LARK_CONNECT_PERMISSION_HOOK_SKIP")
+	cmd.Env = filterEnv(os.Environ(), "LARK_AGENT_BOT_PERMISSION_HOOK_SKIP")
 
 	if err := cmd.Run(); err != nil {
 		return ccHookDecision{}, fmt.Errorf("hook exec: %w (stderr: %s)", err, truncateStr(strings.TrimSpace(stderr.String()), 200))

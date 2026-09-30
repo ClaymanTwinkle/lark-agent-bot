@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // ── Wire types (mirrors reasonix/internal/serve/wire.go) ──────────
@@ -197,7 +197,7 @@ func (s *reasonixSession) Events() <-chan core.Event {
 }
 
 func (s *reasonixSession) CurrentSessionID() string {
-	// We don't track reasonix's internal session ID; use lark-connect's session ID.
+	// We don't track reasonix's internal session ID; use lark-agent-bot's session ID.
 	return s.sessionID
 }
 
@@ -506,7 +506,7 @@ func (s *reasonixSession) httpPost(path string, body any) error {
 }
 
 // formatImages builds a comma-separated list of image filenames for inclusion
-// in the prompt. Reasons adopts the standard lark-connect file-save pattern so
+// in the prompt. Reasons adopts the standard lark-agent-bot file-save pattern so
 // the actual image bytes land on disk (via core.SaveFilesToDisk); this list
 // gives reasonix serve a human-readable hint about which images were attached.
 func formatImages(images []core.ImageAttachment) string {

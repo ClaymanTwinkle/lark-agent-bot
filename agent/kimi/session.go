@@ -17,7 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // kimSession manages multi-turn conversations with the Kimi CLI.
@@ -125,7 +125,7 @@ func (ks *kimiSession) Send(prompt string, messageID string, images []core.Image
 	}
 
 	// Save images and files into the workspace so Kimi CLI can access them.
-	attachDir := filepath.Join(ks.workDir, ".lark-connect", "attachments")
+	attachDir := filepath.Join(ks.workDir, ".lark-agent-bot", "attachments")
 	if (len(images) > 0 || len(files) > 0) && os.MkdirAll(attachDir, 0o755) != nil {
 		attachDir = os.TempDir()
 	}
@@ -527,7 +527,7 @@ func (ks *kimiSession) flushPendingAsText() {
 // RespondPermission is a no-op — Kimi CLI auto-approves tool calls in
 // non-interactive mode. The legacy kimi-cli triggers this via --print's
 // implicit --yolo; the newer Kimi Code CLI does it implicitly when invoked
-// with --prompt (its "auto" permission default). Either way, lark-connect
+// with --prompt (its "auto" permission default). Either way, lark-agent-bot
 // never sees an interactive permission request from Kimi.
 func (ks *kimiSession) RespondPermission(_ string, _ core.PermissionResult) error {
 	return nil

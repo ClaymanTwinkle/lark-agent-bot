@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func TestNew_ParsesRunAsUserAndRunAsEnv(t *testing.T) {
@@ -690,9 +690,9 @@ func TestScanSessionMeta_AITitleAndCustomTitle(t *testing.T) {
 	path := filepath.Join(tmpDir, "test.jsonl")
 
 	lines := []string{
-		`{"type": "user", "message": {"content": "[lark-connect sender_id=abc] first prompt"}}`,
+		`{"type": "user", "message": {"content": "[lark-agent-bot sender_id=abc] first prompt"}}`,
 		`{"type": "assistant", "message": {"content": "reply"}}`,
-		`{"type": "ai-title", "sessionId": "sess-1", "aiTitle": "查看lark-connect开机自启功能"}`,
+		`{"type": "ai-title", "sessionId": "sess-1", "aiTitle": "查看lark-agent-bot开机自启功能"}`,
 	}
 	data := strings.Join(lines, "\n") + "\n"
 	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
@@ -703,7 +703,7 @@ func TestScanSessionMeta_AITitleAndCustomTitle(t *testing.T) {
 	if count != 2 {
 		t.Errorf("scanSessionMeta count = %d, want 2", count)
 	}
-	if summary != "查看lark-connect开机自启功能" {
+	if summary != "查看lark-agent-bot开机自启功能" {
 		t.Errorf("scanSessionMeta summary = %q, want ai-title", summary)
 	}
 }
@@ -891,7 +891,7 @@ func TestAgent_ImplementsSessionIDValidator(t *testing.T) {
 
 func TestNew_WorkDirDoesNotExist(t *testing.T) {
 	opts := map[string]any{
-		"work_dir": "/tmp/lark-connect-nonexistent-dir-that-should-not-exist",
+		"work_dir": "/tmp/lark-agent-bot-nonexistent-dir-that-should-not-exist",
 	}
 	_, err := New(opts)
 	if err == nil {

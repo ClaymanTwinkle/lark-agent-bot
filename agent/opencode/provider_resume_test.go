@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func envSliceToMap(env []string) map[string]string {
@@ -20,7 +20,7 @@ func envSliceToMap(env []string) map[string]string {
 }
 
 // TestOpencode_SessionResume_PreservesActiveProvider is a regression test for
-// the multi-provider session resume bug (PR #1356). After a lark-connect process
+// the multi-provider session resume bug (PR #1356). After a lark-agent-bot process
 // restart, calling SetActiveProvider with the name persisted on the session
 // must restore providerEnv (ANTHROPIC_API_KEY + custom env) so that the next
 // --resume spawn does not silently use the wrong provider.

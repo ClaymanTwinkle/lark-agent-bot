@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/config"
+	"github.com/ClaymanTwinkle/lark-agent-bot/config"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -20,7 +20,7 @@ func writeConfig(t *testing.T, body string) string {
 
 func baseProjectTOML(extra string) string {
 	return `
-data_dir = "` + filepath.ToSlash(os.TempDir()) + `/lark-connect-release-test"
+data_dir = "` + filepath.ToSlash(os.TempDir()) + `/lark-agent-bot-release-test"
 ` + extra + `
 
 [[projects]]
@@ -28,7 +28,7 @@ name = "release"
 
 [projects.agent]
 type = "claudecode"
-work_dir = "/tmp/lark-connect-release-work"
+work_dir = "/tmp/lark-agent-bot-release-work"
 
 [[projects.platforms]]
 type = "feishu"
@@ -61,7 +61,7 @@ tool_max_len = 222
 
 [projects.agent]
 type = "claudecode"
-work_dir = "/tmp/lark-connect-release-work"
+work_dir = "/tmp/lark-agent-bot-release-work"
 
 [[projects.platforms]]
 type = "feishu"
@@ -143,7 +143,7 @@ tool_messages = false
 
 [projects.agent]
 type = "claudecode"
-work_dir = "/tmp/lark-connect-release-work"
+work_dir = "/tmp/lark-agent-bot-release-work"
 
 [[projects.platforms]]
 type = "feishu"
@@ -214,7 +214,7 @@ mode = "verbose"
 
 [projects.agent]
 type = "claudecode"
-work_dir = "/tmp/lark-connect-release-work"
+work_dir = "/tmp/lark-agent-bot-release-work"
 
 [[projects.platforms]]
 type = "feishu"
@@ -232,7 +232,7 @@ reset_on_idle_mins = -1
 
 [projects.agent]
 type = "claudecode"
-work_dir = "/tmp/lark-connect-release-work"
+work_dir = "/tmp/lark-agent-bot-release-work"
 
 [[projects.platforms]]
 type = "feishu"

@@ -16,7 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 	"github.com/creack/pty"
 )
 
@@ -62,7 +62,7 @@ func (a *Agent) runClaudeUsageProbe(ctx context.Context) (string, error) {
 	probeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	workDir, err := os.MkdirTemp("", "lark-connect-claude-usage-*")
+	workDir, err := os.MkdirTemp("", "lark-agent-bot-claude-usage-*")
 	if err != nil {
 		return "", fmt.Errorf("claudecode: create usage temp dir: %w", err)
 	}

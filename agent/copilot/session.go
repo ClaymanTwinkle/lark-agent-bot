@@ -16,7 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // copilotSession manages a long-running Copilot CLI process using
@@ -228,7 +228,7 @@ func (cs *copilotSession) sessionConfig(sessionID string) copilotSessionConfig {
 	enableConfigDiscovery := true
 	return copilotSessionConfig{
 		SessionID:                      sessionID,
-		ClientName:                     "lark-connect",
+		ClientName:                     "lark-agent-bot",
 		Model:                          strings.TrimSpace(cs.model),
 		Provider:                       cs.provider,
 		RequestPermission:              &requestPermission,
@@ -243,7 +243,7 @@ func (cs *copilotSession) sessionConfig(sessionID string) copilotSessionConfig {
 func newCopilotSessionID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		return fmt.Sprintf("lark-connect-%d", time.Now().UnixNano())
+		return fmt.Sprintf("lark-agent-bot-%d", time.Now().UnixNano())
 	}
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
@@ -1006,7 +1006,7 @@ func (cs *copilotSession) Close() error {
 // saveImagesToTempDir saves image attachments to a temp directory under workDir
 // and returns their file paths for inclusion in the prompt.
 func saveImagesToTempDir(workDir string, images []core.ImageAttachment) ([]string, error) {
-	imgDir := filepath.Join(workDir, ".lark-connect", "images")
+	imgDir := filepath.Join(workDir, ".lark-agent-bot", "images")
 	if err := os.MkdirAll(imgDir, 0o755); err != nil {
 		return nil, fmt.Errorf("saveImagesToTempDir: mkdir: %w", err)
 	}

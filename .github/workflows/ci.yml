@@ -150,4 +150,4 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           CGO_ENABLED: '0'
-        run: go build -tags no_web ./cmd/lark-connect
+        run: go build -tags no_web ./cmd/lark-agent-bot

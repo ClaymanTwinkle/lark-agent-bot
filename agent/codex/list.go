@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // resolveCodexHomeDir returns the effective CODEX_HOME directory.

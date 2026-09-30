@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // toolInputCacheMaxEntries caps toolInputByID growth; beyond this we evict
@@ -172,7 +172,7 @@ func (s *acpSession) handshake(resumeSessionID string, authMethod string) error 
 			"terminal": false,
 		},
 		"clientInfo": map[string]any{
-			"name":    "lark-connect",
+			"name":    "lark-agent-bot",
 			"version": "1.0.0",
 		},
 	}
@@ -382,7 +382,7 @@ func (s *acpSession) onNotification(method string, params json.RawMessage) {
 
 // maybeAbsorbCurrentModeUpdate watches session/update notifications
 // for `current_mode_update` (server-driven mode switch, e.g. when the
-// user toggles modes via the Windsurf/IDE UI while lark-connect is
+// user toggles modes via the Windsurf/IDE UI while lark-agent-bot is
 // connected). Keeping currentMode in sync here means the IM `/mode`
 // indicator reflects the true server state rather than the last
 // client-initiated value.
@@ -632,7 +632,7 @@ func (s *acpSession) Send(prompt string, messageID string, images []core.ImageAt
 }
 
 func (s *acpSession) appendImageRefs(prompt string, images []core.ImageAttachment) string {
-	attachDir := filepath.Join(s.workDir, ".lark-connect", "attachments")
+	attachDir := filepath.Join(s.workDir, ".lark-agent-bot", "attachments")
 	if err := os.MkdirAll(attachDir, 0o755); err != nil {
 		slog.Warn("acp: mkdir attachments failed", "error", err)
 		return prompt

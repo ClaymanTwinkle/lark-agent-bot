@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/tests/blackbox/helper"
+	"github.com/ClaymanTwinkle/lark-agent-bot/tests/blackbox/helper"
 )
 
 // TestP2_63_65_66_CustomCommandLifecycle tests the full custom prompt command

@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Documentation
-    url: https://github.com/ClaymanTwinkle/lark-connect#readme
+    url: https://github.com/ClaymanTwinkle/lark-agent-bot#readme
     about: Check the README and the Feishu / Lark setup guide before opening an issue

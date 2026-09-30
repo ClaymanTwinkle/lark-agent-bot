@@ -598,7 +598,7 @@ func (a *runAsTestAgent) GetRunAsEnv() []string {
 //
 // Before the fix: per-workspace agents were created with opts containing
 // only work_dir/model/mode. The project-level run_as_user injected into
-// proj.Agent.Options by cmd/lark-connect/main.go was not propagated, so
+// proj.Agent.Options by cmd/lark-agent-bot/main.go was not propagated, so
 // spawned sessions used the legacy (supervisor-user) path despite the
 // preflight saying otherwise.
 //
@@ -680,7 +680,7 @@ func TestMultiWorkspaceAgent_PropagatesRunAsUser(t *testing.T) {
 // TestMultiWorkspaceAgent_NoPropagationWhenParentHasNoRunAs verifies that
 // workspace agents do not get spurious run_as_user or run_as_env entries
 // when the parent agent does not report them. This is the "isolation not
-// configured" path — the vast majority of lark-connect deployments, which
+// configured" path — the vast majority of lark-agent-bot deployments, which
 // must remain unchanged.
 func TestMultiWorkspaceAgent_NoPropagationWhenParentHasNoRunAs(t *testing.T) {
 	baseDir := t.TempDir()

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func TestSkillDirs_UsesProjectAgentAndCodexHomes(t *testing.T) {

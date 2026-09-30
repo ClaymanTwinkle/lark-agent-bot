@@ -517,7 +517,7 @@ func TestHandleRelay_SingleWorkspaceUsesGlobalAgentAndSourceSessionKey(t *testin
 		t.Fatalf("CC_RELAY_DEPTH = %q, want 1 for a direct relay", got)
 	}
 	if got := agent.EnvValue("CC_DATA_DIR"); got != dataDir {
-		t.Fatalf("CC_DATA_DIR = %q, want %q so the relay session can call lark-connect", got, dataDir)
+		t.Fatalf("CC_DATA_DIR = %q, want %q so the relay session can call lark-agent-bot", got, dataDir)
 	}
 	if got := e.sessions.ActiveSessionID("relay:source:discord:C1"); got == "" {
 		t.Fatal("expected relay session to be stored under platform-qualified relay key")

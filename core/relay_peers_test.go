@@ -86,7 +86,7 @@ type relayTestProcess struct {
 	api *APIServer
 }
 
-// startRelayTestProcess stands up what one lark-connect process provides for
+// startRelayTestProcess stands up what one lark-agent-bot process provides for
 // relay: an API server on a real unix socket, a relay manager, and its entries
 // in the shared peer registry.
 func startRelayTestProcess(t *testing.T, peersDir string, engines map[string]*Engine) *relayTestProcess {

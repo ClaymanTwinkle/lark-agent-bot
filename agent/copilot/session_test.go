@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func TestHandleSessionEvent_AssistantMessage(t *testing.T) {
@@ -393,8 +393,8 @@ func TestSessionConfig_MatchesCopilotCreateResumeShape(t *testing.T) {
 	if cfg.SessionID != "sess-1" {
 		t.Fatalf("SessionID = %q, want sess-1", cfg.SessionID)
 	}
-	if cfg.ClientName != "lark-connect" {
-		t.Fatalf("ClientName = %q, want lark-connect", cfg.ClientName)
+	if cfg.ClientName != "lark-agent-bot" {
+		t.Fatalf("ClientName = %q, want lark-agent-bot", cfg.ClientName)
 	}
 	if cfg.Model != "gpt-5.2" {
 		t.Fatalf("Model = %q, want gpt-5.2", cfg.Model)
@@ -421,7 +421,7 @@ func TestSessionConfig_MatchesCopilotCreateResumeShape(t *testing.T) {
 
 // TestSessionConfig_SendsEnableConfigDiscoveryForSkills is a regression test
 // for skills under ~/.agents/skills (and every other discovered source) never
-// loading in lark-connect sessions.
+// loading in lark-agent-bot sessions.
 //
 // Copilot CLI's session.create/session.resume config builder defaults
 // enableConfigDiscovery to false and derives enableSkills from it
@@ -429,7 +429,7 @@ func TestSessionConfig_MatchesCopilotCreateResumeShape(t *testing.T) {
 // asymmetry that made this easy to miss: the lower-level skill discovery
 // helpers default the same flag to true, so interactive `copilot` and
 // `copilot -p` load skills fine — only the programmatic session.create path
-// defaults it off. Omitting the field therefore left lark-connect sessions with
+// defaults it off. Omitting the field therefore left lark-agent-bot sessions with
 // builtin skills only, while `copilot skill list` in the same directory
 // listed all of them.
 func TestSessionConfig_SendsEnableConfigDiscoveryForSkills(t *testing.T) {
@@ -617,7 +617,7 @@ func TestSession_SendWithImages(t *testing.T) {
 
 	// Just ensure no panic and images dir gets created
 	_ = cs.Send("describe image", "", images, nil)
-	imgDir := tmpDir + "/.lark-connect/images"
+	imgDir := tmpDir + "/.lark-agent-bot/images"
 	entries, _ := os.ReadDir(imgDir)
 	if len(entries) != 1 {
 		t.Fatalf("expected 1 image file, got %d", len(entries))

@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/agent/claudecode"
-	"github.com/ClaymanTwinkle/lark-connect/agent/codex"
-	"github.com/ClaymanTwinkle/lark-connect/agent/cursor"
-	"github.com/ClaymanTwinkle/lark-connect/agent/gemini"
-	"github.com/ClaymanTwinkle/lark-connect/agent/opencode"
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/agent/claudecode"
+	"github.com/ClaymanTwinkle/lark-agent-bot/agent/codex"
+	"github.com/ClaymanTwinkle/lark-agent-bot/agent/cursor"
+	"github.com/ClaymanTwinkle/lark-agent-bot/agent/gemini"
+	"github.com/ClaymanTwinkle/lark-agent-bot/agent/opencode"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // skipUnlessAgentReady skips the test when the agent CLI binary is not

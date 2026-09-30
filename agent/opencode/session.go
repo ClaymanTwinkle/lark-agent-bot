@@ -17,7 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // opencodeSession manages multi-turn conversations with the OpenCode CLI.
@@ -120,7 +120,7 @@ func (s *opencodeSession) stageImages(prompt string, images []core.ImageAttachme
 		return prompt, nil, nil
 	}
 
-	imgDir := filepath.Join(s.workDir, ".lark-connect", "images")
+	imgDir := filepath.Join(s.workDir, ".lark-agent-bot", "images")
 	if err := os.MkdirAll(imgDir, 0o755); err != nil {
 		return "", nil, fmt.Errorf("opencodeSession: create image dir: %w", err)
 	}

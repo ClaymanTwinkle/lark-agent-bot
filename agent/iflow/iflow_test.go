@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func TestNormalizeMode(t *testing.T) {

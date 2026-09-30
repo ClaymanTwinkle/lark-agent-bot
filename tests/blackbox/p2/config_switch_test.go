@@ -30,8 +30,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
-	"github.com/ClaymanTwinkle/lark-connect/tests/blackbox/helper"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/tests/blackbox/helper"
 )
 
 const cfgCmdTimeout = 30 * time.Second
@@ -349,7 +349,7 @@ func TestP2_86_HideReplyFooter_ClaudeCode(t *testing.T) {
 
 // TestP1_40_FilterExternalSessionsDefault verifies that the default behavior
 // (filter_external_sessions=false) shows ALL sessions including any created
-// externally (not via lark-connect).
+// externally (not via lark-agent-bot).
 //
 // Since our MockPlatform tests don't have external sessions, we verify that
 // the flag doesn't hide sessions WE created.

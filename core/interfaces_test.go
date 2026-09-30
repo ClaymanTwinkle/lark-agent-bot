@@ -30,7 +30,7 @@ func TestAgentSystemPrompt_EnglishDefault(t *testing.T) {
 // Issue #1655 tool sections (send / cron / timer / relay) has at least an
 // English entry. Without English entries the engine would write
 // "[agent_send_tool_prompt]" placeholders into the agent's memory file, which
-// would break every lark-connect installation that didn't override its
+// would break every lark-agent-bot installation that didn't override its
 // language. This is the "fallback to en on missing key" requirement.
 func TestAgentSystemPromptForLang_AllToolKeysExist(t *testing.T) {
 	keys := []MsgKey{
@@ -56,7 +56,7 @@ func TestAgentSystemPromptForLang_AllToolKeysExist(t *testing.T) {
 // "cron", "timer", "send", and "relay" so it knows the bridge exposes them.
 func TestAgentSystemPromptForLang_EnglishHasAllFourTools(t *testing.T) {
 	got := AgentSystemPromptForLang(LangEnglish)
-	for _, marker := range []string{"lark-connect send", "lark-connect cron", "lark-connect timer", "lark-connect relay"} {
+	for _, marker := range []string{"lark-agent-bot send", "lark-agent-bot cron", "lark-agent-bot timer", "lark-agent-bot relay"} {
 		if !strings.Contains(got, marker) {
 			t.Errorf("English system prompt missing %q", marker)
 		}
@@ -126,7 +126,7 @@ func TestAgentSystemPromptForLang_AutoFallback(t *testing.T) {
 
 // TestAgentSystemPromptForLang_ShapeConsistent guards the layout invariant:
 // sections are separated by exactly two newlines, so the prompt stays
-// human-readable and the engine's marker search (larkConnectInstructionMarker
+// human-readable and the engine's marker search (larkAgentBotInstructionMarker
 // followed by the full prompt body) keeps working.
 func TestAgentSystemPromptForLang_ShapeConsistent(t *testing.T) {
 	for _, lang := range []Language{LangEnglish, LangChinese, LangTraditionalChinese} {

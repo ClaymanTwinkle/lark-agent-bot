@@ -30,11 +30,11 @@ type bridgeCapabilitiesSnapshot struct {
 }
 
 type bridgeCapabilitiesHost struct {
-	ID                 string `json:"id"`
-	Hostname           string `json:"hostname,omitempty"`
-	LarkConnectVersion string `json:"lark_connect_version,omitempty"`
-	Commit             string `json:"commit,omitempty"`
-	BuildTime          string `json:"build_time,omitempty"`
+	ID                  string `json:"id"`
+	Hostname            string `json:"hostname,omitempty"`
+	LarkAgentBotVersion string `json:"lark_agent_bot_version,omitempty"`
+	Commit              string `json:"commit,omitempty"`
+	BuildTime           string `json:"build_time,omitempty"`
 }
 
 type bridgeProjectCapabilities struct {
@@ -133,11 +133,11 @@ func (bs *BridgeServer) buildCapabilitiesSnapshot() bridgeCapabilitiesSnapshot {
 		Type:    bridgeCapabilitiesSnapshotType,
 		Version: 1,
 		Host: bridgeCapabilitiesHost{
-			ID:                 hostName,
-			Hostname:           hostName,
-			LarkConnectVersion: CurrentVersion,
-			Commit:             CurrentCommit,
-			BuildTime:          CurrentBuildTime,
+			ID:                  hostName,
+			Hostname:            hostName,
+			LarkAgentBotVersion: CurrentVersion,
+			Commit:              CurrentCommit,
+			BuildTime:           CurrentBuildTime,
 		},
 		Projects: projects,
 	}

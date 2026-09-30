@@ -3,8 +3,8 @@ name: Release
 # Push a tag like v0.1.0 (or v0.2.0-beta.1 for a pre-release) to publish:
 #   git tag v0.1.0 && git push origin v0.1.0
 #
-# Produces lark-connect-<tag>-<os>-<arch>.tar.gz|.zip plus checksums.txt on
-# the GitHub Release. These names are what `lark-connect update`, the
+# Produces lark-agent-bot-<tag>-<os>-<arch>.tar.gz|.zip plus checksums.txt on
+# the GitHub Release. These names are what `lark-agent-bot update`, the
 # /upgrade chat command, and the npm installer download, so keep them in sync
 # with the Makefile `release-all` target.
 
@@ -129,8 +129,8 @@ jobs:
           if [[ "$version" == *-* ]]; then
             dist_tag=beta
           fi
-          if npm view "lark-connect@$version" version >/dev/null 2>&1; then
-            echo "lark-connect@$version is already on npm; skipping."
+          if npm view "lark-agent-bot@$version" version >/dev/null 2>&1; then
+            echo "lark-agent-bot@$version is already on npm; skipping."
             exit 0
           fi
           npm publish --access public --provenance --tag "$dist_tag"

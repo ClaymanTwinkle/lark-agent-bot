@@ -11,7 +11,7 @@ import (
 
 // prepareCmdForKill puts the spawned child into its own process group so that
 // the entire descendant tree can be terminated with a single signal aimed at
-// the negative PID. Without this, lark-connect can only signal the direct child
+// the negative PID. Without this, lark-agent-bot can only signal the direct child
 // (the `pi` CLI), leaving any grandchildren (MCP server processes, tool
 // subprocesses) as orphans after the parent is killed.
 //

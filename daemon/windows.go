@@ -17,7 +17,7 @@ import (
 
 const (
 	windowsTaskName   = ServiceName
-	windowsScriptName = "lark-connect-daemon.ps1"
+	windowsScriptName = "lark-agent-bot-daemon.ps1"
 )
 
 var runPowerShell = func(script string) (string, error) {
@@ -171,7 +171,7 @@ var headlessConsoleSupported = func() bool {
 }
 
 // windowsTaskCommand returns the program and arguments the scheduled task
-// runs. lark-connect runs inside that PowerShell's console, so the console
+// runs. lark-agent-bot runs inside that PowerShell's console, so the console
 // must not get a window: on Windows 11, whose default terminal is Windows
 // Terminal, launching powershell.exe directly opens a visible terminal that
 // -WindowStyle Hidden cannot hide, and closing it stops the service.

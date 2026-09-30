@@ -1,6 +1,6 @@
 # Usage Guide
 
-Complete guide to using lark-connect features.
+Complete guide to using lark-agent-bot features.
 
 ## Table of Contents
 
@@ -49,7 +49,7 @@ Each user gets an independent session with full conversation context. Manage ses
 
 During a session, the agent may request tool permissions. Reply **allow** / **deny** / **allow all**.
 
-lark-connect rotates to a fresh session automatically after long inactivity:
+lark-agent-bot rotates to a fresh session automatically after long inactivity:
 
 ```toml
 [[projects]]
@@ -206,10 +206,10 @@ env = { CLAUDE_CODE_USE_BEDROCK = "1", AWS_PROFILE = "bedrock" }
 ### CLI Commands
 
 ```bash
-lark-connect provider add --project my-backend --name relay --api-key sk-xxx --base-url https://api.relay.com
-lark-connect provider list --project my-backend
-lark-connect provider remove --project my-backend --name relay
-lark-connect provider import --project my-backend  # from cc-switch
+lark-agent-bot provider add --project my-backend --name relay --api-key sk-xxx --base-url https://api.relay.com
+lark-agent-bot provider list --project my-backend
+lark-agent-bot provider remove --project my-backend --name relay
+lark-agent-bot provider import --project my-backend  # from cc-switch
 ```
 
 ### Chat Commands
@@ -293,7 +293,7 @@ Switch where the next agent session starts, directly from chat.
 - Do not put `admin_from` under `[projects.platforms.options]`, or it will be ignored.
 - Use `/whoami` or `/status` to get your current `User ID`, then place that ID into `admin_from`.
 - If you are the only user of this bot, `admin_from = "*"` also works, but it grants every allowed user privileged command access.
-- Restart `lark-connect` after updating `config.toml`.
+- Restart `lark-agent-bot` after updating `config.toml`.
 - Directory changes apply to the next session in the current project.
 - Relative paths are resolved from the current agent work directory.
 - Directory history is project-scoped and can be switched by index.
@@ -325,13 +325,13 @@ Examples:
 
 ### What this is
 
-By default, every agent session lark-connect spawns runs as the same Unix
-user that runs `lark-connect` itself. If an agent misbehaves — reads a
+By default, every agent session lark-agent-bot spawns runs as the same Unix
+user that runs `lark-agent-bot` itself. If an agent misbehaves — reads a
 secret, overwrites a sibling repo, trashes `~/.ssh/` — it has the
 supervisor user's full file-system reach.
 
 `run_as_user` sets a per-project target Unix user. When it is set,
-lark-connect spawns that project's agent command via
+lark-agent-bot spawns that project's agent command via
 
 ```
 sudo -n -iu <target-user> -- claude ...
@@ -388,7 +388,7 @@ supervisor — that grants the supervisor root, which is irrelevant here
 and dangerous.
 
 ```
-# /etc/sudoers.d/lark-connect (install with `sudo visudo -f ...`)
+# /etc/sudoers.d/lark-agent-bot (install with `sudo visudo -f ...`)
 partseeker-orchestrator ALL=(partseeker-coder) NOPASSWD: ALL
 ```
 
@@ -406,7 +406,7 @@ sudo -n -iu partseeker-coder -- sudo -n true
 # must FAIL with "a password is required" or similar
 ```
 
-If that command succeeds, lark-connect will refuse to start. Remove any
+If that command succeeds, lark-agent-bot will refuse to start. Remove any
 `NOPASSWD` sudo grants for the target user first.
 
 #### 4. Make the project's `work_dir` accessible to the target user
@@ -420,14 +420,14 @@ sudo setfacl -R -m u:partseeker-coder:rwX /home/leigh/workspace/sandboxed-repo
 sudo setfacl -R -dm u:partseeker-coder:rwX /home/leigh/workspace/sandboxed-repo
 ```
 
-lark-connect refuses to start if the target user cannot read+write the
+lark-agent-bot refuses to start if the target user cannot read+write the
 `work_dir` root, and warns (non-fatal) for descendant paths that look
 inaccessible.
 
-#### 5. Audit the setup before starting lark-connect
+#### 5. Audit the setup before starting lark-agent-bot
 
 ```bash
-lark-connect doctor user-isolation
+lark-agent-bot doctor user-isolation
 ```
 
 This runs the full preflight (the three go/no-go gates from
@@ -435,14 +435,14 @@ This runs the full preflight (the three go/no-go gates from
 **isolation probe**: it spawns a fixed shell script as the target user
 and reports what the target can read, what it's denied, and any
 cross-user leaks. Output goes to stdout plus a JSON report in
-`~/.lark-connect/audits/<timestamp>-<project>.json`.
+`~/.lark-agent-bot/audits/<timestamp>-<project>.json`.
 
 Exit code 0 = clean. Exit code 1 = at least one fatal problem.
 
 You can inspect the probe script itself with:
 
 ```bash
-lark-connect doctor user-isolation --print-script
+lark-agent-bot doctor user-isolation --print-script
 ```
 
 ### Configuration
@@ -494,7 +494,7 @@ Migration checklist:
       automatically by whichever Claude CLI session is running. The
       target user's token will **not** be refreshed unless the target
       user has an active session — which it often doesn't between
-      lark-connect spawns. The recommended fix is to symlink the target
+      lark-agent-bot spawns. The recommended fix is to symlink the target
       user's credentials to the supervisor's file so both share one
       token that stays fresh:
 
@@ -527,9 +527,9 @@ Migration checklist:
       its own install or a system-wide install that both users can run.
 - [ ] **Shell profile** — `~/.profile` / `~/.bashrc` on the target user
       needs to set `PATH` and any tool init the agent depends on. Test
-      with `sudo -iu partseeker-coder` before wiring lark-connect.
+      with `sudo -iu partseeker-coder` before wiring lark-agent-bot.
 
-After migration, run `lark-connect doctor user-isolation` again. The
+After migration, run `lark-agent-bot doctor user-isolation` again. The
 `target home` section reports which expected paths are present and
 which are missing — missing isn't necessarily wrong, but it's your
 checklist.
@@ -543,7 +543,7 @@ behavior (spawn as supervisor) returns on the next restart.
 
 - **"passwordless sudo to user X is not configured"** — step 2 of setup
   is missing or the sudoers rule is scoped to the wrong supervisor. Fix
-  the rule, run `visudo -c` to validate syntax, then restart lark-connect.
+  the rule, run `visudo -c` to validate syntax, then restart lark-agent-bot.
 - **"target user X can run passwordless sudo"** — step 3 failed. The
   error includes the output of `sudo -l` from the target context; find
   the offending rule and remove it.
@@ -555,7 +555,7 @@ behavior (spawn as supervisor) returns on the next restart.
   and re-audit.
 - **"descendant scan timed out"** — non-fatal. The `work_dir` is large
   enough that the permission walk exceeded its timeout. Run
-  `lark-connect doctor user-isolation` manually if you want the full
+  `lark-agent-bot doctor user-isolation` manually if you want the full
   walk, or narrow the project's `work_dir`.
 
 ---
@@ -566,12 +566,12 @@ Use CLI to create or bind Feishu/Lark bot credentials and write them back to `co
 
 ```bash
 # Recommended: unified entry
-lark-connect feishu setup --project my-project
-lark-connect feishu setup --project my-project --app cli_xxx:sec_xxx
+lark-agent-bot feishu setup --project my-project
+lark-agent-bot feishu setup --project my-project --app cli_xxx:sec_xxx
 
 # Force modes (usually unnecessary)
-lark-connect feishu new --project my-project
-lark-connect feishu bind --project my-project --app cli_xxx:sec_xxx
+lark-agent-bot feishu new --project my-project
+lark-agent-bot feishu bind --project my-project --app cli_xxx:sec_xxx
 ```
 
 Differences:
@@ -619,7 +619,7 @@ Behavior:
 
 3. Start: `ccr start`
 
-4. Configure lark-connect:
+4. Configure lark-agent-bot:
 ```toml
 [projects.agent.options]
 router_url = "http://127.0.0.1:3456"
@@ -630,16 +630,16 @@ router_api_key = "your-secret-key"  # optional
 
 ## Claude Code PermissionRequest Hooks
 
-If you have [PermissionRequest hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) configured in your Claude Code `settings.json`, lark-connect will respect them — matching hooks can auto-approve or deny tool requests before they reach the messaging platform.
+If you have [PermissionRequest hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) configured in your Claude Code `settings.json`, lark-agent-bot will respect them — matching hooks can auto-approve or deny tool requests before they reach the messaging platform.
 
 ### Why hooks run twice
 
-lark-connect launches Claude Code with `--permission-prompt-tool stdio`, which means Claude Code's own hook execution output is discarded (stdout is consumed by the protocol). To make your hooks actually take effect, lark-connect reads the hook definitions from `settings.json` and **re-runs them independently**.
+lark-agent-bot launches Claude Code with `--permission-prompt-tool stdio`, which means Claude Code's own hook execution output is discarded (stdout is consumed by the protocol). To make your hooks actually take effect, lark-agent-bot reads the hook definitions from `settings.json` and **re-runs them independently**.
 
 This means your hook command is executed **twice** per permission request:
 
 1. Once by Claude Code (result discarded)
-2. Once by lark-connect (result used)
+2. Once by lark-agent-bot (result used)
 
 ### Avoiding double cost for LLM-based hooks
 
@@ -647,19 +647,19 @@ If your hook is rule-based (e.g. "deny `rm -rf`"), running twice is harmless. Bu
 
 ```bash
 #!/bin/bash
-if [ -n "$LARK_CONNECT_PERMISSION_HOOK_SKIP" ]; then
-  exit 0  # lark-connect will re-run us without this flag
+if [ -n "$LARK_AGENT_BOT_PERMISSION_HOOK_SKIP" ]; then
+  exit 0  # lark-agent-bot will re-run us without this flag
 fi
 # ... your actual hook logic ...
 ```
 
-lark-connect sets `LARK_CONNECT_PERMISSION_HOOK_SKIP=1` in the Claude Code subprocess environment. When your hook sees this variable, it's running inside Claude Code (result will be discarded) — skip the expensive work. lark-connect strips this variable when it runs the hook itself, so the second execution proceeds normally.
+lark-agent-bot sets `LARK_AGENT_BOT_PERMISSION_HOOK_SKIP=1` in the Claude Code subprocess environment. When your hook sees this variable, it's running inside Claude Code (result will be discarded) — skip the expensive work. lark-agent-bot strips this variable when it runs the hook itself, so the second execution proceeds normally.
 
 ---
 
 ## Voice Messages (Speech-to-Text)
 
-Send voice messages — lark-connect transcribes them automatically.
+Send voice messages — lark-agent-bot transcribes them automatically.
 
 **Supported:** Feishu / Lark
 
@@ -739,7 +739,7 @@ Switch: `/tts always` or `/tts voice_only`
 
 ## Image, File, and Voice Send-Back
 
-When an agent generates a local image, PDF, report, bundle, or other file and needs to deliver it directly to the current chat, use attachment mode in `lark-connect send`. When the user explicitly asks for a voice message, the agent can also send synthesized speech through the same CLI.
+When an agent generates a local image, PDF, report, bundle, or other file and needs to deliver it directly to the current chat, use attachment mode in `lark-agent-bot send`. When the user explicitly asks for a voice message, the agent can also send synthesized speech through the same CLI.
 
 **Currently supported platforms:**
 - Feishu / Lark
@@ -758,10 +758,10 @@ or:
 /cron setup
 ```
 
-These two commands write the same lark-connect instructions. Either one is enough. After that, the agent knows:
+These two commands write the same lark-agent-bot instructions. Either one is enough. After that, the agent knows:
 - normal text replies should be returned normally
-- generated attachments should be sent back with `lark-connect send --image/--file`
-- requested voice messages should be sent with `lark-connect send --tts`
+- generated attachments should be sent back with `lark-agent-bot send --image/--file`
+- requested voice messages should be sent with `lark-agent-bot send --tts`
 
 If you have run setup before, run it again after upgrading so the instructions are refreshed to the latest version.
 
@@ -773,15 +773,15 @@ Add this to `config.toml` if you want to disable agent-driven attachment send-ba
 attachment_send = "off"
 ```
 
-The default is `on`. This switch is independent from the agent's `/mode` and only affects `lark-connect send --image/--file`. Synthesized voice send-back uses the `[tts]` provider config and is controlled by TTS availability instead.
+The default is `on`. This switch is independent from the agent's `/mode` and only affects `lark-agent-bot send --image/--file`. Synthesized voice send-back uses the `[tts]` provider config and is controlled by TTS availability instead.
 
 ### CLI examples
 
 ```bash
-lark-connect send --image /absolute/path/to/chart.png
-lark-connect send --file /absolute/path/to/report.pdf
-lark-connect send --file /absolute/path/to/report.pdf --image /absolute/path/to/chart.png
-lark-connect send --tts "Hello from lark-connect"
+lark-agent-bot send --image /absolute/path/to/chart.png
+lark-agent-bot send --file /absolute/path/to/report.pdf
+lark-agent-bot send --file /absolute/path/to/report.pdf --image /absolute/path/to/chart.png
+lark-agent-bot send --tts "Hello from lark-agent-bot"
 ```
 
 Notes:
@@ -792,7 +792,7 @@ Notes:
 - `--image` and `--file` can both be repeated.
 - Absolute paths are recommended so the command does not depend on the agent's current working directory.
 - With `attachment_send = "off"`, image/file send-back is blocked but ordinary text replies still work.
-- Each attachment is capped at **50 MiB** by default. Configure it with `max_attachment_size_mb` (MiB) in config.toml, or override that value with the `CC_MAX_ATTACHMENT_SIZE_MB` env var (same MiB unit; takes precedence when set), e.g. `CC_MAX_ATTACHMENT_SIZE_MB=100 lark-connect send --file big.bin`.
+- Each attachment is capped at **50 MiB** by default. Configure it with `max_attachment_size_mb` (MiB) in config.toml, or override that value with the `CC_MAX_ATTACHMENT_SIZE_MB` env var (same MiB unit; takes precedence when set), e.g. `CC_MAX_ATTACHMENT_SIZE_MB=100 lark-agent-bot send --file big.bin`.
 
 ### Typical use cases
 
@@ -805,8 +805,8 @@ Notes:
 
 - This command is for generated attachment and voice delivery, not ordinary text replies.
 - The files must exist on the local machine where the agent runs.
-- There must be an active session; otherwise the command fails because lark-connect has no chat context to deliver to.
-- The target platform also enforces its own file-size/type limit at delivery; the effective per-attachment ceiling is the smaller of that limit and `max_attachment_size_mb` (a file that passes lark-connect may still be rejected by the platform).
+- There must be an active session; otherwise the command fails because lark-agent-bot has no chat context to deliver to.
+- The target platform also enforces its own file-size/type limit at delivery; the effective per-attachment ceiling is the smaller of that limit and `max_attachment_size_mb` (a file that passes lark-agent-bot may still be rejected by the platform).
 
 ---
 
@@ -832,11 +832,11 @@ Example:
 ### CLI Commands
 
 ```bash
-lark-connect cron add --cron "0 6 * * *" --prompt "Summarize GitHub trending" --desc "Daily Trending"
-lark-connect cron list
-lark-connect cron edit <job-id> <field> <value>   # e.g. cron_expr, prompt, enabled, mute, timeout_mins
-lark-connect cron exec <job-id>
-lark-connect cron del <job-id>
+lark-agent-bot cron add --cron "0 6 * * *" --prompt "Summarize GitHub trending" --desc "Daily Trending"
+lark-agent-bot cron list
+lark-agent-bot cron edit <job-id> <field> <value>   # e.g. cron_expr, prompt, enabled, mute, timeout_mins
+lark-agent-bot cron exec <job-id>
+lark-agent-bot cron del <job-id>
 ```
 
 Optional: `--session-mode new-per-run` starts a fresh agent session on each run (default is `reuse`, same as before). `--timeout-mins N` sets how long the scheduler waits per run (`0` = no limit; omit = 30 minutes).
@@ -851,7 +851,7 @@ Claude Code auto-creates the cron job. For other agents that rely on memory file
 
 ## Shell Configuration
 
-By default, lark-connect uses `sh` on Unix and `powershell.exe` on Windows for all shell execution (`/shell` commands, cron exec jobs, hooks, and webhook exec). You can override this to use a different shell.
+By default, lark-agent-bot uses `sh` on Unix and `powershell.exe` on Windows for all shell execution (`/shell` commands, cron exec jobs, hooks, and webhook exec). You can override this to use a different shell.
 
 ### Supported Shells
 
@@ -912,7 +912,7 @@ shell_profile = "source ~/.config/fish/config.fish"
 
 ### Affected Execution Paths
 
-The shell configuration applies to all command execution in lark-connect:
+The shell configuration applies to all command execution in lark-agent-bot:
 
 - **`/shell` command** — interactive shell commands from chat
 - **Cron exec jobs** — `[[cron]]` entries with `exec` field
@@ -939,15 +939,15 @@ To just hand a task to another bot in the group without getting the result back,
 ### Bot-to-Bot Communication
 
 ```bash
-lark-connect relay list                                   # bots you can hand work to in this chat
-lark-connect relay send --to gemini "What do you think about this architecture?"
+lark-agent-bot relay list                                   # bots you can hand work to in this chat
+lark-agent-bot relay send --to gemini "What do you think about this architecture?"
 ```
 
 The agent runs these itself: when a task needs another bot it calls `relay list`, then `relay send`. The group shows the source bot posting `@gemini What do you…`, and the target bot answering `@<source bot> <result>` when done; the result also goes back to the source bot so it can continue. The `@` is plain text, not a native Feishu mention: open_ids are scoped per app, so one bot cannot mention another app's bot.
 
 ### Across Processes
 
-The target project does not have to run in the same lark-connect process as the source. Each process registers its projects in `~/.lark-connect/relay-peers/` on startup (change with `[relay] peers_dir`), and `/bind` and `relay send` reach the other process through its local socket. Binding a project from another process mirrors the binding there, so both bots can hand work to each other; `/bind -project` and `/bind remove` only affect the current bot.
+The target project does not have to run in the same lark-agent-bot process as the source. Each process registers its projects in `~/.lark-agent-bot/relay-peers/` on startup (change with `[relay] peers_dir`), and `/bind` and `relay send` reach the other process through its local socket. Binding a project from another process mirrors the binding there, so both bots can hand work to each other; `/bind -project` and `/bind remove` only affect the current bot.
 
 - The target bot auto-approves every permission request in relay mode.
 - One task can be relayed at most 3 hops (A→B→A→B stops there) so two bots cannot pass it back and forth forever.
@@ -960,13 +960,13 @@ The target project does not have to run in the same lark-connect process as the 
 Run as background service.
 
 ```bash
-lark-connect daemon install --config ~/.lark-connect/config.toml
-lark-connect daemon start
-lark-connect daemon stop
-lark-connect daemon restart
-lark-connect daemon status
-lark-connect daemon logs [-f]
-lark-connect daemon uninstall
+lark-agent-bot daemon install --config ~/.lark-agent-bot/config.toml
+lark-agent-bot daemon start
+lark-agent-bot daemon stop
+lark-agent-bot daemon restart
+lark-agent-bot daemon status
+lark-agent-bot daemon logs [-f]
+lark-agent-bot daemon uninstall
 ```
 
 ---
@@ -1050,7 +1050,7 @@ token = "your-secret-token"     # Login token; /web setup generates one automati
 cors_origins = ["*"]            # Allowed CORS origins; empty = no CORS headers
 ```
 
-Then restart lark-connect.
+Then restart lark-agent-bot.
 
 ### Build Options
 
@@ -1059,7 +1059,7 @@ Web assets are compiled into the binary by default. To exclude them (saves ~1MB)
 ```bash
 make build-noweb
 # or
-go build -tags 'no_web' ./cmd/lark-connect
+go build -tags 'no_web' ./cmd/lark-agent-bot
 ```
 
 When built with `no_web`, the `/web` command will report that web admin is not available.
@@ -1075,7 +1075,7 @@ Key endpoints:
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/v1/status` | System status (version, uptime, platforms) |
-| `POST` | `/api/v1/restart` | Restart lark-connect |
+| `POST` | `/api/v1/restart` | Restart lark-agent-bot |
 | `POST` | `/api/v1/reload` | Reload configuration |
 | `GET` | `/api/v1/projects` | List projects |
 | `GET` | `/api/v1/sessions?project=<name>` | List sessions for a project |
@@ -1091,7 +1091,7 @@ Full API reference: [management-api.md](./management-api.md)
 
 > **Status: Beta.** This feature is available since v1.2.2-beta.5. The protocol may change in future releases.
 
-The Bridge exposes a WebSocket + REST server so external adapters (custom UIs, bots, scripts) can interact with lark-connect sessions — send messages, receive events, manage sessions.
+The Bridge exposes a WebSocket + REST server so external adapters (custom UIs, bots, scripts) can interact with lark-agent-bot sessions — send messages, receive events, manage sessions.
 
 ### Enable via Chat
 
@@ -1110,7 +1110,7 @@ path = "/bridge/ws"             # WebSocket endpoint path
 cors_origins = ["*"]            # Allowed CORS origins; empty = no CORS
 ```
 
-Then restart lark-connect.
+Then restart lark-agent-bot.
 
 ### Authentication
 
@@ -1186,9 +1186,9 @@ Quick answers to questions that came up repeatedly in issues and that the
 maintainers have resolved. Each entry links back to the originating issue
 or PR so you can dig further if needed.
 
-### Does lark-connect support OpenClaw? (issue #501)
+### Does lark-agent-bot support OpenClaw? (issue #501)
 
-Yes. OpenClaw is supported via the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/get-started/agents). lark-connect ships an `acp` agent type that talks to any ACP-compatible CLI, including OpenClaw's `openclaw acp` subcommand.
+Yes. OpenClaw is supported via the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/get-started/agents). lark-agent-bot ships an `acp` agent type that talks to any ACP-compatible CLI, including OpenClaw's `openclaw acp` subcommand.
 
 Minimal config snippet (full version is in `config.example.toml` under
 `# --- Example: OpenClaw (Gateway-backed ACP bridge) ---`):
@@ -1207,14 +1207,14 @@ args = ["acp"]
 display_name = "OpenClaw ACP"
 ```
 
-**Pairing is required for remote gateways.** If you point lark-connect at a
+**Pairing is required for remote gateways.** If you point lark-agent-bot at a
 remote OpenClaw Gateway (`args = ["acp", "--url", "wss://..."]`) you must
 pair first or every reply comes back empty:
 
 1. Start the gateway: `openclaw acp --url wss://your-gateway:18789`
 2. In another terminal: `openclaw pair`
 3. Approve the pairing request in the OpenClaw UI
-4. Now lark-connect can talk to the authorized gateway
+4. Now lark-agent-bot can talk to the authorized gateway
 
 Empty responses from OpenClaw are almost always a missing pairing step
 (issue #432). Re-run `openclaw pair` and re-approve before debugging

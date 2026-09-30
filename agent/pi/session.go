@@ -18,7 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // ── capped stderr writer ────────────────────────────────────
@@ -92,7 +92,7 @@ type piSession struct {
 	stderrBuf  cappedStderrWriter
 	rpcReady   chan struct{} // closed once after handleEvent stores sessionId from the get_state probe written by startRPC
 
-	// Extension UI: maps Pi's extension_ui_request id -> lark-connect RequestID
+	// Extension UI: maps Pi's extension_ui_request id -> lark-agent-bot RequestID
 	extPendingMu  sync.Mutex
 	extPending    map[string]string // Pi ext_ui_id -> cc-conn RequestID
 	extPendingRev map[string]string // cc-conn RequestID -> Pi ext_ui_id
@@ -105,7 +105,7 @@ type piSession struct {
 // way to learn the session id is to send {"type":"get_state"} and parse the
 // matching response. By using a fixed sentinel id we can match the response
 // unambiguously even if other commands are in flight.
-const stateProbeID = "lark-connect-state-probe"
+const stateProbeID = "lark-agent-bot-state-probe"
 
 // sessionIDReady reports whether the session id has been observed on the
 // pi side and stored. Used by readLoopRPC to decide when it is safe to
@@ -129,7 +129,7 @@ func newPiSession(ctx context.Context, cmd string, extraArgs []string, workDir, 
 		thinking:  thinking,
 		rpc:       rpc,
 		extraEnv:  extraEnv,
-		attachDir: filepath.Join(workDir, ".lark-connect", "attachments", "pi_"+rand.Text()),
+		attachDir: filepath.Join(workDir, ".lark-agent-bot", "attachments", "pi_"+rand.Text()),
 		events:    make(chan core.Event, 64),
 		ctx:       ctx,
 		cancel:    cancel,
@@ -495,7 +495,7 @@ func (s *piSession) sendRPC(prompt string, imageAtFiles []string, filePaths []st
 // so the Issue #1767 regression test can assert that the path strings
 // appear in the prompt without inlining file bytes.
 //
-// The trailer mirrors the wording lark-connect uses for the claudecode
+// The trailer mirrors the wording lark-agent-bot uses for the claudecode
 // agent so users see consistent phrasing across runtimes. Paths are
 // joined with ", " and wrapped in parentheses to make the boundary with
 // the original prompt text unambiguous.
@@ -519,7 +519,7 @@ func promptWithFileRefs(prompt string, filePaths []string) string {
 //   - a blank line separates the user's text from the attachment list
 //   - "Attachments:" header mirrors pi's CLI help so users see
 //     consistent wording whether they invoke the binary directly or
-//     via lark-connect
+//     via lark-agent-bot
 //   - each @<path> is on its own line in the same order as atFiles
 //
 // When atFiles is empty the original prompt is returned unchanged —
@@ -632,7 +632,7 @@ func (s *piSession) handleEvent(raw map[string]any) {
 		// Pi fires this when ctx.compact() finishes. ctx.compact() is
 		// fire-and-forget: it never sends agent_end, because compaction
 		// runs out-of-band with the agent loop. Extensions that drive
-		// ctx.compact() (e.g. lark-connect-compact.ts, trigger-compact.ts)
+		// ctx.compact() (e.g. lark-agent-bot-compact.ts, trigger-compact.ts)
 		// handle their own user feedback via stdout synth events and the
 		// normal slash-command path returns immediately.
 		//
@@ -641,7 +641,7 @@ func (s *piSession) handleEvent(raw map[string]any) {
 		// 1. If pi reports an errorMessage, emit EventError. This covers
 		//    compaction paths that have no extension to surface the error
 		//    to the user (e.g. trigger-compact.ts only calls ctx.ui.notify,
-		//    which lark-connect drops in RPC mode). pi's errorMessage is
+		//    which lark-agent-bot drops in RPC mode). pi's errorMessage is
 		//    usually self-describing ("Compaction failed: Nothing to compact
 		//    (session too small)"), so we pass it through verbatim — no
 		//    additional prefix — to avoid "Error: compaction failed:
@@ -651,7 +651,7 @@ func (s *piSession) handleEvent(raw map[string]any) {
 		//    forever in processInteractiveEvents:
 		//      (a) trigger-compact: handler returns without await, so no
 		//          synthetic agent_end ever lands on stdout.
-		//      (b) lark-connect-compact: an extension that crashes, races a
+		//      (b) lark-agent-bot-compact: an extension that crashes, races a
 		//          kill, or simply omits the finally-synthesized agent_end
 		//          leaves the turn open.
 		//    JSON mode (json one-shot) is unaffected — process exit is the
@@ -783,11 +783,11 @@ func (s *piSession) forwardSelect(id string, raw map[string]any) {
 	// Pi Agent sends options in either of two shapes:
 	//   - []string                         ("Red", "Green", "Blue")
 	//   - []map[string]any                 ([{label:"Red", description:"..."}])
-	// The object form carries an optional description which lark-connect's
+	// The object form carries an optional description which lark-agent-bot's
 	// AskUserQuestion card layout renders as a full-width markdown line
 	// under each option (the long-description fix in core/engine.go). If we
 	// only accepted strings here, any object option would be silently dropped
-	// — the user's TUI sees the description, but lark-connect never forwards
+	// — the user's TUI sees the description, but lark-agent-bot never forwards
 	// it to the engine, so the Feishu card renders label-only. Accept both
 	// shapes for forward compatibility.
 	userOpts := make([]core.UserQuestionOption, 0, len(options))
@@ -842,7 +842,7 @@ func (s *piSession) forwardSelect(id string, raw map[string]any) {
 
 	// ToolInput carries a short label-only summary for the engine's tool-use
 	// stream; the rich per-option content (with descriptions) lives in the
-	// Questions field below, which lark-connect's card layout renders.
+	// Questions field below, which lark-agent-bot's card layout renders.
 	labelSummary := make([]string, 0, len(userOpts))
 	for _, o := range userOpts {
 		labelSummary = append(labelSummary, o.Label)

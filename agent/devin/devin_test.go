@@ -4,7 +4,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/agent/acp"
+	"github.com/ClaymanTwinkle/lark-agent-bot/agent/acp"
 )
 
 // TestApplyDevinDefaults_FillsUnsetFields verifies the three Devin-
@@ -52,7 +52,7 @@ func TestApplyDevinDefaults_UserOptsWin(t *testing.T) {
 // TestApplyDevinDefaults_BlankCommandGetsDefault covers a subtle TOML
 // quirk: `command = ""` (explicit blank) should be treated as "use
 // the default" rather than surfacing a cryptic "command is required"
-// error. Matches how the rest of lark-connect treats whitespace-only
+// error. Matches how the rest of lark-agent-bot treats whitespace-only
 // string options.
 func TestApplyDevinDefaults_BlankCommandGetsDefault(t *testing.T) {
 	got := applyDevinDefaults(map[string]any{"command": "   "})

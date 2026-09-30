@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 )
 
@@ -59,7 +59,7 @@ func makeGroupHistoryEvent(t *testing.T, messageID, userID, msgType, rawContent,
 		mentions = []*larkim.MentionEvent{{
 			Key:  stringPtr("@_bot"),
 			Id:   &larkim.UserId{OpenId: stringPtr("ou_bot")},
-			Name: stringPtr("lark-connect"),
+			Name: stringPtr("lark-agent-bot"),
 		}}
 	}
 	// The event API uses Unix milliseconds as a decimal string. Keep each test

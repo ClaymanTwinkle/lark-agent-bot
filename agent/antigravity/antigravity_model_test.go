@@ -3,7 +3,7 @@ package antigravity
 import (
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func TestConfiguredModels_BoundaryConditions(t *testing.T) {

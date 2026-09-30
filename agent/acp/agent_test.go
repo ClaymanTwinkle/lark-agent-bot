@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func TestNew_DisplayNameDefault(t *testing.T) {

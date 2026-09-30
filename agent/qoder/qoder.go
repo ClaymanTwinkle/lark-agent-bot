@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func init() {

@@ -24,7 +24,7 @@ const relayPeerGrace = 10 * time.Second
 // relayPeerJoinTimeout bounds the binding mirror call made during /bind.
 const relayPeerJoinTimeout = 5 * time.Second
 
-// RelayPeerRegistry records which local lark-connect process serves each
+// RelayPeerRegistry records which local lark-agent-bot process serves each
 // project, so relay can reach projects that run in another process on the same
 // machine. Each project is one JSON file in dir pointing at that process's API
 // socket.
@@ -45,14 +45,14 @@ func NewRelayPeerRegistry(dir string) *RelayPeerRegistry {
 }
 
 // DefaultRelayPeersDir returns the per-user directory shared by every
-// lark-connect process on this machine, or "" when the home directory is
+// lark-agent-bot process on this machine, or "" when the home directory is
 // unknown.
 func DefaultRelayPeersDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".lark-connect", "relay-peers")
+	return filepath.Join(home, ".lark-agent-bot", "relay-peers")
 }
 
 // Register records that project is served through socket.
@@ -195,7 +195,7 @@ type RelayJoinRequest struct {
 }
 
 // postRelayPeer POSTs payload as JSON to path on the API socket of another
-// lark-connect process and decodes the JSON reply into out (if non-nil).
+// lark-agent-bot process and decodes the JSON reply into out (if non-nil).
 func postRelayPeer(ctx context.Context, socket, path string, payload, out any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {

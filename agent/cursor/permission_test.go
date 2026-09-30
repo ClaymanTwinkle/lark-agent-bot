@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // newTestSession creates a cursorSession suitable for unit tests (no real CLI process).

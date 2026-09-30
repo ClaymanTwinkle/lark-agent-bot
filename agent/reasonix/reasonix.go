@@ -1,4 +1,4 @@
-// Package reasonix bridges lark-connect to a reasonix serve instance.
+// Package reasonix bridges lark-agent-bot to a reasonix serve instance.
 // It implements the core.Agent interface by forwarding prompts to reasonix's
 // HTTP API (POST /submit) and consuming the SSE event stream (GET /events).
 //
@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func init() {

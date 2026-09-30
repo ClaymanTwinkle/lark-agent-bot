@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func decodeRenderedCard(t *testing.T, card *core.Card) map[string]any {

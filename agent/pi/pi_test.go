@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClaymanTwinkle/lark-connect/core"
-	"github.com/ClaymanTwinkle/lark-connect/internal/testutil"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
+	"github.com/ClaymanTwinkle/lark-agent-bot/internal/testutil"
 )
 
 // ── normalizeMode ────────────────────────────────────────────
@@ -765,7 +765,7 @@ func TestTruncStr(t *testing.T) {
 // ── saveImagesToDisk ─────────────────────────────────────────
 
 func TestSaveImagesToDisk(t *testing.T) {
-	attachDir := filepath.Join(t.TempDir(), ".lark-connect", "attachments", "pi-test")
+	attachDir := filepath.Join(t.TempDir(), ".lark-agent-bot", "attachments", "pi-test")
 	images := []core.ImageAttachment{
 		{MimeType: "image/png", Data: []byte("png-data"), FileName: "test.png"},
 		{MimeType: "image/jpeg", Data: []byte("jpg-data")},
@@ -823,10 +823,10 @@ func TestSaveImagesToDisk_Empty(t *testing.T) {
 // issue and fix in core.SaveFilesToDisk.
 func TestSaveImagesToDisk_RejectsPathTraversal(t *testing.T) {
 	workDir := t.TempDir()
-	attachDir := filepath.Join(workDir, ".lark-connect", "attachments")
+	attachDir := filepath.Join(workDir, ".lark-agent-bot", "attachments")
 
 	images := []core.ImageAttachment{
-		// Two levels up — escapes attachments/ and .lark-connect/.
+		// Two levels up — escapes attachments/ and .lark-agent-bot/.
 		{MimeType: "image/png", Data: []byte("payload"), FileName: "../../escape.png"},
 		// Three levels up — would land outside workDir entirely.
 		{MimeType: "image/png", Data: []byte("payload"), FileName: "../../../way-up.png"},
@@ -894,7 +894,7 @@ func TestSanitizePiAttachmentName(t *testing.T) {
 
 func TestCleanAttachments(t *testing.T) {
 	tmpDir := t.TempDir()
-	attachDir := filepath.Join(tmpDir, ".lark-connect", "attachments")
+	attachDir := filepath.Join(tmpDir, ".lark-agent-bot", "attachments")
 	os.MkdirAll(attachDir, 0o755)
 
 	// Create some files.
@@ -1150,7 +1150,7 @@ func TestHandleEvent_UnhandledType(t *testing.T) {
 //
 // Prior to the fix, ctx.compact() was fire-and-forget: pi emits
 // compaction_start/compaction_end events on stdout but never sends agent_end.
-// Without an explicit handler, lark-connect's processInteractiveEvents hangs
+// Without an explicit handler, lark-agent-bot's processInteractiveEvents hangs
 // forever waiting for a turn-end signal that never arrives. The fix in
 // handleEvent adds a compaction_end case that synthesizes EventResult so
 // the engine can finalize the turn. On errors it also surfaces an
@@ -1817,7 +1817,7 @@ func newFakeRPCSession(t *testing.T, sessionID, cmd, workDir string) *piSession 
 		extPending:    make(map[string]string),
 		extPendingRev: make(map[string]string),
 		extMethod:     make(map[string]string),
-		attachDir:     filepath.Join(workDir, ".lark-connect", "attachments", "pi-"+sessionID),
+		attachDir:     filepath.Join(workDir, ".lark-agent-bot", "attachments", "pi-"+sessionID),
 	}
 	s.alive.Store(true)
 	s.ctx, s.cancel = context.WithCancel(context.Background())
@@ -1873,7 +1873,7 @@ func newFakeRPCSession(t *testing.T, sessionID, cmd, workDir string) *piSession 
 func newFakeRPCSessionRealistic(t *testing.T, sessionID string) *piSession {
 	t.Helper()
 	// Push an extension event first, then respond to the get_state probe.
-	response, err := json.Marshal(map[string]any{"id": "lark-connect-state-probe", "type": "response", "command": "get_state", "success": true, "data": map[string]string{"sessionId": sessionID, "sessionFile": filepath.Join(t.TempDir(), "fake.jsonl")}})
+	response, err := json.Marshal(map[string]any{"id": "lark-agent-bot-state-probe", "type": "response", "command": "get_state", "success": true, "data": map[string]string{"sessionId": sessionID, "sessionFile": filepath.Join(t.TempDir(), "fake.jsonl")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1906,7 +1906,7 @@ func TestPiSession_RPC_StartupProbe_HandlesFailureResponse(t *testing.T) {
 	// handleEvent must log a warning and leave sessionID empty instead of
 	// panicking or storing junk. rpcReady therefore does not close, and the
 	// constructor returns the standard 30s "did not become ready" error.
-	scriptPath := testutil.NewCLI(t, testutil.CLI{Initial: `{"type":"extension_ui_request","id":"ext-init","method":"setStatus","statusKey":"plan-mode"}`, ReadStdin: true, ReplyOn: "get_state", Reply: `{"id":"lark-connect-state-probe","type":"response","command":"get_state","success":false,"error":"session not available"}`})
+	scriptPath := testutil.NewCLI(t, testutil.CLI{Initial: `{"type":"extension_ui_request","id":"ext-init","method":"setStatus","statusKey":"plan-mode"}`, ReadStdin: true, ReplyOn: "get_state", Reply: `{"id":"lark-agent-bot-state-probe","type":"response","command":"get_state","success":false,"error":"session not available"}`})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -2070,7 +2070,7 @@ func TestForwardSelect_EmptyTitleUsesDefault(t *testing.T) {
 // TestForwardSelect_ObjectOptionsExtractsLabelAndDescription verifies that
 // extension_select options sent as objects (with both label and description)
 // are forwarded to the engine as UserQuestionOption{Label, Description},
-// not silently dropped. Regression guard for the bug where the lark-connect
+// not silently dropped. Regression guard for the bug where the lark-agent-bot
 // TUI showed option descriptions but the Feishu card rendered label-only
 // because forwardSelect only handled string-form options.
 func TestForwardSelect_ObjectOptionsExtractsLabelAndDescription(t *testing.T) {

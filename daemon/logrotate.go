@@ -10,7 +10,7 @@ import (
 
 // RotatingWriter is a thread-safe io.Writer that appends to a log file
 // and rotates it when the file exceeds maxSize. Up to maxBackups rotated
-// copies are kept (lark-connect.log.1 .. lark-connect.log.N); the oldest is
+// copies are kept (lark-agent-bot.log.1 .. lark-agent-bot.log.N); the oldest is
 // discarded on each rotation. The maximum disk usage is therefore
 // (1 + maxBackups) × maxSize.
 //

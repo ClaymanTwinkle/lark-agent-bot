@@ -1,12 +1,12 @@
 # Community Tools
 
-This page lists community-maintained tools and helpers built around lark-connect.
+This page lists community-maintained tools and helpers built around lark-agent-bot.
 
-These tools are not official lark-connect components unless explicitly stated. Please report issues, feature requests, and support questions to each tool's own repository.
+These tools are not official lark-agent-bot components unless explicitly stated. Please report issues, feature requests, and support questions to each tool's own repository.
 
 ## CC-Tray
 
-A lightweight Windows tray controller for an already configured `lark-connect daemon` running inside WSL.
+A lightweight Windows tray controller for an already configured `lark-agent-bot daemon` running inside WSL.
 
 - Repository: https://github.com/STAR-REIN/CC-Tray
 - Platform: Windows + WSL

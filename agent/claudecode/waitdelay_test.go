@@ -26,7 +26,7 @@ import (
 //
 // ⚠️ 复现的关键在于孙进程要**真继承句柄**：第一版脚手架用 `start /b` 起孙进程，
 //    不继承，于是 Wait() 0.03s 就返回、复现不出来 —— 差点据此误判"猜错了"。
-//    用 -NoNewWindow 才是生产里的形状（lark-connect → cmd 壳 → claude → MCP node 全继承）。
+//    用 -NoNewWindow 才是生产里的形状（lark-agent-bot → cmd 壳 → claude → MCP node 全继承）。
 
 func spawnInheritingGrandchild() *exec.Cmd {
 	return exec.Command("powershell", "-NoProfile", "-Command",
