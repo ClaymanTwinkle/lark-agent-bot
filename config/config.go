@@ -1907,6 +1907,7 @@ type FeishuCredentialUpdateOptions struct {
 	AppSecret         string // required
 	OwnerOpenID       string // optional owner id from onboarding flow
 	SetAllowFromEmpty bool   // when true, seed/append allow_from with OwnerOpenID while preserving "*"
+	SetAdminFromEmpty bool   // seed an unset project admin_from with a verified app owner
 }
 
 // EnsureProjectWithFeishuOptions controls project auto-provisioning for Feishu/Lark setup.
@@ -1916,6 +1917,9 @@ type EnsureProjectWithFeishuOptions struct {
 	CloneFromProject string // optional source project name to clone agent config from
 	WorkDir          string // optional default work_dir when creating project
 	AgentType        string // optional default agent type when no source project exists, default "codex"
+	Model            string // optional model for a newly created project
+	Mode             string // optional agent permission mode for a newly created project
+	DisplayMode      string // optional display mode for a newly created project
 }
 
 // EnsureProjectWithFeishuResult describes whether project provisioning created a new project.
@@ -2024,6 +2028,12 @@ func EnsureProjectWithFeishuPlatform(opts EnsureProjectWithFeishuOptions) (*Ensu
 	if workDir != "" {
 		proj.Agent.Options["work_dir"] = workDir
 	}
+	if opts.Model != "" {
+		proj.Agent.Options["model"] = opts.Model
+	}
+	if opts.Mode != "" {
+		proj.Agent.Options["mode"] = opts.Mode
+	}
 
 	lines, hadTrailing := splitConfigLines(raw)
 	if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) != "" {
@@ -2042,6 +2052,17 @@ func EnsureProjectWithFeishuPlatform(opts EnsureProjectWithFeishuOptions) (*Ensu
 	if mode, ok := proj.Agent.Options["mode"].(string); ok && strings.TrimSpace(mode) != "" {
 		lines = append(lines, fmt.Sprintf("mode = %s", quoteTomlString(mode)))
 	}
+	for _, key := range []string{"model", "backend"} {
+		if value, ok := proj.Agent.Options[key].(string); ok && strings.TrimSpace(value) != "" {
+			lines = append(lines, fmt.Sprintf("%s = %s", key, quoteTomlString(value)))
+		}
+	}
+	if opts.DisplayMode != "" {
+		lines = append(lines, "", "[projects.display]", fmt.Sprintf("mode = %s", quoteTomlString(opts.DisplayMode)))
+		if opts.DisplayMode == "quiet" {
+			lines = append(lines, "thinking_messages = false", "tool_messages = false")
+		}
+	}
 	lines = append(lines, "")
 	lines = append(lines, "[[projects.platforms]]")
 	lines = append(lines, fmt.Sprintf("type = %s", quoteTomlString(platformType)))
@@ -2054,8 +2075,8 @@ func EnsureProjectWithFeishuPlatform(opts EnsureProjectWithFeishuOptions) (*Ensu
 	return &EnsureProjectWithFeishuResult{
 		Created:          true,
 		AddedPlatform:    false,
-		ProjectIndex:     len(cfg.Projects) - 1,
-		PlatformAbsIndex: len(cfg.Projects[len(cfg.Projects)-1].Platforms) - 1,
+		ProjectIndex:     len(cfg.Projects),
+		PlatformAbsIndex: 0,
 		PlatformType:     platformType,
 	}, nil
 }
@@ -2191,6 +2212,14 @@ func SaveFeishuPlatformCredentials(opts FeishuCredentialUpdateOptions) (*FeishuC
 	if opts.SetAllowFromEmpty && strings.TrimSpace(opts.OwnerOpenID) != "" {
 		lines = upsertTomlStringKey(lines, span.optionsStart+1, span.optionsEnd, "allow_from", allowFrom)
 		span = reloadSpan()
+	}
+	if opts.SetAdminFromEmpty && strings.TrimSpace(proj.AdminFrom) == "" && strings.TrimSpace(opts.OwnerOpenID) != "" {
+		projectSpan := buildRawProjectSpans(lines)[projectIdx]
+		end := projectSpan.start + 1
+		for end <= projectSpan.end && !strings.HasPrefix(strings.TrimSpace(lines[end]), "[") {
+			end++
+		}
+		lines = upsertTomlStringKey(lines, projectSpan.start+1, end-1, "admin_from", strings.TrimSpace(opts.OwnerOpenID))
 	}
 
 	if err := writeRawConfig(joinConfigLines(lines, hadTrailing)); err != nil {

@@ -192,6 +192,30 @@ func (i *I18n) SetLang(lang Language) {
 type MsgKey string
 
 const (
+	MsgSetupModelFlag   MsgKey = "setup_modelflag"
+	MsgSetupModeFlag    MsgKey = "setup_modeflag"
+	MsgSetupDisplayFlag MsgKey = "setup_displayflag"
+)
+
+// Setup workflow messages are shared by CLI frontends.
+const (
+	MsgSetupTemplateFlag         MsgKey = "setup_templateflag"
+	MsgSetupNameFlag             MsgKey = "setup_nameflag"
+	MsgSetupDescriptionFlag      MsgKey = "setup_descriptionflag"
+	MsgSetupAvatarFlag           MsgKey = "setup_avatarflag"
+	MsgSetupAgentFlag            MsgKey = "setup_agentflag"
+	MsgSetupWorkDirFlag          MsgKey = "setup_workdirflag"
+	MsgSetupPrepared             MsgKey = "setup_prepared"
+	MsgSetupIncomplete           MsgKey = "setup_incomplete"
+	MsgSetupMissing              MsgKey = "setup_missing"
+	MsgSetupChecked              MsgKey = "setup_checked"
+	MsgSetupSubscriptionsUnknown MsgKey = "setup_subscriptionsunknown"
+	MsgSetupOwnerUnknown         MsgKey = "setup_ownerunknown"
+	MsgSetupTargetOccupied       MsgKey = "setup_targetoccupied"
+	MsgSetupMenuNotice           MsgKey = "setup_menunotice"
+)
+
+const (
 	// Permission presets and validation.
 	MsgModeInvalid                MsgKey = "mode_invalid"
 	MsgPermissionDefaultName      MsgKey = "permission_default_name"
@@ -725,6 +749,125 @@ const (
 )
 
 var messages = map[MsgKey]map[Language]string{
+	MsgSetupModelFlag: {
+		LangEnglish:            "Model for a new project",
+		LangChinese:            "新项目使用的模型",
+		LangTraditionalChinese: "新專案使用的模型",
+		LangJapanese:           "新規プロジェクトのモデル",
+		LangSpanish:            "Modelo del proyecto nuevo",
+	},
+	MsgSetupModeFlag: {
+		LangEnglish:            "Agent permission mode for a new project",
+		LangChinese:            "新项目的 agent 权限模式",
+		LangTraditionalChinese: "新專案的 agent 權限模式",
+		LangJapanese:           "新規プロジェクトの権限モード",
+		LangSpanish:            "Modo de permisos del proyecto nuevo",
+	},
+	MsgSetupDisplayFlag: {
+		LangEnglish:            "Display for a new project: quiet, compact, full",
+		LangChinese:            "新项目消息显示：quiet、compact、full",
+		LangTraditionalChinese: "新專案訊息顯示：quiet、compact、full",
+		LangJapanese:           "新規プロジェクトの表示：quiet、compact、full",
+		LangSpanish:            "Mensajes del proyecto nuevo: quiet, compact, full",
+	},
+	MsgSetupTemplateFlag: {
+		LangEnglish:            "Registration addons JSON (default: shared template)",
+		LangChinese:            "创建配置 JSON（默认：统一模板）",
+		LangTraditionalChinese: "建立設定 JSON（預設：統一範本）",
+		LangJapanese:           "登録設定 JSON（既定：共通テンプレート）",
+		LangSpanish:            "JSON de configuración (predeterminado: plantilla común)",
+	},
+	MsgSetupNameFlag: {
+		LangEnglish:            "App name (default: project name)",
+		LangChinese:            "应用名称（默认：项目名）",
+		LangTraditionalChinese: "應用名稱（預設：專案名）",
+		LangJapanese:           "アプリ名（既定：プロジェクト名）",
+		LangSpanish:            "Nombre de aplicación (predeterminado: proyecto)",
+	},
+	MsgSetupDescriptionFlag: {
+		LangEnglish:            "App description",
+		LangChinese:            "应用描述",
+		LangTraditionalChinese: "應用描述",
+		LangJapanese:           "アプリの説明",
+		LangSpanish:            "Descripción de la aplicación",
+	},
+	MsgSetupAvatarFlag: {
+		LangEnglish:            "App avatar HTTPS URL",
+		LangChinese:            "应用头像 HTTPS 地址",
+		LangTraditionalChinese: "應用頭像 HTTPS 位址",
+		LangJapanese:           "アプリ画像の HTTPS URL",
+		LangSpanish:            "URL HTTPS del avatar",
+	},
+	MsgSetupAgentFlag: {
+		LangEnglish:            "Agent type for a new project",
+		LangChinese:            "新项目的 agent 类型",
+		LangTraditionalChinese: "新專案的 agent 類型",
+		LangJapanese:           "新規プロジェクトの agent 種類",
+		LangSpanish:            "Tipo de agente para el proyecto nuevo",
+	},
+	MsgSetupWorkDirFlag: {
+		LangEnglish:            "Working directory for a new project",
+		LangChinese:            "新项目的工作目录",
+		LangTraditionalChinese: "新專案的工作目錄",
+		LangJapanese:           "新規プロジェクトの作業ディレクトリ",
+		LangSpanish:            "Directorio del proyecto nuevo",
+	},
+	MsgSetupPrepared: {
+		LangEnglish:            "Shared template: %d app scopes, %d user scopes, plus events and card callbacks. Review and confirm on the scan page.",
+		LangChinese:            "统一模板：%d 项应用权限、%d 项用户权限，以及事件和卡片回调；扫码后统一确认。",
+		LangTraditionalChinese: "統一範本：%d 項應用權限、%d 項使用者權限，以及事件和卡片回呼；掃碼後統一確認。",
+		LangJapanese:           "共通テンプレート：アプリ権限 %d 件、ユーザー権限 %d 件、イベントとカードコールバック。スキャン画面で確認してください。",
+		LangSpanish:            "Plantilla común: %d permisos de aplicación, %d de usuario, eventos y callbacks de tarjetas. Confirma al escanear.",
+	},
+	MsgSetupIncomplete: {
+		LangEnglish:            "Credentials saved; setup verification incomplete: %v. Resolve the listed items and run feishu check; do not create another app.",
+		LangChinese:            "凭证已保存，但配置核验未完成：%v。处理缺项后运行 feishu check，无需重复创建。",
+		LangTraditionalChinese: "憑證已儲存，但設定核驗未完成：%v。處理缺項後執行 feishu check，無需重複建立。",
+		LangJapanese:           "認証情報は保存済みですが設定の検証は未完了です：%v。修正後 feishu check を実行してください。再作成は不要です。",
+		LangSpanish:            "Credenciales guardadas; verificación incompleta: %v. Corrige y ejecuta feishu check; no crees otra aplicación.",
+	},
+	MsgSetupMissing: {
+		LangEnglish:            "Missing or ungranted configuration: %s",
+		LangChinese:            "缺失或未获授权的配置：%s",
+		LangTraditionalChinese: "缺少或未獲授權的設定：%s",
+		LangJapanese:           "不足または未承認の設定：%s",
+		LangSpanish:            "Configuración ausente o sin autorizar: %s",
+	},
+	MsgSetupChecked: {
+		LangEnglish:            "Bot capability and template permissions verified.",
+		LangChinese:            "机器人能力及模板权限核验通过。",
+		LangTraditionalChinese: "機器人能力及範本權限核驗通過。",
+		LangJapanese:           "Bot 機能とテンプレート権限を検証しました。",
+		LangSpanish:            "Capacidad del bot y permisos verificados.",
+	},
+	MsgSetupSubscriptionsUnknown: {
+		LangEnglish:            "The API omitted subscription details; events/callbacks could not be verified. Test a message and a /help card button after startup.",
+		LangChinese:            "接口未返回订阅详情，无法核验事件和回调；启动后需用一条消息和 /help 卡片按钮验证。",
+		LangTraditionalChinese: "介面未回傳訂閱詳情，無法核驗事件和回呼；啟動後請用一則訊息和 /help 卡片按鈕驗證。",
+		LangJapanese:           "API が購読詳細を返さないためイベントとコールバックは未検証です。起動後メッセージと /help カードボタンを確認してください。",
+		LangSpanish:            "La API omitió las suscripciones; eventos y callbacks sin verificar. Prueba un mensaje y un botón de /help tras iniciar.",
+	},
+	MsgSetupOwnerUnknown: {
+		LangEnglish:            "Could not verify the app owner's open_id; admin_from was not initialized automatically. Use /whoami to finish owner configuration.",
+		LangChinese:            "无法核实应用所有者 open_id，未自动初始化 admin_from；请用 /whoami 完成管理员配置。",
+		LangTraditionalChinese: "無法核實應用擁有者 open_id，未自動初始化 admin_from；請用 /whoami 完成管理員設定。",
+		LangJapanese:           "所有者の open_id を確認できないため admin_from は未設定です。/whoami で管理者を設定してください。",
+		LangSpanish:            "No se verificó el open_id del propietario; admin_from no se inicializó. Usa /whoami para configurar al administrador.",
+	},
+	MsgSetupTargetOccupied: {
+		LangEnglish:            "Project %q already has an app. Choose a new project for creation; use feishu check to inspect the existing app.",
+		LangChinese:            "项目 %q 已绑定应用。新建请使用新项目名；检查已有应用请用 feishu check。",
+		LangTraditionalChinese: "專案 %q 已綁定應用。建立請使用新專案名；檢查已有應用請用 feishu check。",
+		LangJapanese:           "プロジェクト %q はアプリに紐付いています。新規名を使うか feishu check で既存アプリを確認してください。",
+		LangSpanish:            "El proyecto %q ya tiene aplicación. Usa otro nombre para crear o feishu check para verificar.",
+	},
+	MsgSetupMenuNotice: {
+		LangEnglish:            "Menu contents are not included in registration. Publication and visibility remain subject to platform/tenant policy.",
+		LangChinese:            "注册模板不包含菜单内容；发布与可用范围仍以平台及企业策略为准。",
+		LangTraditionalChinese: "註冊範本不包含選單內容；發布與可用範圍仍以平台及企業策略為準。",
+		LangJapanese:           "登録テンプレートにメニュー内容は含まれません。公開と利用範囲にはプラットフォームと組織の方針が適用されます。",
+		LangSpanish:            "La plantilla no incluye el contenido del menú; publicación y visibilidad dependen de la plataforma y la organización.",
+	},
 	MsgStarting: {
 		LangEnglish:            "⏳ Processing...",
 		LangChinese:            "⏳ 处理中...",

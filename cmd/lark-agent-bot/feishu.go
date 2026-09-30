@@ -10,11 +10,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/ClaymanTwinkle/lark-agent-bot/config"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 	qrterminal "github.com/mdp/qrterminal/v3"
 	"rsc.io/qr"
 )
@@ -74,6 +76,10 @@ type registrationFlowOptions struct {
 	TimeoutSeconds int
 	QRImagePath    string
 	Debug          bool
+	Addons         *setupAddons
+	Name           string
+	Description    string
+	Avatar         string
 }
 
 type registrationFlowResult struct {
@@ -96,6 +102,8 @@ func runFeishu(args []string) {
 		runFeishuSetup(args[1:], feishuSetupModeNew)
 	case "bind", "link":
 		runFeishuSetup(args[1:], feishuSetupModeBind)
+	case "check":
+		runFeishuSetup(args[1:], "check")
 	case "help", "--help", "-h":
 		printFeishuUsage()
 	default:
@@ -118,6 +126,15 @@ func runFeishuSetup(args []string, requestedMode string) {
 	qrImage := fs.String("qr-image", "", "save QR code as PNG image to this path (e.g. qr.png)")
 	setAllowFromEmpty := fs.Bool("set-allow-from-empty", false, "merge owner open_id into allow_from when onboarding returns it (preserves *)")
 	debug := fs.Bool("debug", false, "print debug logs for onboarding requests")
+	templatePath := fs.String("template", "", setupText(core.MsgSetupTemplateFlag))
+	name := fs.String("name", "", setupText(core.MsgSetupNameFlag))
+	description := fs.String("description", "", setupText(core.MsgSetupDescriptionFlag))
+	avatar := fs.String("avatar", "", setupText(core.MsgSetupAvatarFlag))
+	agentType := fs.String("agent", "", setupText(core.MsgSetupAgentFlag))
+	workDirFlag := fs.String("work-dir", "", setupText(core.MsgSetupWorkDirFlag))
+	model := fs.String("model", "", setupText(core.MsgSetupModelFlag))
+	mode := fs.String("mode", "", setupText(core.MsgSetupModeFlag))
+	display := fs.String("display", "quiet", setupText(core.MsgSetupDisplayFlag))
 	_ = fs.Parse(args)
 
 	initConfigPath(*configFile)
@@ -144,6 +161,32 @@ func runFeishuSetup(args []string, requestedMode string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	template, err := loadSetupTemplate(*templatePath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if requestedMode == "check" {
+		if err := checkConfiguredSetup(targetProject, *platformIndex, template); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if effectiveMode == feishuSetupModeNew {
+		if !slices.Contains([]string{"quiet", "compact", "full"}, *display) {
+			fmt.Fprintln(os.Stderr, "display must be quiet, compact or full")
+			os.Exit(1)
+		}
+		if *agentType != "" && !slices.Contains(core.ListRegisteredAgents(), *agentType) {
+			fmt.Fprintf(os.Stderr, "unknown agent %q\n", *agentType)
+			os.Exit(1)
+		}
+		if err := preflightNewSetup(targetProject, *platformIndex); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
 
 	finalPlatformType := normalizedType
 	var ownerOpenID string
@@ -161,10 +204,18 @@ func runFeishuSetup(args []string, requestedMode string) {
 		fmt.Printf("Credentials verified for app_id %s.\n", resolvedAppID)
 
 	case feishuSetupModeNew:
+		if *name == "" {
+			*name = targetProject
+		}
+		fmt.Println(setupText(core.MsgSetupPrepared, len(template.Scopes.Tenant), len(template.Scopes.User)))
 		result, err := runRegistrationFlow(registrationFlowOptions{
 			TimeoutSeconds: *timeout,
 			QRImagePath:    *qrImage,
 			Debug:          *debug,
+			Addons:         template,
+			Name:           *name,
+			Description:    *description,
+			Avatar:         *avatar,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: onboarding failed: %v\n", err)
@@ -188,10 +239,17 @@ func runFeishuSetup(args []string, requestedMode string) {
 		provisionType = "feishu"
 	}
 	workDir, _ := os.Getwd()
+	if *workDirFlag != "" {
+		workDir = *workDirFlag
+	}
 	provisionResult, err := config.EnsureProjectWithFeishuPlatform(config.EnsureProjectWithFeishuOptions{
 		ProjectName:  targetProject,
 		PlatformType: provisionType,
 		WorkDir:      workDir,
+		AgentType:    *agentType,
+		Model:        *model,
+		Mode:         *mode,
+		DisplayMode:  *display,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: prepare project failed: %v\n", err)
@@ -204,17 +262,39 @@ func runFeishuSetup(args []string, requestedMode string) {
 	}
 
 	saveResult, err := config.SaveFeishuPlatformCredentials(config.FeishuCredentialUpdateOptions{
-		ProjectName:       targetProject,
-		PlatformIndex:     *platformIndex,
-		PlatformType:      finalPlatformType,
-		AppID:             resolvedAppID,
-		AppSecret:         resolvedAppSecret,
-		OwnerOpenID:       ownerOpenID,
-		SetAllowFromEmpty: *setAllowFromEmpty,
+		ProjectName:   targetProject,
+		PlatformIndex: *platformIndex,
+		PlatformType:  finalPlatformType,
+		AppID:         resolvedAppID,
+		AppSecret:     resolvedAppSecret,
+		// New-app owner IDs are resolved in the new app's own identity namespace
+		// after saving credentials, not trusted from registration's user_info.
+		OwnerOpenID:       "",
+		SetAllowFromEmpty: false,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: update config failed: %v\n", err)
 		os.Exit(1)
+	}
+	if effectiveMode == feishuSetupModeNew {
+		check, checkErr := inspectSetup(resolvedAppID, resolvedAppSecret, saveResult.PlatformType, template)
+		if check != nil && check.OwnerOpenID != "" {
+			ownerOpenID = check.OwnerOpenID
+			saveResult, err = config.SaveFeishuPlatformCredentials(config.FeishuCredentialUpdateOptions{
+				ProjectName: targetProject, PlatformIndex: *platformIndex,
+				AppID: resolvedAppID, AppSecret: resolvedAppSecret,
+				OwnerOpenID: ownerOpenID, SetAllowFromEmpty: *setAllowFromEmpty || provisionResult.Created,
+				SetAdminFromEmpty: true,
+			})
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+		}
+		if err := reportSetupCheck(check, checkErr); err != nil {
+			fmt.Fprintln(os.Stderr, setupText(core.MsgSetupIncomplete, err))
+			os.Exit(1)
+		}
 	}
 
 	fmt.Printf("✅ Feishu/Lark bot configured for project %q\n", saveResult.ProjectName)
@@ -225,13 +305,13 @@ func runFeishuSetup(args []string, requestedMode string) {
 	}
 	fmt.Println()
 
-	if ownerOpenID != "" {
+	if ownerOpenID != "" && effectiveMode != feishuSetupModeNew {
 		printAllowFromGuidance(resolvedAppID, resolvedAppSecret, ownerOpenID, saveResult)
 	}
 
 	printBotMenuGuidance(saveResult.PlatformType)
 
-	fmt.Println("提醒：扫码新建通常会自动预配权限与事件订阅；请在开放平台核验发布状态与可用范围。")
+	fmt.Println(setupText(core.MsgSetupMenuNotice))
 }
 
 func printAllowFromGuidance(appID, appSecret, ownerOpenID string, result *config.FeishuCredentialUpdateResult) {
@@ -313,7 +393,7 @@ func printBotMenuGuidance(platformType string) {
 
 	fmt.Println("📋 机器人菜单配置（可选）：")
 	fmt.Println("   飞书机器人支持自定义悬浮菜单，可将常用命令固定在输入框上方。")
-	fmt.Println("   菜单需在开发者后台手动配置（暂不支持 API 设置），步骤：")
+	fmt.Println("   本命令未配置菜单内容，可在开发者后台配置，步骤：")
 	fmt.Printf("   1. 打开开发者后台: %s/app\n", base)
 	fmt.Println("   2. 选择你的应用 → 应用能力 → 机器人")
 	fmt.Println("   3. 开启「机器人自定义菜单」，选择「悬浮菜单」样式")
@@ -351,6 +431,7 @@ Commands:
   setup   Unified entry: no credentials => NEW flow; with --app/--app-id => BIND flow
   new     Force NEW flow (QR onboarding). Rejects --app/--app-id.
   bind    Force BIND flow (requires app_id/app_secret).
+  check   Check an existing project's bot and template permissions (read-only).
 
 Options:
   --config <path>             Path to config file
@@ -364,6 +445,15 @@ Options:
   --qr-image <path>           Save QR code as PNG image file (e.g. --qr-image qr.png)
   --set-allow-from-empty      Merge owner open_id into allow_from when available (default: false)
   --debug                     Print onboarding debug logs
+  --template <path>           Custom registration addons JSON (default: built-in shared template)
+  --name <name>               App name (default: project name)
+  --description <text>        App description
+  --avatar <https-url>        App avatar
+  --agent <type>              Agent type for a new project
+  --work-dir <path>           Working directory for a new project
+  --model <name>              Model for a new project
+  --mode <mode>               Agent permission mode for a new project
+  --display <mode>            Display for a new project: quiet (default), compact, full
 
 Examples:
   # Recommended: one command for both flows
@@ -532,15 +622,24 @@ func validateAppCredentialsAgainstBase(baseURL, appID, appSecret string) (bool, 
 }
 
 func runRegistrationFlow(opts registrationFlowOptions) (*registrationFlowResult, error) {
-	if opts.TimeoutSeconds <= 0 {
-		opts.TimeoutSeconds = 600
-	}
-	client := &registrationClient{
+	return runRegistrationFlowWithClient(opts, &registrationClient{
 		baseURL: accountsFeishuBaseURL,
 		http:    &http.Client{Timeout: 15 * time.Second},
 		debug:   opts.Debug,
-	}
+	})
+}
 
+func runRegistrationFlowWithClient(opts registrationFlowOptions, client *registrationClient) (*registrationFlowResult, error) {
+	if opts.Addons == nil {
+		var err error
+		opts.Addons, err = loadSetupTemplate("")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if opts.TimeoutSeconds <= 0 {
+		opts.TimeoutSeconds = 600
+	}
 	var initRes registrationInitResponse
 	if err := client.registrationCall("init", nil, &initRes); err != nil {
 		return nil, fmt.Errorf("init failed: %w", err)
@@ -567,12 +666,16 @@ func runRegistrationFlow(opts registrationFlowOptions) (*registrationFlowResult,
 	if beginRes.DeviceCode == "" || beginRes.VerificationURIComplete == "" {
 		return nil, fmt.Errorf("incomplete onboarding response")
 	}
+	registrationURL, err := setupRegistrationURL(beginRes.VerificationURIComplete, opts)
+	if err != nil {
+		return nil, err
+	}
 
 	fmt.Println("请使用飞书/Lark 手机 App 扫码完成机器人创建与授权：")
-	fmt.Printf("URL: %s\n\n", beginRes.VerificationURIComplete)
-	tryPrintTerminalQRCode(beginRes.VerificationURIComplete)
+	fmt.Printf("URL: %s\n\n", registrationURL)
+	tryPrintTerminalQRCode(registrationURL)
 	if opts.QRImagePath != "" {
-		if err := saveQRCodeImage(beginRes.VerificationURIComplete, opts.QRImagePath); err != nil {
+		if err := saveQRCodeImage(registrationURL, opts.QRImagePath); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to save QR image: %v\n", err)
 		} else {
 			fmt.Printf("QR code saved to: %s\n\n", opts.QRImagePath)
@@ -665,7 +768,7 @@ func (c *registrationClient) registrationCall(action string, params map[string]s
 		return err
 	}
 	if c.debug {
-		fmt.Fprintf(os.Stderr, "[debug] registration action=%s status=%d body=%s\n", action, resp.StatusCode, strings.TrimSpace(string(body)))
+		fmt.Fprintf(os.Stderr, "[debug] registration action=%s status=%d\n", action, resp.StatusCode)
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return fmt.Errorf("decode response: %w", err)

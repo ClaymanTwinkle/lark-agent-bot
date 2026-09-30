@@ -41,8 +41,31 @@ lark-agent-bot feishu bind --project my-project --app cli_xxx:sec_xxx
 - `setup/new` 会在终端打印二维码和 URL，使用飞书/Lark 手机 App 扫码完成创建。
 - `--project` 不存在时会自动创建该项目；若项目存在但没有 `feishu/lark` 平台，也会自动补一个。
 - 写回配置时仅定点更新目标字段（`app_id`、`app_secret`、`allow_from` 等），尽量保留原有注释与排版。
-- 该流程会回填凭证；通过扫码新建时，飞书通常会同时预配权限与事件订阅。
-- 仍建议在开放平台核验：应用已发布、权限状态正常、可用范围符合预期。
+- 新建默认使用内置统一模板：35 项应用权限、1 项用户权限，覆盖消息、图片/文件、表情、卡片、文档及应用管理；Claude Code 和 Codex 使用同一模板。
+- 同时预填 `im.message.receive_v1`、`application.bot.menu_v6` 事件，以及 `card.action.trigger` 卡片回调。扫码确认页一次确认权限与订阅。
+- 注册成功后先保存凭证，再检查机器人能力、权限授予状态及可读取的订阅配置。失败会保留凭证并明确报错，避免重复创建应用。
+- 通过应用详情接口获取该应用身份下的所有者 ID，初始化尚未设置的 `admin_from`；全新项目同时设置 `allow_from` 为所有者。保留已有管理员、访问范围和项目设置。
+- 全新项目默认 `quiet` 消息模式，可用 `--display full` 或 `--display compact` 更改。模型、权限模式、工作目录和 agent 类型可在创建时指定；这些参数仅影响新项目。
+- `new` 和无凭证的 `setup` 拒绝覆盖已绑定应用的项目；`bind` 保持凭证绑定流程。
+
+```powershell
+# 新建 Claude 机器人（Codex 将 --agent 改成 codex）
+lark-agent-bot feishu new --config config.toml --project my-claude --agent claudecode --name "Claude Code" --work-dir "D:/Projects/my-project" --display quiet
+
+# 可选：--model <模型名> --mode <该 agent 支持的权限模式>
+# 可选：--description "描述" --avatar "https://example.com/avatar.png"
+
+# 已保存凭证后重新核验，不创建应用、不修改配置
+lark-agent-bot feishu check --config config.toml --project my-claude
+```
+
+模板源文件：[`cmd/lark-agent-bot/feishu_setup_template.json`](../cmd/lark-agent-bot/feishu_setup_template.json)。可复制修改并传入 `--template path/to/template.json`，创建和后续 `check` 请使用同一模板。自定义模板必须保留基本消息、附件、表情、应用自管理权限以及接收消息与卡片交互订阅。模板只声明用户身份权限，不代表已经取得用户 OAuth 授权。
+
+实现遵循[官方注册 SDK](https://github.com/larksuite/oapi-sdk-go/tree/v3_main/scene/registration)：配置作为 gzip + URL-safe base64 的 `addons` 参数附在扫码确认链接上，`preset=false` 使用明确声明的配置，`createOnly=true` 限定新建。
+
+能力边界：部分个人应用的详情接口不返回事件/回调列表，命令会标明“无法核验”，不会把缺失字段当作通过；启动后仍需用消息和 `/help` 卡片按钮验证实际收发。模板不包含底部菜单内容，发布审核及可用范围由飞书/企业策略决定。本命令不会自动跳过审批或把可用范围扩展为全员。
+
+**English:** New apps share an embedded permissions/events/callbacks template across agents. Scan once to review and authorize it. Credentials are saved before read-only verification. New projects default to quiet display and use the verified application owner for access/admin initialization; existing project settings remain intact. Override with `--template`, `--agent`, `--model`, `--mode`, `--work-dir`, and `--display`. `feishu check` rechecks saved credentials without creating or modifying an app. Missing subscription fields are reported as unverified. Menu contents, tenant approval, and visibility are outside the registration template.
 
 ---
 

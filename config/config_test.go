@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1609,6 +1610,70 @@ func TestEnsureProjectWithFeishuPlatform_CreatesMissingProject(t *testing.T) {
 	}
 	if got := stringMapValue(proj.Agent.Options, "work_dir"); got != "/tmp/gamma" {
 		t.Fatalf("work_dir = %q, want explicit override %q", got, "/tmp/gamma")
+	}
+}
+
+func TestEnsureProjectWithFeishuPlatform_FirstProjectDoesNotPanic(t *testing.T) {
+	path := writeConfigFixture(t, "# fresh configuration\n")
+	patchConfigPath(t, path)
+	result, err := EnsureProjectWithFeishuPlatform(EnsureProjectWithFeishuOptions{ProjectName: "first", AgentType: "claudecode", Model: "chosen-model", Mode: "default", DisplayMode: "quiet", WorkDir: "D:/work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ProjectIndex != 0 || result.PlatformAbsIndex != 0 {
+		t.Fatalf("wrong indexes: %+v", result)
+	}
+	cfg := readConfigFixture(t, path)
+	p := cfg.Projects[0]
+	if p.Agent.Type != "claudecode" || p.Agent.Options["model"] != "chosen-model" || p.Agent.Options["mode"] != "default" || p.Agent.Options["work_dir"] != "D:/work" {
+		t.Fatalf("lost new-project options: %+v", p.Agent)
+	}
+	if p.Display == nil || p.Display.Mode == nil || *p.Display.Mode != "quiet" || p.Display.ToolMessages == nil || *p.Display.ToolMessages {
+		t.Fatal("quiet display not persisted")
+	}
+	_, err = SaveFeishuPlatformCredentials(FeishuCredentialUpdateOptions{ProjectName: "first", AppID: "cli_new", AppSecret: "test-secret", OwnerOpenID: "ou_owner", SetAdminFromEmpty: true, SetAllowFromEmpty: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg = readConfigFixture(t, path)
+	if cfg.Projects[0].AdminFrom != "ou_owner" || cfg.Projects[0].Platforms[0].Options["allow_from"] != "ou_owner" {
+		t.Fatal("owner defaults not set")
+	}
+	second, err := EnsureProjectWithFeishuPlatform(EnsureProjectWithFeishuOptions{ProjectName: "second", AgentType: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ProjectIndex != 1 || second.PlatformAbsIndex != 0 {
+		t.Fatalf("second indexes: %+v", second)
+	}
+}
+
+func TestSaveFeishuPlatformCredentials_InitializesVerifiedOwnerWithoutReplacingAdmin(t *testing.T) {
+	for _, existing := range []string{"", "ou_existing", "*"} {
+		t.Run(existing, func(t *testing.T) {
+			fixture := "[[projects]]\nname='new'\nadmin_from=" + strconv.Quote(existing) + " # preserve admin\n[projects.agent]\ntype='codex'\n[[projects.platforms]]\ntype='feishu'\n[projects.platforms.options]\nallow_from='*'\n"
+			path := writeConfigFixture(t, fixture)
+			patchConfigPath(t, path)
+			_, err := SaveFeishuPlatformCredentials(FeishuCredentialUpdateOptions{ProjectName: "new", AppID: "cli_new", AppSecret: "test-secret", OwnerOpenID: "ou_verified", SetAdminFromEmpty: true, SetAllowFromEmpty: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg := readConfigFixture(t, path)
+			want := existing
+			if want == "" {
+				want = "ou_verified"
+			}
+			if cfg.Projects[0].AdminFrom != want {
+				t.Fatalf("admin=%s want=%s", cfg.Projects[0].AdminFrom, want)
+			}
+			if cfg.Projects[0].Platforms[0].Options["allow_from"] != "*" {
+				t.Fatal("wildcard changed")
+			}
+			data, _ := os.ReadFile(path)
+			if !strings.Contains(string(data), "# preserve admin") {
+				t.Fatal("lost comment")
+			}
+		})
 	}
 }
 
