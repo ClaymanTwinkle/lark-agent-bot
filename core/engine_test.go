@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -10838,8 +10839,9 @@ func TestHandleMessageRecallStopsCurrentMessageAndNotifiesOnce(t *testing.T) {
 	}
 
 	e.ReceiveMessage(p, &Message{Platform: "test", MessageID: "msg-active", Recalled: true})
-	if sent := p.getSent(); len(sent) != 1 || sent[0] != e.i18n.T(MsgRecallActiveStopping) {
-		t.Fatalf("sent messages = %v, want one active recall notification", sent)
+	want := []string{e.i18n.T(MsgRecallActiveStopping), e.i18n.T(MsgRecallQueuedDropped)}
+	if sent := p.getSent(); !slices.Equal(sent, want) {
+		t.Fatalf("sent messages = %v, want one active recall notification and one resend notice", sent)
 	}
 }
 

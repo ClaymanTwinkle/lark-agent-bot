@@ -248,6 +248,7 @@ const (
 	MsgMessageQueued             MsgKey = "message_queued"
 	MsgRecallQueuedCancelled     MsgKey = "recall_queued_cancelled"
 	MsgRecallActiveStopping      MsgKey = "recall_active_stopping"
+	MsgRecallQueuedDropped       MsgKey = "recall_queued_dropped"
 	MsgNoToolsAllowed            MsgKey = "no_tools_allowed"
 	MsgCurrentTools              MsgKey = "current_tools"
 	MsgCurrentSession            MsgKey = "current_session"
@@ -1003,6 +1004,13 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "⏹️ 原訊息已撤回，已發起停止目前任務；已執行的操作不會回復。",
 		LangJapanese:           "⏹️ メッセージが取り消されたため、現在のタスクを停止しています。実行済みの操作は元に戻りません。",
 		LangSpanish:            "⏹️ Mensaje retirado. Deteniendo la tarea actual; las acciones ya realizadas no se desharán.",
+	},
+	MsgRecallQueuedDropped: {
+		LangEnglish:            "⚠️ The running task was stopped because its message was recalled, so this queued message was not run. Send it again if you still need it.",
+		LangChinese:            "⚠️ 正在执行的任务因原消息撤回已停止，这条排队消息未执行，需要的话请重新发送。",
+		LangTraditionalChinese: "⚠️ 正在執行的任務因原訊息撤回已停止，這則排隊訊息未執行，需要的話請重新傳送。",
+		LangJapanese:           "⚠️ 実行中のタスクは元のメッセージが取り消されたため停止しました。この待機中のメッセージは実行されていません。必要な場合は再送してください。",
+		LangSpanish:            "⚠️ La tarea en curso se detuvo porque se retiró su mensaje, así que este mensaje en cola no se ejecutó. Vuelve a enviarlo si aún lo necesitas.",
 	},
 	MsgQueueFull: {
 		LangEnglish:            "📬 Message queue is full (%d pending). Please wait for current tasks to complete.",

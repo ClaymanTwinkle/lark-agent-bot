@@ -2655,10 +2655,16 @@ func (e *Engine) stopRecalledMessage(sessionKey, messageID string) bool {
 	p, replyCtx := state.platform, state.replyCtx
 	state.mu.Unlock()
 	e.interactiveMu.Unlock()
-	if !e.stopInteractiveSessionIfCurrent(sessionKey, false, messageID) {
+	stopped, dropped := e.stopInteractiveSessionIfCurrent(sessionKey, false, messageID)
+	if !stopped {
 		return false
 	}
 	e.notifyMessageRecall(p, replyCtx, MsgRecallActiveStopping)
+	// Stopping the turn discards the queue. Queued prompts often build on the
+	// recalled one, so they are not replayed; each is told to be resent instead.
+	for _, q := range dropped {
+		e.reply(q.platform, q.replyCtx, e.i18n.T(MsgRecallQueuedDropped))
+	}
 	return true
 }
 
@@ -6717,6 +6723,14 @@ func mergeRichToolResult(steps []ToolStep, event Event, result string, maxLen in
 // sends an error notification to each queued message's sender. Called when
 // the event loop exits abnormally (EventError, channel closed) and queued
 // messages can no longer be delivered to the agent.
+func takePendingMessages(state *interactiveState) []queuedMessage {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	pending := state.pendingMessages
+	state.pendingMessages = nil
+	return pending
+}
+
 func (e *Engine) notifyDroppedQueuedMessages(state *interactiveState, reason error) {
 	state.mu.Lock()
 	remaining := state.pendingMessages
@@ -10686,15 +10700,19 @@ func (e *Engine) stopInteractiveSessionSilently(sessionKey string) bool {
 }
 
 func (e *Engine) stopInteractiveSessionWithOptions(sessionKey string, notifyQueued bool) bool {
-	return e.stopInteractiveSessionIfCurrent(sessionKey, notifyQueued, "")
+	stopped, _ := e.stopInteractiveSessionIfCurrent(sessionKey, notifyQueued, "")
+	return stopped
 }
 
-func (e *Engine) stopInteractiveSessionIfCurrent(sessionKey string, notifyQueued bool, expectedMessageID string) bool {
+// stopInteractiveSessionIfCurrent stops the session's turn. With notifyQueued
+// the queued messages are told they were dropped; otherwise they are returned
+// so the caller can decide what to tell their senders.
+func (e *Engine) stopInteractiveSessionIfCurrent(sessionKey string, notifyQueued bool, expectedMessageID string) (stopped bool, dropped []queuedMessage) {
 	e.interactiveMu.Lock()
 	state, ok := e.interactiveStates[sessionKey]
 	if !ok || state == nil {
 		e.interactiveMu.Unlock()
-		return false
+		return false, nil
 	}
 	// Claim the recalled turn under the same lock as stop. Duplicate events and
 	// delayed fallback probes must neither notify twice nor cancel a newer turn.
@@ -10703,7 +10721,7 @@ func (e *Engine) stopInteractiveSessionIfCurrent(sessionKey string, notifyQueued
 		if state.currentMessageID != expectedMessageID {
 			state.mu.Unlock()
 			e.interactiveMu.Unlock()
-			return false
+			return false, nil
 		}
 		state.currentMessageID = ""
 		state.mu.Unlock()
@@ -10735,9 +10753,7 @@ func (e *Engine) stopInteractiveSessionIfCurrent(sessionKey string, notifyQueued
 		if notifyQueued {
 			e.notifyDroppedQueuedMessages(state, fmt.Errorf("session cancelled"))
 		} else {
-			state.mu.Lock()
-			state.pendingMessages = nil
-			state.mu.Unlock()
+			dropped = takePendingMessages(state)
 		}
 
 		// Mark eventsNeedResync so the next turn drains stale events from
@@ -10766,7 +10782,7 @@ func (e *Engine) stopInteractiveSessionIfCurrent(sessionKey string, notifyQueued
 			SessionKey: sessionKey,
 		})
 
-		return true
+		return true, dropped
 	}
 
 normalCleanup:
@@ -10780,9 +10796,7 @@ normalCleanup:
 	if notifyQueued {
 		e.notifyDroppedQueuedMessages(state, fmt.Errorf("session reset"))
 	} else {
-		state.mu.Lock()
-		state.pendingMessages = nil
-		state.mu.Unlock()
+		dropped = append(dropped, takePendingMessages(state)...)
 	}
 	e.closeAgentSessionAsync(sessionKey, agentSession, closePlatform, closeReplyCtx)
 
@@ -10800,7 +10814,7 @@ normalCleanup:
 		SessionKey: sessionKey,
 	})
 
-	return true
+	return true, dropped
 }
 
 func (e *Engine) cmdCompress(p Platform, msg *Message) {

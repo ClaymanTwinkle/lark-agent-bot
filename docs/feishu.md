@@ -42,7 +42,7 @@ lark-agent-bot feishu bind --project my-project --app cli_xxx:sec_xxx
 - `--project` 不存在时会自动创建该项目；若项目存在但没有 `feishu/lark` 平台，也会自动补一个。
 - 写回配置时仅定点更新目标字段（`app_id`、`app_secret`、`allow_from` 等），尽量保留原有注释与排版。
 - 新建默认使用内置统一模板：35 项应用权限、1 项用户权限，覆盖消息、图片/文件、表情、卡片、文档及应用管理；Claude Code 和 Codex 使用同一模板。
-- 同时预填 `im.message.receive_v1`（接收消息）、`im.message.recalled_v1`（撤回消息）、`application.bot.menu_v6`（菜单点击）事件，以及 `card.action.trigger` 卡片回调。扫码确认页一次确认权限与订阅。撤回排队中的原消息会移除对应提示词；已开始的任务会尝试停止，不会回滚已执行的操作。
+- 同时预填 `im.message.receive_v1`（接收消息）、`im.message.recalled_v1`（撤回消息）、`application.bot.menu_v6`（菜单点击）事件，以及 `card.action.trigger` 卡片回调。扫码确认页一次确认权限与订阅。撤回排队中的原消息会移除对应提示词；已开始的任务会尝试停止，不会回滚已执行的操作，排在它后面的消息也不会执行。
 - 注册成功后先保存凭证，再检查机器人能力、权限授予状态及可读取的订阅配置。失败会保留凭证并明确报错，避免重复创建应用。
 - 通过应用详情接口获取该应用身份下的所有者 ID，初始化尚未设置的 `admin_from`；全新项目同时设置 `allow_from` 为所有者。保留已有管理员、访问范围和项目设置。
 - 全新项目默认 `quiet` 消息模式，可用 `--display full` 或 `--display compact` 更改。模型、权限模式、工作目录和 agent 类型可在创建时指定；这些参数仅影响新项目。
@@ -67,7 +67,7 @@ lark-agent-bot feishu check --config config.toml --project my-claude
 
 **English:** New apps share an embedded permissions/events/callbacks template across agents. Scan once to review and authorize it. Credentials are saved before read-only verification. New projects default to quiet display and use the verified application owner for access/admin initialization; existing project settings remain intact. Override with `--template`, `--agent`, `--model`, `--mode`, `--work-dir`, and `--display`. `feishu check` rechecks saved credentials without creating or modifying an app. Missing subscription fields are reported as unverified. Menu contents, tenant approval, and visibility are outside the registration template.
 
-撤回成功后会发送一条独立提示：排队任务显示「原消息已撤回，对应的排队任务已取消」；当前任务显示「已发起停止当前任务」。重复撤回事件或未匹配到任务的撤回不会重复提示，已执行的操作不会回滚。
+撤回成功后会发送一条独立提示：排队任务显示「原消息已撤回，对应的排队任务已取消」；当前任务显示「已发起停止当前任务」，此时队列会一并清空，每条排队消息各收到一条「未执行，需要的话请重新发送」的回复（排队消息可能依赖被撤回的那条，因此不自动续跑）。重复撤回事件或未匹配到任务的撤回不会重复提示，已执行的操作不会回滚。
 
 ### 创建后完成底部菜单
 
