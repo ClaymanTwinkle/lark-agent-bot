@@ -14276,6 +14276,7 @@ func (e *Engine) renderUpgradeCard() *Card {
 	}()
 
 	var content string
+	available := false
 	select {
 	case res := <-ch:
 		if res.err != nil {
@@ -14288,15 +14289,27 @@ func (e *Engine) renderUpgradeCard() *Card {
 				body = string([]rune(body)[:300]) + "…"
 			}
 			content = fmt.Sprintf(e.i18n.T(MsgUpgradeAvailable), cur, res.release.TagName, body)
+			available = true
 		}
 	case <-time.After(8 * time.Second):
 		content = "⏱ " + e.i18n.T(MsgUpgradeChecking) + e.i18n.T(MsgUpgradeTimeoutSuffix)
 	}
 
+	return e.upgradeCard(content, available)
+}
+
+// upgradeCard offers a one-click install when an update is available. The
+// button dispatches /upgrade confirm as the clicking user, so it passes the
+// same admin_from check as typing the command.
+func (e *Engine) upgradeCard(content string, updateAvailable bool) *Card {
+	buttons := []CardButton{e.cardBackButton()}
+	if updateAvailable {
+		buttons = append([]CardButton{PrimaryBtn(e.i18n.T(MsgUpgradeConfirmButton), "cmd:/upgrade confirm")}, buttons...)
+	}
 	return NewCard().
-		Title(title, "grey").
+		Title(e.i18n.T(MsgCardTitleUpgrade), "grey").
 		Markdown(content).
-		Buttons(e.cardBackButton()).
+		Buttons(buttons...).
 		Build()
 }
 
@@ -15668,7 +15681,12 @@ func (e *Engine) cmdUpgrade(p Platform, msg *Message, args []string) {
 		return
 	}
 
-	// Default: check for updates
+	// Default: check for updates. On card platforms reply with the upgrade
+	// card so an available update can be installed with one click.
+	if supportsCards(p) {
+		e.replyWithCard(p, msg.ReplyCtx, e.renderUpgradeCard())
+		return
+	}
 	e.reply(p, msg.ReplyCtx, e.i18n.T(MsgUpgradeChecking))
 
 	cur := CurrentVersion
