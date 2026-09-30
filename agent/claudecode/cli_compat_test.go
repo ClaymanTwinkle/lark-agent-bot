@@ -371,3 +371,49 @@ func TestHandleRateLimitEventFeedsGetUsage(t *testing.T) {
 		t.Fatal("rejected status should mark the limit reached")
 	}
 }
+
+// Regression: the reply footer showed no reasoning effort for Claude unless
+// reasoning_effort was configured, although the CLI applies one from the
+// user's Claude settings or the model default. The session now asks the CLI
+// with get_settings. Responses are shaped like CLI 2.1.285's.
+func TestLoadAppliedEffortReadsCLISettings(t *testing.T) {
+	cases := []struct {
+		name string
+		resp map[string]any
+		want string
+	}{
+		{"applied", map[string]any{"subtype": "success", "response": map[string]any{"applied": map[string]any{"model": "claude-opus-5-5", "effort": "xhigh"}}}, "xhigh"},
+		{"no effort support", map[string]any{"subtype": "success", "response": map[string]any{"applied": map[string]any{"model": "claude-haiku-4-5-20251001", "effort": nil}}}, ""},
+		{"refused", map[string]any{"subtype": "error", "error": "Unsupported control request subtype: get_settings"}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pr, pw := io.Pipe()
+			cs := &claudeSession{stdin: pw, done: make(chan struct{})}
+			t.Cleanup(func() { _ = pw.Close() })
+			go func() {
+				sc := bufio.NewScanner(pr)
+				for sc.Scan() {
+					var msg map[string]any
+					if json.Unmarshal(sc.Bytes(), &msg) != nil {
+						continue
+					}
+					if req, _ := msg["request"].(map[string]any); req["subtype"] != "get_settings" {
+						continue
+					}
+					resp := map[string]any{"request_id": msg["request_id"]}
+					for k, v := range tc.resp {
+						resp[k] = v
+					}
+					line, _ := json.Marshal(map[string]any{"type": "control_response", "response": resp})
+					cs.handleReadLoopLine(string(line))
+				}
+			}()
+
+			cs.loadAppliedEffort()
+			if got := cs.GetReasoningEffort(); got != tc.want {
+				t.Fatalf("GetReasoningEffort() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

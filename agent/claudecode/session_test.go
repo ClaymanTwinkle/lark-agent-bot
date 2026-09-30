@@ -946,11 +946,27 @@ func TestHelperProcess(t *testing.T) {
 			// JSON quoting.
 			turnText := line
 			var envelope struct {
-				Type    string `json:"type"`
-				Message struct {
+				Type      string `json:"type"`
+				RequestID string `json:"request_id"`
+				Message   struct {
 					Role    string `json:"role"`
 					Content any    `json:"content"`
 				} `json:"message"`
+			}
+			if err := json.Unmarshal([]byte(line), &envelope); err == nil && envelope.Type == "control_request" {
+				// Answer like CLI 2.1.285 answers get_settings (the only
+				// control request sent unprompted, at spawn); a control
+				// request is not a turn.
+				payload, _ := json.Marshal(map[string]any{
+					"type": "control_response",
+					"response": map[string]any{
+						"subtype":    "success",
+						"request_id": envelope.RequestID,
+						"response":   map[string]any{"applied": map[string]any{"effort": "high"}},
+					},
+				})
+				_, _ = os.Stdout.Write(append(payload, '\n'))
+				continue
 			}
 			if err := json.Unmarshal([]byte(line), &envelope); err == nil && envelope.Type == "user" {
 				switch c := envelope.Message.Content.(type) {
@@ -1136,6 +1152,15 @@ func TestNewClaudeSession_NoReplayFlagKeepsProcessAlive(t *testing.T) {
 	// Close() will send stdin EOF and the helper will exit cleanly.
 	if !cs.Alive() {
 		t.Fatal("helper died before Close() — keep-alive contract violated")
+	}
+	// The session asked the CLI for its applied effort at spawn (the reply
+	// footer shows it), without disturbing the turns above.
+	effortDeadline := time.Now().Add(2 * time.Second)
+	for cs.GetReasoningEffort() != "high" && time.Now().Before(effortDeadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := cs.GetReasoningEffort(); got != "high" {
+		t.Fatalf("GetReasoningEffort() = %q, want the CLI's applied %q", got, "high")
 	}
 }
 

@@ -60,6 +60,10 @@ type claudeSession struct {
 	// carried a model field yet; callers should fall back to the Agent's
 	// configured model.
 	activeModel atomic.Value // stores string
+	// activeEffort stores the reasoning effort the CLI reports it applies
+	// (see loadAppliedEffort). Empty until the CLI answers; callers should
+	// fall back to the Agent's configured effort.
+	activeEffort atomic.Value // stores string
 
 	// usageMu guards lastUsage. Populated from the most recent result event.
 	usageMu   sync.Mutex
@@ -551,6 +555,8 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	cs.alive.Store(true)
 
 	go cs.readLoop(stdout, &stderrBuf)
+	// Asynchronous: readLoop delivers the answer to this control request.
+	go cs.loadAppliedEffort()
 
 	return cs, nil
 }
@@ -1640,6 +1646,34 @@ func (cs *claudeSession) GetModel() string {
 		return v
 	}
 	return ""
+}
+
+// GetReasoningEffort returns the reasoning effort the CLI reports it applies
+// (e.g. "xhigh"). Returns "" until the CLI has answered, or when it reports
+// none.
+func (cs *claudeSession) GetReasoningEffort() string {
+	if v, ok := cs.activeEffort.Load().(string); ok {
+		return v
+	}
+	return ""
+}
+
+// loadAppliedEffort asks the CLI which reasoning effort it applies. Besides
+// --effort, the answer covers effortLevel from the user's Claude settings
+// files and the model's default, so the reply footer can show the effort
+// when reasoning_effort is not configured. The CLI reports null for a model
+// without effort support, and CLIs without get_settings refuse or never
+// answer; the effort then stays empty and the configured one is shown.
+func (cs *claudeSession) loadAppliedEffort() {
+	resp, err := cs.sendControlRequest(map[string]any{"subtype": "get_settings"})
+	if err != nil {
+		slog.Debug("claudeSession: applied reasoning effort unavailable", "error", err)
+		return
+	}
+	applied, _ := resp["applied"].(map[string]any)
+	if effort, _ := applied["effort"].(string); effort != "" {
+		cs.activeEffort.Store(effort)
+	}
 }
 
 // GetWorkDir returns the working directory this session was started in.
