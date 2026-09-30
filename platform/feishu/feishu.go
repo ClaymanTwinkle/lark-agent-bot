@@ -3344,6 +3344,16 @@ func (p *Platform) Send(ctx context.Context, rctx any, content string) error {
 	return p.sendNewMessageToChat(ctx, rc, msgType, msgBody)
 }
 
+// NotifyMessageRecall must not use the reply API: the trigger no longer exists.
+func (p *Platform) NotifyMessageRecall(ctx context.Context, rctx any, content string) error {
+	rc, ok := rctx.(replyContext)
+	if !ok {
+		return fmt.Errorf("%s: recall notification: invalid reply context type %T", p.tag(), rctx)
+	}
+	msgType, msgBody := buildReplyContent(content)
+	return p.sendNewMessageToChat(ctx, rc, msgType, msgBody)
+}
+
 // SendWithStatusFooter implements core.StatusFooterSender: send a reply with
 // the body content followed by a small/dim status-footer block. Always uses
 // the interactive card path so the footer can render with text_size:

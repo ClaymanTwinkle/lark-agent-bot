@@ -62,6 +62,64 @@ func TestSetupRegistrationURL_RoundTripTemplateAndPreset(t *testing.T) {
 	}
 }
 
+func TestSetupTemplate_IncludesRecallCancellationSubscription(t *testing.T) {
+	addons, err := loadSetupTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(addons.Events.Items.Tenant, "im.message.recalled_v1") {
+		t.Fatal("new bots must subscribe to recalls so queued prompts can be cancelled")
+	}
+}
+
+func TestSetupTemplate_RejectsMissingMenuOrRecallSubscription(t *testing.T) {
+	for _, event := range []string{"im.message.recalled_v1", "application.bot.menu_v6"} {
+		t.Run(event, func(t *testing.T) {
+			addons, err := loadSetupTemplate("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			addons.Events.Items.Tenant = slices.DeleteFunc(addons.Events.Items.Tenant, func(item string) bool { return item == event })
+			data, err := json.Marshal(addons)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(t.TempDir(), "template.json")
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := loadSetupTemplate(path); err == nil || !strings.Contains(err.Error(), event) {
+				t.Fatalf("missing %s should be rejected, got %v", event, err)
+			}
+		})
+	}
+}
+
+func TestBotMenuGuidance_UsesThreeEventActions(t *testing.T) {
+	t.Setenv("LANG", "zh")
+	file, err := os.CreateTemp(t.TempDir(), "menu-output")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldOut := os.Stdout
+	os.Stdout = file
+	t.Cleanup(func() { os.Stdout = oldOut; _ = file.Close() })
+	printBotMenuGuidance("lark")
+	data, err := os.ReadFile(file.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := string(data)
+	for _, required := range []string{"https://open.larksuite.com/app", "悬浮菜单", "推送事件", "查看帮助", "当前状态", "升级服务", "help", "status", "upgrade", "发布"} {
+		if !strings.Contains(output, required) {
+			t.Errorf("missing menu setup instruction %q", required)
+		}
+	}
+	if strings.Contains(output, "发送文字消息") {
+		t.Error("text actions send menu labels instead of the command event keys")
+	}
+}
+
 func TestLoadSetupTemplate_RejectsBrokenOverrides(t *testing.T) {
 	for _, data := range []string{`{}`, `null`, `{"unknown":true}`, string(defaultFeishuSetupTemplate) + `{}`, strings.Replace(string(defaultFeishuSetupTemplate), "im:resource", "", 1)} {
 		file := filepath.Join(t.TempDir(), "template.json")
@@ -85,7 +143,7 @@ func TestLoadSetupTemplate_RejectsBrokenOverrides(t *testing.T) {
 
 func TestSetupCheck_VerifiesGrantedIdentityAndSubscriptions(t *testing.T) {
 	addons, _ := loadSetupTemplate("")
-	for _, scenario := range []string{"complete", "pending", "wrong-identity", "missing-event", "omitted-subscriptions", "owner-is-bot", "denied"} {
+	for _, scenario := range []string{"complete", "pending", "wrong-identity", "missing-event", "missing-recall", "omitted-subscriptions", "owner-is-bot", "denied"} {
 		t.Run(scenario, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
@@ -140,6 +198,9 @@ func TestSetupCheck_VerifiesGrantedIdentityAndSubscriptions(t *testing.T) {
 						if scenario == "missing-event" {
 							events = nil
 						}
+						if scenario == "missing-recall" {
+							events = slices.DeleteFunc(slices.Clone(events), func(event string) bool { return event == "im.message.recalled_v1" })
+						}
 						app["event"] = map[string]any{"subscribed_events": events}
 						app["callback"] = map[string]any{"subscribed_callbacks": addons.Callbacks.Items}
 					}
@@ -161,7 +222,7 @@ func TestSetupCheck_VerifiesGrantedIdentityAndSubscriptions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantMissing := scenario == "pending" || scenario == "wrong-identity" || scenario == "missing-event"
+			wantMissing := scenario == "pending" || scenario == "wrong-identity" || scenario == "missing-event" || scenario == "missing-recall"
 			if (len(check.Missing) > 0) != wantMissing {
 				t.Fatalf("missing: %v", check.Missing)
 			}

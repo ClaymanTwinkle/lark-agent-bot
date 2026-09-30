@@ -42,7 +42,7 @@
   },
   "events": {
     "items": {
-      "tenant": ["im.message.receive_v1", "application.bot.menu_v6"]
+      "tenant": ["im.message.receive_v1", "im.message.recalled_v1", "application.bot.menu_v6"]
     }
   },
   "callbacks": {"items": ["card.action.trigger"]}

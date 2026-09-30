@@ -76,6 +76,12 @@ type MessageRecallDetector interface {
 	IsMessageRecalled(ctx context.Context, replyCtx any) (bool, error)
 }
 
+// MessageRecallNotifier sends a cancellation receipt without quoting the
+// recalled message. Some platforms reject replies to deleted messages.
+type MessageRecallNotifier interface {
+	NotifyMessageRecall(ctx context.Context, replyCtx any, content string) error
+}
+
 // CronReplyTargetResolver is an optional interface for platforms that need to
 // map a logical cron session key to the actual reply target used at execution
 // time. This is useful for platforms where proactive replies may need to create

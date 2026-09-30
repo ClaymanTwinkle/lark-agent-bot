@@ -42,7 +42,7 @@ lark-agent-bot feishu bind --project my-project --app cli_xxx:sec_xxx
 - `--project` 不存在时会自动创建该项目；若项目存在但没有 `feishu/lark` 平台，也会自动补一个。
 - 写回配置时仅定点更新目标字段（`app_id`、`app_secret`、`allow_from` 等），尽量保留原有注释与排版。
 - 新建默认使用内置统一模板：35 项应用权限、1 项用户权限，覆盖消息、图片/文件、表情、卡片、文档及应用管理；Claude Code 和 Codex 使用同一模板。
-- 同时预填 `im.message.receive_v1`、`application.bot.menu_v6` 事件，以及 `card.action.trigger` 卡片回调。扫码确认页一次确认权限与订阅。
+- 同时预填 `im.message.receive_v1`（接收消息）、`im.message.recalled_v1`（撤回消息）、`application.bot.menu_v6`（菜单点击）事件，以及 `card.action.trigger` 卡片回调。扫码确认页一次确认权限与订阅。撤回排队中的原消息会移除对应提示词；已开始的任务会尝试停止，不会回滚已执行的操作。
 - 注册成功后先保存凭证，再检查机器人能力、权限授予状态及可读取的订阅配置。失败会保留凭证并明确报错，避免重复创建应用。
 - 通过应用详情接口获取该应用身份下的所有者 ID，初始化尚未设置的 `admin_from`；全新项目同时设置 `allow_from` 为所有者。保留已有管理员、访问范围和项目设置。
 - 全新项目默认 `quiet` 消息模式，可用 `--display full` 或 `--display compact` 更改。模型、权限模式、工作目录和 agent 类型可在创建时指定；这些参数仅影响新项目。
@@ -59,13 +59,32 @@ lark-agent-bot feishu new --config config.toml --project my-claude --agent claud
 lark-agent-bot feishu check --config config.toml --project my-claude
 ```
 
-模板源文件：[`cmd/lark-agent-bot/feishu_setup_template.json`](../cmd/lark-agent-bot/feishu_setup_template.json)。可复制修改并传入 `--template path/to/template.json`，创建和后续 `check` 请使用同一模板。自定义模板必须保留基本消息、附件、表情、应用自管理权限以及接收消息与卡片交互订阅。模板只声明用户身份权限，不代表已经取得用户 OAuth 授权。
+模板源文件：[`cmd/lark-agent-bot/feishu_setup_template.json`](../cmd/lark-agent-bot/feishu_setup_template.json)。可复制修改并传入 `--template path/to/template.json`，创建和后续 `check` 请使用同一模板。自定义模板必须保留基本消息、附件、表情、应用自管理权限以及接收消息、撤回消息、菜单点击与卡片交互订阅。模板只声明用户身份权限，不代表已经取得用户 OAuth 授权。
 
 实现遵循[官方注册 SDK](https://github.com/larksuite/oapi-sdk-go/tree/v3_main/scene/registration)：配置作为 gzip + URL-safe base64 的 `addons` 参数附在扫码确认链接上，`preset=false` 使用明确声明的配置，`createOnly=true` 限定新建。
 
 能力边界：部分个人应用的详情接口不返回事件/回调列表，命令会标明“无法核验”，不会把缺失字段当作通过；启动后仍需用消息和 `/help` 卡片按钮验证实际收发。模板不包含底部菜单内容，发布审核及可用范围由飞书/企业策略决定。本命令不会自动跳过审批或把可用范围扩展为全员。
 
 **English:** New apps share an embedded permissions/events/callbacks template across agents. Scan once to review and authorize it. Credentials are saved before read-only verification. New projects default to quiet display and use the verified application owner for access/admin initialization; existing project settings remain intact. Override with `--template`, `--agent`, `--model`, `--mode`, `--work-dir`, and `--display`. `feishu check` rechecks saved credentials without creating or modifying an app. Missing subscription fields are reported as unverified. Menu contents, tenant approval, and visibility are outside the registration template.
+
+撤回成功后会发送一条独立提示：排队任务显示「原消息已撤回，对应的排队任务已取消」；当前任务显示「已发起停止当前任务」。重复撤回事件或未匹配到任务的撤回不会重复提示，已执行的操作不会回滚。
+
+### 创建后完成底部菜单
+
+创建流程已包含菜单权限和菜单点击订阅，但**不会自动创建菜单项**。命令会输出以下待完成步骤；菜单仍需按[飞书官方菜单指南](https://open.feishu.cn/document/client-docs/bot-v3/bot-customized-menu)在开发者后台配置：
+
+1. 选择应用 → 机器人 → 机器人自定义菜单，开启「悬浮菜单」。
+2. 添加以下三个主菜单，响应动作均为「推送事件」。
+
+| 菜单名称 | 事件唯一标识（event_key） | 对应命令 |
+| --- | --- | --- |
+| 查看帮助 | `help` | `/help` |
+| 当前状态 | `status` | `/status` |
+| 升级服务 | `upgrade` | `/upgrade` |
+
+3. 确认事件与回调中已订阅 `application.bot.menu_v6` 和 `im.message.recalled_v1`，创建版本并发布。菜单显示可能需要约 5 分钟，仅支持机器人私聊。
+
+「发送文字消息」会直接发送菜单名称，不能代替上表的事件标识。已有机器人可先运行 `feishu check` 检查新模板；如果接口未返回订阅信息，则需要在后台核对。菜单内容未被该检查核验。
 
 ---
 

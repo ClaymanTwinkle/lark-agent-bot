@@ -76,8 +76,13 @@ func loadSetupTemplate(path string) (*setupAddons, error) {
 			return nil, fmt.Errorf("setup template missing required scope %q", scope)
 		}
 	}
-	if !slices.Contains(addons.Events.Items.Tenant, "im.message.receive_v1") || !slices.Contains(addons.Callbacks.Items, "card.action.trigger") {
-		return nil, fmt.Errorf("setup template requires im.message.receive_v1 and card.action.trigger")
+	for _, event := range []string{"im.message.receive_v1", "im.message.recalled_v1", "application.bot.menu_v6"} {
+		if !slices.Contains(addons.Events.Items.Tenant, event) {
+			return nil, fmt.Errorf("setup template missing required event %q", event)
+		}
+	}
+	if !slices.Contains(addons.Callbacks.Items, "card.action.trigger") {
+		return nil, fmt.Errorf("setup template requires card.action.trigger")
 	}
 	return &addons, nil
 }

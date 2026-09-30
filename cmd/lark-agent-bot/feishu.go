@@ -390,38 +390,7 @@ func printBotMenuGuidance(platformType string) {
 	if platformType == "lark" {
 		base = "https://open.larksuite.com"
 	}
-
-	fmt.Println("📋 机器人菜单配置（可选）：")
-	fmt.Println("   飞书机器人支持自定义悬浮菜单，可将常用命令固定在输入框上方。")
-	fmt.Println("   本命令未配置菜单内容，可在开发者后台配置，步骤：")
-	fmt.Printf("   1. 打开开发者后台: %s/app\n", base)
-	fmt.Println("   2. 选择你的应用 → 应用能力 → 机器人")
-	fmt.Println("   3. 开启「机器人自定义菜单」，选择「悬浮菜单」样式")
-	fmt.Println("   4. 添加菜单项，响应动作选择「发送文字消息」")
-	fmt.Println("   5. 创建版本并发布（生效约需 5 分钟）")
-	fmt.Println()
-	fmt.Println("   推荐菜单配置：")
-	fmt.Println("   ┌─────────────────────────────────────────────┐")
-	fmt.Println("   │ 主菜单: lark-agent-bot                          │")
-	fmt.Println("   │   ├── /help     帮助                        │")
-	fmt.Println("   │   ├── /status   状态                        │")
-	fmt.Println("   │   ├── /new      新会话                      │")
-	fmt.Println("   │   ├── /list     会话列表                    │")
-	fmt.Println("   │   └── /stop     停止                        │")
-	fmt.Println("   │ 主菜单: 设置                                 │")
-	fmt.Println("   │   ├── /model    切换模型                    │")
-	fmt.Println("   │   ├── /mode     切换模式                    │")
-	fmt.Println("   │   ├── /quiet    静默模式                    │")
-	fmt.Println("   │   ├── /lang     语言                        │")
-	fmt.Println("   │   └── /config   配置                        │")
-	fmt.Println("   │ 主菜单: 工具                                 │")
-	fmt.Println("   │   ├── /compress 压缩上下文                  │")
-	fmt.Println("   │   ├── /memory   记忆                        │")
-	fmt.Println("   │   ├── /cron     定时任务                    │")
-	fmt.Println("   │   ├── /whoami   查看我的ID                  │")
-	fmt.Println("   │   └── /doctor   诊断                        │")
-	fmt.Println("   └─────────────────────────────────────────────┘")
-	fmt.Println()
+	fmt.Println(setupText(core.MsgSetupMenuGuidance, base+"/app"))
 }
 
 func printFeishuUsage() {

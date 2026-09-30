@@ -10799,7 +10799,7 @@ func TestCmdStop_ReturnsWhileCloseBlockedAndStopsEventLoop(t *testing.T) {
 	}
 }
 
-func TestHandleMessageRecallStopsCurrentMessageSilently(t *testing.T) {
+func TestHandleMessageRecallStopsCurrentMessageAndNotifiesOnce(t *testing.T) {
 	p := &stubPlatformEngine{n: "test"}
 	sess := newBlockingCloseSession("recall-active")
 	defer close(sess.releaseClose)
@@ -10837,12 +10837,13 @@ func TestHandleMessageRecallStopsCurrentMessageSilently(t *testing.T) {
 		t.Fatal("expected interactive state to be removed after active message recall")
 	}
 
-	if sent := p.getSent(); len(sent) != 0 {
-		t.Fatalf("sent messages = %v, want no user-visible stop reply for recall", sent)
+	e.ReceiveMessage(p, &Message{Platform: "test", MessageID: "msg-active", Recalled: true})
+	if sent := p.getSent(); len(sent) != 1 || sent[0] != e.i18n.T(MsgRecallActiveStopping) {
+		t.Fatalf("sent messages = %v, want one active recall notification", sent)
 	}
 }
 
-func TestHandleMessageRecallRemovesQueuedMessageSilently(t *testing.T) {
+func TestHandleMessageRecallRemovesQueuedMessageAndNotifiesOnce(t *testing.T) {
 	p := &stubPlatformEngine{n: "test"}
 	e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
 	key := "test:user1"
@@ -10883,8 +10884,11 @@ func TestHandleMessageRecallRemovesQueuedMessageSilently(t *testing.T) {
 		}
 	}
 
-	if sent := p.getSent(); len(sent) != 0 {
-		t.Fatalf("sent messages = %v, want no user-visible queue removal reply for recall", sent)
+	// Duplicate and unmatched events must not claim another successful cancellation.
+	e.ReceiveMessage(p, &Message{Platform: "test", MessageID: "msg-2", Recalled: true})
+	e.ReceiveMessage(p, &Message{Platform: "test", MessageID: "unknown", Recalled: true})
+	if sent := p.getSent(); len(sent) != 1 || sent[0] != e.i18n.T(MsgRecallQueuedCancelled) {
+		t.Fatalf("sent messages = %v, want one queue cancellation notification", sent)
 	}
 }
 
@@ -10925,9 +10929,9 @@ func TestHandleMessageBusyRecalledCurrentStopsAndProcessesNewMessage(t *testing.
 		ReplyCtx:   "new-reply-ctx",
 	})
 
-	sent := waitForPlatformSend(&p.stubPlatformEngine, 1, 3*time.Second)
-	if len(sent) == 0 || sent[0] != "new message processed" {
-		t.Fatalf("sent = %v, want new message processed", sent)
+	sent := waitForPlatformSend(&p.stubPlatformEngine, 2, 3*time.Second)
+	if len(sent) != 2 || sent[0] != e.i18n.T(MsgRecallActiveStopping) || sent[1] != "new message processed" {
+		t.Fatalf("sent = %v, want recall notification then new message processed", sent)
 	}
 	for _, line := range sent {
 		if strings.Contains(line, e.i18n.T(MsgMessageQueued)) {

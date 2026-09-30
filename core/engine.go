@@ -2542,7 +2542,7 @@ func (e *Engine) handleMessageRecall(p Platform, msg *Message) {
 	}
 
 	if sessionKey, ok := e.findCurrentMessageSession(messageID); ok {
-		if e.stopInteractiveSessionSilently(sessionKey) {
+		if e.stopRecalledMessage(sessionKey, messageID) {
 			slog.Info("active message recalled; session stopped",
 				"platform", p.Name(),
 				"msg_id", messageID,
@@ -2552,12 +2552,13 @@ func (e *Engine) handleMessageRecall(p Platform, msg *Message) {
 		}
 	}
 
-	if sessionKey, ok := e.removeQueuedMessageByID(messageID); ok {
+	if sessionKey, queued, ok := e.removeQueuedMessageByID(messageID); ok {
 		slog.Info("queued message recalled; removed from pending queue",
 			"platform", p.Name(),
 			"msg_id", messageID,
 			"session", sessionKey,
 		)
+		e.notifyMessageRecall(queued.platform, queued.replyCtx, MsgRecallQueuedCancelled)
 		return
 	}
 
@@ -2585,7 +2586,7 @@ func (e *Engine) findCurrentMessageSession(messageID string) (string, bool) {
 	return "", false
 }
 
-func (e *Engine) removeQueuedMessageByID(messageID string) (string, bool) {
+func (e *Engine) removeQueuedMessageByID(messageID string) (string, queuedMessage, bool) {
 	e.interactiveMu.Lock()
 	states := make(map[string]*interactiveState, len(e.interactiveStates))
 	for sessionKey, state := range e.interactiveStates {
@@ -2605,9 +2606,11 @@ func (e *Engine) removeQueuedMessageByID(messageID string) (string, bool) {
 		}
 		filtered := pending[:0]
 		removed := false
+		var recalled queuedMessage
 		for _, queued := range pending {
 			if queued.messageID == messageID {
 				removed = true
+				recalled = queued
 				continue
 			}
 			filtered = append(filtered, queued)
@@ -2615,11 +2618,48 @@ func (e *Engine) removeQueuedMessageByID(messageID string) (string, bool) {
 		if removed {
 			state.pendingMessages = filtered
 			state.mu.Unlock()
-			return sessionKey, true
+			return sessionKey, recalled, true
 		}
 		state.mu.Unlock()
 	}
-	return "", false
+	return "", queuedMessage{}, false
+}
+
+func (e *Engine) notifyMessageRecall(p Platform, replyCtx any, key MsgKey) {
+	if p == nil || replyCtx == nil {
+		slog.Warn("recall notification skipped: missing original delivery context")
+		return
+	}
+	content := e.i18n.T(key)
+	if notifier, ok := p.(MessageRecallNotifier); ok {
+		if err := e.waitOutgoing(p); err != nil {
+			slog.Warn("recall notification rate limit cancelled", "error", err)
+			return
+		}
+		if err := notifier.NotifyMessageRecall(e.ctx, replyCtx, content); err != nil {
+			slog.Error("recall notification failed", "platform", p.Name(), "error", err)
+		}
+		return
+	}
+	e.send(p, replyCtx, content)
+}
+
+func (e *Engine) stopRecalledMessage(sessionKey, messageID string) bool {
+	e.interactiveMu.Lock()
+	state := e.interactiveStates[sessionKey]
+	if state == nil {
+		e.interactiveMu.Unlock()
+		return false
+	}
+	state.mu.Lock()
+	p, replyCtx := state.platform, state.replyCtx
+	state.mu.Unlock()
+	e.interactiveMu.Unlock()
+	if !e.stopInteractiveSessionIfCurrent(sessionKey, false, messageID) {
+		return false
+	}
+	e.notifyMessageRecall(p, replyCtx, MsgRecallActiveStopping)
+	return true
 }
 
 // isStaleUserMessageLocked reports whether timeMs is strictly older than the
@@ -2776,7 +2816,7 @@ func (e *Engine) stopCurrentMessageIfRecalled(sessionKey string) bool {
 	if !recalled {
 		return false
 	}
-	if e.stopInteractiveSessionSilently(sessionKey) {
+	if e.stopRecalledMessage(sessionKey, messageID) {
 		slog.Info("active message recalled by fallback probe; session stopped",
 			"platform", platform.Name(),
 			"msg_id", messageID,
@@ -10646,11 +10686,27 @@ func (e *Engine) stopInteractiveSessionSilently(sessionKey string) bool {
 }
 
 func (e *Engine) stopInteractiveSessionWithOptions(sessionKey string, notifyQueued bool) bool {
+	return e.stopInteractiveSessionIfCurrent(sessionKey, notifyQueued, "")
+}
+
+func (e *Engine) stopInteractiveSessionIfCurrent(sessionKey string, notifyQueued bool, expectedMessageID string) bool {
 	e.interactiveMu.Lock()
 	state, ok := e.interactiveStates[sessionKey]
 	if !ok || state == nil {
 		e.interactiveMu.Unlock()
 		return false
+	}
+	// Claim the recalled turn under the same lock as stop. Duplicate events and
+	// delayed fallback probes must neither notify twice nor cancel a newer turn.
+	if expectedMessageID != "" {
+		state.mu.Lock()
+		if state.currentMessageID != expectedMessageID {
+			state.mu.Unlock()
+			e.interactiveMu.Unlock()
+			return false
+		}
+		state.currentMessageID = ""
+		state.mu.Unlock()
 	}
 
 	// Stop unsolicited reader before touching state to avoid races.

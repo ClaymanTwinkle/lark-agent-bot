@@ -77,6 +77,34 @@ func TestCUJ_A8_ImmediateReceiptsDuringStartupAndQueue(t *testing.T) {
 // agent "replies" for each user prompt, without bringing up a real LLM.
 // ---------------------------------------------------------------------------
 
+func TestCUJ_A9_RecallQueuedTaskNotifiesAndPreservesNextTask(t *testing.T) {
+	env := newReceiptAckEnv(t, nil)
+	env.send("first", "first task", 1000)
+	env.awaitStartup()
+	close(env.startup.release)
+	env.awaitSendCount(1)
+	env.send("withdraw", "task to withdraw", 2000)
+	env.awaitVisible(env.engine.i18n.T(MsgMessageQueued))
+	env.send("keep", "task to keep", 3000)
+	env.engine.ReceiveMessage(env.plat, &Message{Platform: "test", MessageID: "withdraw", Recalled: true})
+	env.awaitVisible(env.engine.i18n.T(MsgRecallQueuedCancelled))
+	env.startup.session.events <- Event{Type: EventResult, Content: "first answer", Done: true}
+	env.awaitVisible("first answer")
+	env.awaitSendCount(2)
+	// The external agent echoes the prompt it actually received, making a
+	// mistakenly executed withdrawn task visible at the platform boundary.
+	env.startup.session.sendMu.Lock()
+	prompt := env.startup.session.sendCalls[1]
+	env.startup.session.sendMu.Unlock()
+	env.startup.session.events <- Event{Type: EventResult, Content: "handled: " + prompt, Done: true}
+	env.awaitVisible("handled: task to keep")
+	for _, content := range env.plat.getSent() {
+		if strings.Contains(content, "handled: task to withdraw") {
+			t.Fatal("the withdrawn task was executed")
+		}
+	}
+}
+
 // cujAgent is a controllable Agent that returns a configurable AgentSession
 // per StartSession call. Tests can mutate cujAgentSession.reply between
 // turns to simulate different agent responses.

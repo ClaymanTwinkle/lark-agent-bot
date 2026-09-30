@@ -213,6 +213,7 @@ const (
 	MsgSetupOwnerUnknown         MsgKey = "setup_ownerunknown"
 	MsgSetupTargetOccupied       MsgKey = "setup_targetoccupied"
 	MsgSetupMenuNotice           MsgKey = "setup_menunotice"
+	MsgSetupMenuGuidance         MsgKey = "setup_menuguidance"
 )
 
 const (
@@ -245,6 +246,8 @@ const (
 	MsgPreviousProcessing        MsgKey = "previous_processing"
 	MsgQueueFull                 MsgKey = "queue_full"
 	MsgMessageQueued             MsgKey = "message_queued"
+	MsgRecallQueuedCancelled     MsgKey = "recall_queued_cancelled"
+	MsgRecallActiveStopping      MsgKey = "recall_active_stopping"
 	MsgNoToolsAllowed            MsgKey = "no_tools_allowed"
 	MsgCurrentTools              MsgKey = "current_tools"
 	MsgCurrentSession            MsgKey = "current_session"
@@ -871,6 +874,13 @@ var messages = map[MsgKey]map[Language]string{
 		LangJapanese:           "登録テンプレートにメニュー内容は含まれません。公開と利用範囲にはプラットフォームと組織の方針が適用されます。",
 		LangSpanish:            "La plantilla no incluye el contenido del menú; publicación y visibilidad dependen de la plataforma y la organización.",
 	},
+	MsgSetupMenuGuidance: {
+		LangEnglish:            "Menu setup remains to be completed in the developer console (registration does not create menu items):\n1. Open %s and select your app → Bot → Custom menu.\n2. Enable the floating menu and add these three top-level items, all using Push event:\n   View help → event_key: help\n   Current status → event_key: status\n   Upgrade service → event_key: upgrade\n3. Confirm application.bot.menu_v6 and im.message.recalled_v1 are subscribed under Events & callbacks.\n4. Create and publish a version. Menu changes may take about 5 minutes to appear.\n",
+		LangChinese:            "菜单待完成：注册不会创建菜单项，请在开发者后台完成以下步骤：\n1. 打开 %s，选择应用 → 机器人 → 机器人自定义菜单。\n2. 开启悬浮菜单，添加三个主菜单，响应动作均选择「推送事件」：\n   查看帮助 → event_key: help\n   当前状态 → event_key: status\n   升级服务 → event_key: upgrade\n3. 在事件与回调中确认已订阅 application.bot.menu_v6 和 im.message.recalled_v1。\n4. 创建版本并发布，菜单显示可能需要约 5 分钟。\n",
+		LangTraditionalChinese: "選單待完成：註冊不會建立選單項目，請在開發者後台完成以下步驟：\n1. 開啟 %s，選擇應用 → 機器人 → 機器人自訂選單。\n2. 啟用懸浮選單，新增三個主選單，回應動作均選擇「推送事件」：\n   查看說明 → event_key: help\n   目前狀態 → event_key: status\n   升級服務 → event_key: upgrade\n3. 在事件與回呼中確認已訂閱 application.bot.menu_v6 和 im.message.recalled_v1。\n4. 建立版本並發布，選單顯示可能需要約 5 分鐘。\n",
+		LangJapanese:           "メニュー設定は開発者コンソールで完了してください（登録ではメニュー項目は作成されません）：\n1. %s でアプリ → ボット → カスタムメニューを開きます。\n2. フローティングメニューを有効にし、次の3項目を追加します。すべて「イベントを送信」を選択してください：\n   ヘルプ → event_key: help\n   現在の状態 → event_key: status\n   サービスを更新 → event_key: upgrade\n3. イベントとコールバックで application.bot.menu_v6 と im.message.recalled_v1 の購読を確認します。\n4. バージョンを作成して公開します。表示には約5分かかる場合があります。\n",
+		LangSpanish:            "Falta configurar el menú en la consola de desarrolladores (el registro no crea sus elementos):\n1. Abre %s y selecciona tu aplicación → Bot → Menú personalizado.\n2. Activa el menú flotante y añade estos tres elementos principales, todos con la acción Enviar evento:\n   Ver ayuda → event_key: help\n   Estado actual → event_key: status\n   Actualizar servicio → event_key: upgrade\n3. Confirma las suscripciones a application.bot.menu_v6 e im.message.recalled_v1 en Eventos y callbacks.\n4. Crea y publica una versión. El menú puede tardar unos 5 minutos en aparecer.\n",
+	},
 	MsgStarting: {
 		LangEnglish:            "⏳ Processing...",
 		LangChinese:            "⏳ 处理中...",
@@ -979,6 +989,20 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "📬 訊息已收到，將在目前任務完成後處理。",
 		LangJapanese:           "📬 メッセージを受信しました。現在のタスク完了後に処理します。",
 		LangSpanish:            "📬 Mensaje recibido — se procesará después de que termine la tarea actual.",
+	},
+	MsgRecallQueuedCancelled: {
+		LangEnglish:            "✅ Message recalled. The queued task has been cancelled.",
+		LangChinese:            "✅ 原消息已撤回，对应的排队任务已取消。",
+		LangTraditionalChinese: "✅ 原訊息已撤回，對應的排隊任務已取消。",
+		LangJapanese:           "✅ メッセージが取り消され、対応する待機中のタスクをキャンセルしました。",
+		LangSpanish:            "✅ Mensaje retirado. Se ha cancelado la tarea correspondiente en cola.",
+	},
+	MsgRecallActiveStopping: {
+		LangEnglish:            "⏹️ Message recalled. Stopping the current task; completed actions will not be undone.",
+		LangChinese:            "⏹️ 原消息已撤回，已发起停止当前任务；已执行的操作不会回滚。",
+		LangTraditionalChinese: "⏹️ 原訊息已撤回，已發起停止目前任務；已執行的操作不會回復。",
+		LangJapanese:           "⏹️ メッセージが取り消されたため、現在のタスクを停止しています。実行済みの操作は元に戻りません。",
+		LangSpanish:            "⏹️ Mensaje retirado. Deteniendo la tarea actual; las acciones ya realizadas no se desharán.",
 	},
 	MsgQueueFull: {
 		LangEnglish:            "📬 Message queue is full (%d pending). Please wait for current tasks to complete.",
