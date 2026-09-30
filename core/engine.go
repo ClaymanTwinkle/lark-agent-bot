@@ -10320,7 +10320,7 @@ func (e *Engine) cmdReasoning(p Platform, msg *Message, args []string) {
 			efforts := switcher.AvailableReasoningEfforts()
 
 			var sb strings.Builder
-			current := switcher.GetReasoningEffort()
+			current := e.currentReasoningEffort(msg.SessionKey, agent)
 			if current == "" {
 				sb.WriteString(e.i18n.T(MsgReasoningDefault))
 			} else {
@@ -10434,6 +10434,26 @@ func (e *Engine) runningTurnReplyTarget(interactiveKey string, session *Session)
 		return nil, nil, false
 	}
 	return state.platform, state.replyCtx, true
+}
+
+// currentReasoningEffort returns the effort /reasoning shows as current: the
+// one the chat's live agent session reports it applies, which the reply
+// footer shows too and which may come from the agent CLI's own settings;
+// without a live session, the effort configured on the agent.
+func (e *Engine) currentReasoningEffort(sessionKey string, agent Agent) string {
+	iKey := e.interactiveKeyForSessionKey(sessionKey)
+	e.interactiveMu.Lock()
+	state := e.interactiveStates[iKey]
+	e.interactiveMu.Unlock()
+	var session AgentSession
+	if state != nil {
+		state.mu.Lock()
+		if state.agentSession != nil && state.agentSession.Alive() {
+			session = state.agentSession
+		}
+		state.mu.Unlock()
+	}
+	return replyFooterReasoningEffort(session, agent)
 }
 
 func (e *Engine) reasoningUsage(efforts []string) string {
@@ -13577,7 +13597,7 @@ func (e *Engine) renderReasoningCard(sessionKey string) *Card {
 	}
 
 	efforts := switcher.AvailableReasoningEfforts()
-	current := switcher.GetReasoningEffort()
+	current := e.currentReasoningEffort(sessionKey, agent)
 
 	var sb strings.Builder
 	if current == "" {

@@ -5513,6 +5513,108 @@ func TestCmdReasoning_UsageListsAgentEfforts(t *testing.T) {
 	})
 }
 
+// Regression: /reasoning showed only the configured effort, so with none
+// configured it said "default" while the reply footer showed the effort the
+// live agent session applies (e.g. from the agent CLI's own settings).
+func TestCmdReasoning_ShowsLiveSessionEffort(t *testing.T) {
+	const key = "test:user1"
+	cases := []struct {
+		name       string
+		configured string
+		session    *controllableAgentSession
+		want       string
+	}{
+		{"live session", "", &controllableAgentSession{alive: true, reasoningEffort: "xhigh"}, "xhigh"},
+		{"live session beats configured", "low", &controllableAgentSession{alive: true, reasoningEffort: "xhigh"}, "xhigh"},
+		{"session reports none", "low", &controllableAgentSession{alive: true}, "low"},
+		{"exited session", "low", &controllableAgentSession{alive: false, reasoningEffort: "xhigh"}, "low"},
+		{"no session", "low", nil, "low"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &stubPlatformEngine{n: "plain"}
+			agent := &stubModelModeAgent{reasoningEffort: tc.configured}
+			e := NewEngine("test", agent, []Platform{p}, "", LangEnglish)
+			if tc.session != nil {
+				e.interactiveMu.Lock()
+				e.interactiveStates[key] = &interactiveState{platform: p, replyCtx: "ctx", agentSession: tc.session}
+				e.interactiveMu.Unlock()
+			}
+			wantCurrent := "Current reasoning effort: " + tc.want
+			wantMarked := fmt.Sprintf("> %d. %s\n", slices.Index(agent.AvailableReasoningEfforts(), tc.want)+1, tc.want)
+
+			e.cmdReasoning(p, &Message{SessionKey: key, ReplyCtx: "ctx"}, nil)
+			if len(p.sent) != 1 || !strings.Contains(p.sent[0], wantCurrent) || !strings.Contains(p.sent[0], wantMarked) {
+				t.Fatalf("list = %v, want %q current and marked %q", p.sent, tc.want, wantMarked)
+			}
+
+			card := e.renderReasoningCard(key)
+			var gotText, gotInit string
+			for _, element := range card.Elements {
+				switch el := element.(type) {
+				case CardMarkdown:
+					gotText += el.Content
+				case CardSelect:
+					for _, opt := range el.Options {
+						if opt.Value == el.InitValue {
+							gotInit = opt.Text
+						}
+					}
+				}
+			}
+			if !strings.Contains(gotText, wantCurrent) || gotInit != tc.want {
+				t.Fatalf("card text = %q, selected = %q; want %q", gotText, gotInit, tc.want)
+			}
+		})
+	}
+}
+
+// In multi-workspace mode the live state is keyed "<workspace>:<sessionKey>"
+// and the configured effort sits on the workspace's agent.
+func TestCmdReasoning_ShowsLiveSessionEffortInWorkspace(t *testing.T) {
+	p := &stubPlatformEngine{n: "plain"}
+	e := NewEngine("test", &stubModelModeAgent{reasoningEffort: "low"}, []Platform{p}, "", LangEnglish)
+	e.SetMultiWorkspace(t.TempDir(), filepath.Join(t.TempDir(), "bindings.json"))
+
+	wsDir := normalizeWorkspacePath(t.TempDir())
+	channelID := "C-reasoning-live"
+	e.workspaceBindings.Bind("project:test", channelID, "chan", wsDir)
+	ws := e.workspacePool.GetOrCreate(wsDir)
+	ws.agent = &stubModelModeAgent{reasoningEffort: "medium"}
+	ws.sessions = NewSessionManager("")
+
+	msg := &Message{SessionKey: "feishu:" + channelID + ":u1", ReplyCtx: "ctx"}
+	card := func() string { return e.renderReasoningCard(msg.SessionKey).RenderText() }
+	if got := card(); !strings.Contains(got, "Current reasoning effort: medium") {
+		t.Fatalf("card without a live session = %q, want the workspace agent's medium", got)
+	}
+
+	e.interactiveMu.Lock()
+	e.interactiveStates[wsDir+":"+msg.SessionKey] = &interactiveState{platform: p, replyCtx: "ctx",
+		agentSession: &controllableAgentSession{alive: true, reasoningEffort: "xhigh"}}
+	e.interactiveMu.Unlock()
+	if got := card(); !strings.Contains(got, "Current reasoning effort: xhigh") {
+		t.Fatalf("card with a live session = %q, want its xhigh", got)
+	}
+}
+
+// With no effort known, /reasoning said "using Codex default" for every
+// agent, Claude included.
+func TestCmdReasoning_DefaultNamesNoAgent(t *testing.T) {
+	p := &stubPlatformEngine{n: "plain"}
+	e := NewEngine("test", &stubModelModeAgent{}, []Platform{p}, "", LangEnglish)
+
+	e.cmdReasoning(p, &Message{SessionKey: "test:user1", ReplyCtx: "ctx"}, nil)
+	if len(p.sent) != 1 || !strings.Contains(p.sent[0], "(not set, using the Agent's own setting or default)") {
+		t.Fatalf("sent = %v, want the agent-neutral default", p.sent)
+	}
+	for _, lang := range []Language{LangEnglish, LangChinese, LangTraditionalChinese, LangJapanese, LangSpanish} {
+		if text := i18nT(lang, MsgReasoningDefault); strings.Contains(text, "Codex") {
+			t.Errorf("%s default names an agent: %q", lang, text)
+		}
+	}
+}
+
 // Changing the effort keeps the conversation, like a model switch: the live
 // agent process is restarted so the next message resumes the same session
 // with the new effort.
