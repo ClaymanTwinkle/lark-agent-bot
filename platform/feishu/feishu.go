@@ -1642,7 +1642,7 @@ func (p *Platform) resetGroupHistory(scope string) {
 }
 
 func (p *Platform) historySenderName(entry groupHistoryEntry) string {
-	if strings.EqualFold(entry.senderType, "app") {
+	if isBotSenderType(entry.senderType) {
 		return p.resolveBotSenderName(entry.senderID)
 	}
 	if entry.senderID == "" {
@@ -1839,7 +1839,7 @@ func (p *Platform) onMessage(ctx context.Context, event *larkim.P2MessageReceive
 		}
 	}
 
-	fromBot := strings.EqualFold(senderType, "app")
+	fromBot := isBotSenderType(senderType)
 	if !core.AllowList(p.allowFrom, userID) {
 		switch {
 		case fromBot && p.isPeerBotSender(userID):
@@ -2464,7 +2464,7 @@ func (p *Platform) resolveMentionsInContent(ctx context.Context, chatID, content
 // chainMessage holds extracted data from one message in a reply chain.
 type chainMessage struct {
 	senderName string
-	senderType string // "user" or "app"
+	senderType string // "user", or "app"/"bot" for a bot
 	senderID   string // Feishu open_id (or app_id for bots) — used by the caller
 	// to enforce same-user privacy when forwarding quoted files.
 	text     string
@@ -2678,7 +2678,7 @@ func (p *Platform) fetchSingleMessage(ctx context.Context, messageID string) *ch
 
 	// Resolve sender name.
 	senderName := ""
-	if item.Sender.SenderType == "app" {
+	if isBotSenderType(item.Sender.SenderType) {
 		senderName = p.resolveBotSenderName(item.Sender.ID)
 	} else if item.Sender.ID != "" {
 		resolved := p.resolveUserName(item.Sender.ID)
@@ -2772,7 +2772,7 @@ func formatReplyChain(chain []chainMessage) string {
 	fmt.Fprintf(&b, "--- Reply chain (%d messages) ---\n", len(chain))
 	for i, msg := range chain {
 		role := "user"
-		if msg.senderType == "app" {
+		if isBotSenderType(msg.senderType) {
 			role = "assistant"
 		}
 		fmt.Fprintf(&b, "[%d] %s (%s):\n%s\n\n", i+1, msg.senderName, role, msg.text)
@@ -4543,6 +4543,13 @@ func stringValue(v *string) string {
 		return ""
 	}
 	return *v
+}
+
+// isBotSenderType reports whether a Feishu sender_type denotes a bot. Live
+// im.message.receive_v1 events from another bot carry "bot", while the
+// message history API reports bots as "app".
+func isBotSenderType(senderType string) bool {
+	return strings.EqualFold(senderType, "bot") || strings.EqualFold(senderType, "app")
 }
 
 func (p *Platform) ReconstructReplyCtx(sessionKey string) (any, error) {

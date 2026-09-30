@@ -98,41 +98,64 @@ func groupMessageFrom(senderID, senderType, text string) *larkim.P2MessageReceiv
 }
 
 func TestOnMessageAcceptsTaskFromPeerBot(t *testing.T) {
-	for _, senderID := range []string{"cli_codex", "ou_codex_seen_here"} {
-		t.Run(senderID, func(t *testing.T) {
-			got := make(chan *core.Message, 1)
-			p, _ := newPeerBotTestPlatform(t, func(_ core.Platform, msg *core.Message) { got <- msg })
+	// Feishu reports a bot sender as "bot" in live group events and as "app"
+	// in the message history API; both must count as a bot.
+	for _, senderType := range []string{"app", "bot"} {
+		for _, senderID := range []string{"cli_codex", "ou_codex_seen_here"} {
+			t.Run(senderType+"/"+senderID, func(t *testing.T) {
+				testOnMessageAcceptsTaskFromPeerBot(t, senderID, senderType)
+			})
+		}
+	}
+}
 
-			if err := p.onMessage(context.Background(), groupMessageFrom(senderID, "app", "review the diff")); err != nil {
-				t.Fatalf("onMessage() error = %v", err)
-			}
-			select {
-			case msg := <-got:
-				if msg.Content != "review the diff" {
-					t.Fatalf("Content = %q, want the task text", msg.Content)
-				}
-				if !p.sessionStartedByBot(msg.SessionKey) {
-					t.Fatalf("session %q not marked as started by a bot", msg.SessionKey)
-				}
-			case <-time.After(2 * time.Second):
-				t.Fatal("task from a peer bot was not dispatched")
-			}
-		})
+func testOnMessageAcceptsTaskFromPeerBot(t *testing.T, senderID, senderType string) {
+	t.Helper()
+	got := make(chan *core.Message, 1)
+	p, outbound := newPeerBotTestPlatform(t, func(_ core.Platform, msg *core.Message) { got <- msg })
+
+	if err := p.onMessage(context.Background(), groupMessageFrom(senderID, senderType, "review the diff")); err != nil {
+		t.Fatalf("onMessage() error = %v", err)
+	}
+	select {
+	case msg := <-got:
+		if msg.Content != "review the diff" {
+			t.Fatalf("Content = %q, want the task text", msg.Content)
+		}
+		if !p.sessionStartedByBot(msg.SessionKey) {
+			t.Fatalf("session %q not marked as started by a bot", msg.SessionKey)
+		}
+	case body := <-outbound:
+		t.Fatalf("replied %q to a peer bot instead of dispatching its task", body)
+	case <-time.After(2 * time.Second):
+		t.Fatal("task from a peer bot was not dispatched")
+	}
+}
+
+func TestIsBotSenderType(t *testing.T) {
+	for senderType, want := range map[string]bool{"app": true, "bot": true, "BOT": true, "user": false, "": false} {
+		if got := isBotSenderType(senderType); got != want {
+			t.Errorf("isBotSenderType(%q) = %v, want %v", senderType, got, want)
+		}
 	}
 }
 
 func TestOnMessageIgnoresUnknownBotWithoutReplying(t *testing.T) {
-	p, outbound := newPeerBotTestPlatform(t, func(core.Platform, *core.Message) {
-		t.Error("handler ran for a bot that is not a peer")
-	})
+	for _, senderType := range []string{"app", "bot"} {
+		t.Run(senderType, func(t *testing.T) {
+			p, outbound := newPeerBotTestPlatform(t, func(core.Platform, *core.Message) {
+				t.Error("handler ran for a bot that is not a peer")
+			})
 
-	if err := p.onMessage(context.Background(), groupMessageFrom("cli_stranger", "app", "hello")); err != nil {
-		t.Fatalf("onMessage() error = %v", err)
-	}
-	select {
-	case body := <-outbound:
-		t.Fatalf("replied %q to an unknown bot, want silence", body)
-	case <-time.After(300 * time.Millisecond):
+			if err := p.onMessage(context.Background(), groupMessageFrom("cli_stranger", senderType, "hello")); err != nil {
+				t.Fatalf("onMessage() error = %v", err)
+			}
+			select {
+			case body := <-outbound:
+				t.Fatalf("replied %q to an unknown bot, want silence", body)
+			case <-time.After(300 * time.Millisecond):
+			}
+		})
 	}
 }
 
