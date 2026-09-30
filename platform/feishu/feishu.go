@@ -108,7 +108,7 @@ func init() {
 
 type replyContext struct {
 	messageID        string
-	chatID           string
+	chatID           string // chat_id, or operator open_id for menu events without a chat_id
 	sessionKey       string
 	bootstrapThread  bool
 	receiptEmoji     string // persistent reaction owned by the accepted-message callback
@@ -4174,9 +4174,19 @@ func (p *Platform) replyMessage(ctx context.Context, rc replyContext, msgType, c
 	})
 }
 
+// Menu events only identify the operator. Feishu requires open_id as the
+// recipient type when sending directly to that user, including after a reply
+// context has been reconstructed from the menu's session key.
+func messageReceiveIDType(receiveID string) string {
+	if strings.HasPrefix(receiveID, "ou_") {
+		return larkim.ReceiveIdTypeOpenId
+	}
+	return larkim.ReceiveIdTypeChatId
+}
+
 func (p *Platform) createMessage(ctx context.Context, chatID, msgType, content, op string) error {
 	req := larkim.NewCreateMessageReqBuilder().
-		ReceiveIdType(larkim.ReceiveIdTypeChatId).
+		ReceiveIdType(messageReceiveIDType(chatID)).
 		Body(larkim.NewCreateMessageReqBodyBuilder().
 			ReceiveId(chatID).
 			MsgType(msgType).
@@ -5236,7 +5246,7 @@ func (p *Platform) SendPreviewStart(ctx context.Context, rctx any, content strin
 		}
 	} else {
 		req := larkim.NewCreateMessageReqBuilder().
-			ReceiveIdType(larkim.ReceiveIdTypeChatId).
+			ReceiveIdType(messageReceiveIDType(chatID)).
 			Body(larkim.NewCreateMessageReqBodyBuilder().
 				ReceiveId(chatID).
 				MsgType(larkim.MsgTypeInteractive).
