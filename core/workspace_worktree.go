@@ -206,7 +206,7 @@ func (e *Engine) replyWorktreeList(p Platform, msg *Message, trees []gitWorktree
 		if branch == "" && len(t.Head) >= 7 {
 			branch = t.Head[:7]
 		}
-		sb.WriteString(fmt.Sprintf("%s `%s` · %s\n", marker, name, branch))
+		fmt.Fprintf(&sb, "%s `%s` · %s\n", marker, name, branch)
 	}
 	sb.WriteString("\n" + e.i18n.T(MsgWsWorktreeUsage))
 	e.reply(p, msg.ReplyCtx, sb.String())
