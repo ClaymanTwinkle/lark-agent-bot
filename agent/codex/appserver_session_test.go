@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -708,6 +709,114 @@ func TestAppServerThreadParams_IncludeDeveloperInstructions(t *testing.T) {
 	s = &appServerSession{mode: "default"}
 	if _, ok := s.threadRequestParams()["developerInstructions"]; ok {
 		t.Fatal("developerInstructions sent although empty")
+	}
+}
+
+// cwdRPCProbe answers thread/start, thread/resume and turn/start like Codex
+// does: the thread runs in the cwd the request names, and a resumed thread
+// otherwise keeps the cwd it was stored with. ignoreCwd simulates a Codex
+// that disregards the requested cwd.
+type cwdRPCProbe struct {
+	s         *appServerSession
+	storedCwd string
+	ignoreCwd bool
+	mu        sync.Mutex
+	params    map[string]map[string]any
+}
+
+func (p *cwdRPCProbe) Close() error { return nil }
+func (p *cwdRPCProbe) Write(data []byte) (int, error) {
+	var req struct {
+		ID     any
+		Method string
+		Params map[string]any
+	}
+	if err := json.Unmarshal(data, &req); err != nil {
+		return 0, err
+	}
+	p.mu.Lock()
+	p.params[req.Method] = req.Params
+	p.mu.Unlock()
+	cwd, _ := req.Params["cwd"].(string)
+	if cwd == "" || p.ignoreCwd {
+		cwd = p.storedCwd
+	}
+	result := map[string]any{
+		"thread":            map[string]string{"id": "thread-1"},
+		"cwd":               cwd,
+		"approvalsReviewer": req.Params["approvalsReviewer"],
+	}
+	if req.Method == "turn/start" {
+		result = map[string]any{"turn": map[string]string{"id": "turn-1"}}
+	}
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return 0, err
+	}
+	p.s.handleResponse(rpcResponseEnvelope{ID: req.ID, Result: raw})
+	return len(data), nil
+}
+
+// Regression: after the workspace folder moved, resuming a thread kept the
+// old cwd stored in the thread, so every command ran in a directory that no
+// longer existed. The session's configured work dir must win.
+func TestAppServerEnsureThread_UsesConfiguredWorkDir(t *testing.T) {
+	const newDir, oldDir = `D:\Projects\new-name`, `D:\Projects\old-name`
+	for _, ignoreCwd := range []bool{false, true} {
+		for _, resume := range []string{"", "thread-1"} {
+			t.Run(fmt.Sprintf("resume=%s/ignoreCwd=%v", resume, ignoreCwd), func(t *testing.T) {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				s := &appServerSession{ctx: ctx, cancel: cancel, mode: "default", workDir: newDir}
+				s.alive.Store(true)
+				probe := &cwdRPCProbe{s: s, storedCwd: oldDir, ignoreCwd: ignoreCwd, params: map[string]map[string]any{}}
+				s.stdin = probe
+
+				if err := s.ensureThread(resume); err != nil {
+					t.Fatal(err)
+				}
+				if err := s.Send("hello", "message-1", nil, nil); err != nil {
+					t.Fatal(err)
+				}
+				threadMethod := "thread/start"
+				if resume != "" {
+					threadMethod = "thread/resume"
+				}
+				probe.mu.Lock()
+				defer probe.mu.Unlock()
+				for _, method := range []string{threadMethod, "turn/start"} {
+					if got := probe.params[method]["cwd"]; got != newDir {
+						t.Fatalf("%s cwd = %v, want the configured work dir", method, got)
+					}
+				}
+				if got := s.GetWorkDir(); got != newDir {
+					t.Fatalf("GetWorkDir() = %q, want the configured work dir", got)
+				}
+			})
+		}
+	}
+}
+
+// Without a configured work dir the session adopts the thread's cwd.
+func TestAppServerEnsureThread_AdoptsThreadCwdWithoutWorkDir(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s := &appServerSession{ctx: ctx, cancel: cancel, mode: "default"}
+	s.alive.Store(true)
+	probe := &cwdRPCProbe{s: s, storedCwd: `D:\Projects\stored`, params: map[string]map[string]any{}}
+	s.stdin = probe
+
+	if err := s.ensureThread("thread-1"); err != nil {
+		t.Fatal(err)
+	}
+	probe.mu.Lock()
+	_, sent := probe.params["thread/resume"]["cwd"]
+	probe.mu.Unlock()
+	if sent {
+		t.Fatal("thread/resume sent a cwd although none is configured")
+	}
+	if got := s.GetWorkDir(); got != `D:\Projects\stored` {
+		t.Fatalf("GetWorkDir() = %q, want the thread's cwd", got)
 	}
 }
 

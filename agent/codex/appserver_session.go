@@ -210,6 +210,11 @@ func newAppServerSession(ctx context.Context, bin, url, workDir, model, effort, 
 	if bin == "" {
 		bin = "codex"
 	}
+	// workDir is sent to Codex as the thread cwd, so make "." and other
+	// relative defaults absolute up front.
+	if abs, err := filepath.Abs(workDir); err == nil {
+		workDir = abs
+	}
 	sessionCtx, cancel := context.WithCancel(ctx)
 	s := &appServerSession{
 		bin:              bin,
@@ -409,6 +414,11 @@ func (s *appServerSession) threadRequestParams() map[string]any {
 	if model := s.GetModel(); model != "" {
 		params["model"] = model
 	}
+	// A resumed thread otherwise keeps the cwd it was stored with, which is
+	// stale once the workspace folder has moved.
+	if dir := s.GetWorkDir(); dir != "" {
+		params["cwd"] = dir
+	}
 	if s.developerInstructions != "" {
 		params["developerInstructions"] = s.developerInstructions
 	}
@@ -441,7 +451,9 @@ func appServerModeSettings(mode string) (approval string, sandbox string) {
 func (s *appServerSession) applyThreadRuntimeState(workDir, model string, effort *string) {
 	s.runtimeMu.Lock()
 	defer s.runtimeMu.Unlock()
-	if dir := strings.TrimSpace(workDir); dir != "" {
+	// A configured work dir is sent as the thread's cwd and stays
+	// authoritative; adopt the thread's cwd only when none was configured.
+	if dir := strings.TrimSpace(workDir); dir != "" && s.workDir == "" {
 		s.workDir = dir
 	}
 	if m := strings.TrimSpace(model); m != "" {
@@ -552,6 +564,9 @@ func (s *appServerSession) Send(prompt string, messageID string, images []core.I
 	params["approvalsReviewer"] = modeSettings(s.mode).reviewer
 	if model := s.GetModel(); model != "" {
 		params["model"] = model
+	}
+	if dir := s.GetWorkDir(); dir != "" {
+		params["cwd"] = dir
 	}
 	if effort := s.GetReasoningEffort(); effort != "" {
 		params["effort"] = effort
