@@ -2,6 +2,7 @@ package core
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -57,5 +58,66 @@ func TestReplyFooterWorkDirShowsTheBranch(t *testing.T) {
 	}
 	if plain := replyFooterWorkDir(nil, &stubAgent{}, t.TempDir()); strings.Contains(plain, "(") {
 		t.Fatalf("footer workdir = %q, want no branch outside a git repo", plain)
+	}
+}
+
+// newGitRepo creates a real git work tree with one committed file, or skips
+// the test when git is not installed.
+func newGitRepo(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	repo := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"}, args...)...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q", "-b", "main")
+	writeGitFile(t, filepath.Join(repo, "tracked.txt"), "v1\n")
+	run("add", "tracked.txt")
+	run("commit", "-q", "-m", "init")
+	return repo
+}
+
+func TestGitDirty(t *testing.T) {
+	for name, change := range map[string]func(repo string){
+		"clean":     func(string) {},
+		"modified":  func(repo string) { writeGitFile(t, filepath.Join(repo, "tracked.txt"), "v2\n") },
+		"untracked": func(repo string) { writeGitFile(t, filepath.Join(repo, "new.txt"), "new\n") },
+		"staged": func(repo string) {
+			writeGitFile(t, filepath.Join(repo, "staged.txt"), "s\n")
+			cmd := exec.Command("git", "add", "staged.txt")
+			cmd.Dir = repo
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git add: %v\n%s", err, out)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := newGitRepo(t)
+			change(repo)
+			if got, want := gitDirty(repo), name != "clean"; got != want {
+				t.Fatalf("gitDirty() = %v, want %v", got, want)
+			}
+		})
+	}
+	if gitDirty(t.TempDir()) {
+		t.Fatal("gitDirty() = true outside a git repo")
+	}
+}
+
+func TestReplyFooterWorkDirMarksUncommittedChanges(t *testing.T) {
+	repo := newGitRepo(t)
+	if got := replyFooterWorkDir(nil, &stubAgent{}, repo); !strings.HasSuffix(got, " (main)") {
+		t.Fatalf("clean tree: footer workdir = %q, want (main)", got)
+	}
+	writeGitFile(t, filepath.Join(repo, "tracked.txt"), "v2\n")
+	if got := replyFooterWorkDir(nil, &stubAgent{}, repo); !strings.HasSuffix(got, " (main*)") {
+		t.Fatalf("dirty tree: footer workdir = %q, want (main*)", got)
 	}
 }

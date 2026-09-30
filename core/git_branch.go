@@ -1,10 +1,37 @@
 package core
 
 import (
+	"bytes"
+	"context"
+	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+// gitDirtyTimeout bounds the git status run behind the footer's "*" marker;
+// when it expires the footer just omits the marker.
+const gitDirtyTimeout = 2 * time.Second
+
+// gitDirty reports whether the git work tree containing dir has uncommitted
+// changes: staged, unstaged or untracked files. Unlike the branch, this cannot
+// be read cheaply from files, so it runs git status; the footer asks once per
+// finished reply. --no-optional-locks keeps it from taking index.lock while
+// the agent may be running git in the same tree.
+func gitDirty(dir string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), gitDirtyTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "status", "--porcelain")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		slog.Debug("reply footer: git status failed", "dir", dir, "error", err)
+		return false
+	}
+	return len(bytes.TrimSpace(out)) > 0
+}
 
 // gitBranch returns the branch checked out in the git work tree that contains
 // dir, the short commit for a detached HEAD, or "" when dir is not in a work

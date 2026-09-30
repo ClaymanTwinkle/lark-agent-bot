@@ -8048,6 +8048,9 @@ func replyFooterWorkDir(session AgentSession, agent Agent, workspaceDir string) 
 	}
 	display := compactReplyFooterPath(dir)
 	if branch := gitBranch(dir); branch != "" {
+		if gitDirty(dir) {
+			branch += "*"
+		}
 		display += " (" + branch + ")"
 	}
 	return display

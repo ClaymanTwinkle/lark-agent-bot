@@ -748,8 +748,8 @@ name = "my-backend"
 #                                   # 每条助手回复底部状态 footer 总开关（默认 true 显示）
 # show_context_indicator = false   # Hide the footer's first line: model · [effort ·] 5h/week quota used · ctx % (default: true)
 #                                   # 隐藏 footer 第一行：model · [effort ·] 5小时/本周额度用量 · ctx %（默认 true 显示）
-# show_workdir_indicator = false   # Hide the footer's second line: workspace directory and its git branch (default: true)
-#                                   # 隐藏 footer 第二行：工作区目录（默认 true 显示）
+# show_workdir_indicator = false   # Hide the footer's second line: workspace directory and its git branch, "*" marking uncommitted changes (default: true)
+#                                   # 隐藏 footer 第二行：工作区目录和 git 分支，分支后的 * 表示有未提交的修改（默认 true 显示）
 # disabled_commands = ["restart", "upgrade", "cron"]  # Disable specific commands for this project
 #                                                     # 禁用该项目的指定命令
 #
