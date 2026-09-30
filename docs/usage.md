@@ -998,6 +998,9 @@ type = "claudecode"
 /workspace init <git-url>     Clone and bind repo
 /workspace unbind             Remove binding
 /workspace list               List all bindings
+/ws wt                        List the repository's worktrees
+/ws wt <name>                 Create or reuse worktree <name> and switch this chat to it
+/ws wt rm <name>              Remove worktree <name> (the branch is kept)
 ```
 
 In the help menu's System tab, click `/bind` or `/workspace` to choose a project.
@@ -1006,6 +1009,31 @@ and the current binding marked. Directory links are excluded. Selecting a projec
 changes only the current chat's binding (or the current topic with thread isolation).
 The current project is pinned first, followed by other projects in name order. Opening the menu, paging, and selecting update the same card; selection returns to page one to show the pinned project.
 `/workspace list` still lists existing bindings; `/bind <bot>` still manages bot relay bindings.
+
+### Worktrees (several agents on one project)
+
+`/ws wt` is short for `/workspace worktree`. It requires admin privilege
+(`admin_from`) and works on the git repository bound to the current chat (the
+current topic with thread isolation):
+
+- `/ws wt <name>` creates a worktree at `.worktrees/<name>` in the main worktree
+  and switches the current chat to it. Branch `<name>` is created from the main
+  worktree's HEAD when missing and checked out when it exists; an existing
+  worktree is only switched to. The next message starts a new session there;
+  other chats are not affected.
+- `/ws wt` lists the worktrees; `▶` marks the current chat's.
+- `/ws wt rm <name>` removes a worktree and keeps its branch. It refuses while
+  the worktree has uncommitted changes or a running task; chats bound to it
+  return to the main worktree.
+
+On first use, if the repository does not ignore `.worktrees/`, it is added to
+the local `.git/info/exclude` so the main worktree's `git status` and
+`git add -A` leave the worktrees out.
+
+For parallel work, use one chat per worktree, or enable `thread_isolation` and
+run `/ws wt <name>` in different topics of one group. Each worktree runs its
+own agent process, so they do not queue behind each other. Merging the
+branches is still up to you (or the agent).
 
 ### How It Works
 

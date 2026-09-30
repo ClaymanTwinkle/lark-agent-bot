@@ -1253,9 +1253,10 @@ var privilegedCommands = map[string]bool{
 //
 //   - /commands addexec ...    — registers a custom shell-exec command
 //   - /cron    addexec ...     — schedules a recurring shell-exec
+//   - /workspace worktree ...  — creates branches and worktrees, deletes worktrees
 //
-// Both effectively create new admin-only commands at runtime; if a
-// non-admin can call addexec, they can install arbitrary shell commands
+// The addexec pair effectively creates new admin-only commands at runtime;
+// if a non-admin can call addexec, they can install arbitrary shell commands
 // for any future user to trigger. Sibling subcommands (list, add, del,
 // etc.) remain non-privileged.
 //
@@ -1268,6 +1269,9 @@ func isPrivilegedCommandInvocation(cmdID string, args []string) bool {
 	}
 	if len(args) == 0 {
 		return false
+	}
+	if cmdID == "workspace" {
+		return workspaceSubCommand(args[0]) == "worktree"
 	}
 	sub := strings.ToLower(args[0])
 	switch cmdID {
@@ -7291,7 +7295,7 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 
 	subCmd := ""
 	if len(args) > 0 {
-		subCmd = matchSubCommand(args[0], []string{"init", "bind", "route", "unbind", "list", "shared", "available", "select"})
+		subCmd = workspaceSubCommand(args[0])
 	}
 
 	switch subCmd {
@@ -7400,9 +7404,21 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 	case "list":
 		listBindings(projectKey, MsgWsListEmpty, MsgWsListTitle)
 
+	case "worktree":
+		e.handleWorktreeCommand(p, msg, channelKey, resolveChannelName, args[1:])
+
 	default:
 		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsUsage))
 	}
+}
+
+// workspaceSubCommand resolves the /workspace subcommand args[0] names
+// ("wt" is short for worktree).
+func workspaceSubCommand(arg string) string {
+	if arg == "wt" {
+		return "worktree"
+	}
+	return matchSubCommand(arg, []string{"init", "bind", "route", "unbind", "list", "shared", "available", "select", "worktree"})
 }
 
 func (e *Engine) cmdNew(p Platform, msg *Message, args []string) {

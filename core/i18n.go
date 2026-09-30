@@ -696,51 +696,65 @@ const (
 	MsgShowReadFailed      MsgKey = "show_read_failed"
 
 	// Multi-workspace messages
-	MsgBuiltinCmdWorkspace      MsgKey = "workspace"
-	MsgWsPickerDescription      MsgKey = "ws_picker_description"
-	MsgWsPickerTitle            MsgKey = "ws_picker_title"
-	MsgWsPickerRoot             MsgKey = "ws_picker_root"
-	MsgWsPickerCurrent          MsgKey = "ws_picker_current"
-	MsgWsPickerEmpty            MsgKey = "ws_picker_empty"
-	MsgWsPickerSelect           MsgKey = "ws_picker_select"
-	MsgWsPickerSelected         MsgKey = "ws_picker_selected"
-	MsgWsPickerHint             MsgKey = "ws_picker_hint"
-	MsgWsPickerStale            MsgKey = "ws_picker_stale"
-	MsgWsNotEnabled             MsgKey = "ws_not_enabled"
-	MsgWsNoBinding              MsgKey = "ws_no_binding"
-	MsgWsInfo                   MsgKey = "ws_info"
-	MsgWsInfoShared             MsgKey = "ws_info_shared"
-	MsgWsUsage                  MsgKey = "ws_usage"
-	MsgWsInitUsage              MsgKey = "ws_init_usage"
-	MsgWsBindUsage              MsgKey = "ws_bind_usage"
-	MsgWsBindSuccess            MsgKey = "ws_bind_success"
-	MsgWsBindNotFound           MsgKey = "ws_bind_not_found"
-	MsgWsRouteUsage             MsgKey = "ws_route_usage"
-	MsgWsRouteSuccess           MsgKey = "ws_route_success"
-	MsgWsRouteAbsoluteRequired  MsgKey = "ws_route_absolute_required"
-	MsgWsRouteNotFound          MsgKey = "ws_route_not_found"
-	MsgWsRouteNotDirectory      MsgKey = "ws_route_not_directory"
-	MsgWsUnbindSuccess          MsgKey = "ws_unbind_success"
-	MsgWsListEmpty              MsgKey = "ws_list_empty"
-	MsgWsListTitle              MsgKey = "ws_list_title"
-	MsgWsSharedNoBinding        MsgKey = "ws_shared_no_binding"
-	MsgWsSharedUsage            MsgKey = "ws_shared_usage"
-	MsgWsSharedBindSuccess      MsgKey = "ws_shared_bind_success"
-	MsgWsSharedRouteSuccess     MsgKey = "ws_shared_route_success"
-	MsgWsSharedUnbindSuccess    MsgKey = "ws_shared_unbind_success"
-	MsgWsSharedListEmpty        MsgKey = "ws_shared_list_empty"
-	MsgWsSharedListTitle        MsgKey = "ws_shared_list_title"
-	MsgWsSharedOnlyHint         MsgKey = "ws_shared_only_hint"
-	MsgWsNotFoundHint           MsgKey = "ws_not_found_hint"
-	MsgWsNotFoundHintGitOnly    MsgKey = "ws_not_found_hint_git_only"
-	MsgWsResolutionError        MsgKey = "ws_resolution_error"
-	MsgWsCloneProgress          MsgKey = "ws_clone_progress"
-	MsgWsCloneSuccess           MsgKey = "ws_clone_success"
-	MsgWsCloneFailed            MsgKey = "ws_clone_failed"
-	MsgWsInitDirNotFound        MsgKey = "ws_init_dir_not_found"
-	MsgWsInitInvalidTarget      MsgKey = "ws_init_invalid_target"
-	MsgWsInitLocalPathsDisabled MsgKey = "ws_init_local_paths_disabled"
-	MsgBackgroundAutoDenied     MsgKey = "background_auto_denied"
+	MsgBuiltinCmdWorkspace       MsgKey = "workspace"
+	MsgWsPickerDescription       MsgKey = "ws_picker_description"
+	MsgWsPickerTitle             MsgKey = "ws_picker_title"
+	MsgWsPickerRoot              MsgKey = "ws_picker_root"
+	MsgWsPickerCurrent           MsgKey = "ws_picker_current"
+	MsgWsPickerEmpty             MsgKey = "ws_picker_empty"
+	MsgWsPickerSelect            MsgKey = "ws_picker_select"
+	MsgWsPickerSelected          MsgKey = "ws_picker_selected"
+	MsgWsPickerHint              MsgKey = "ws_picker_hint"
+	MsgWsPickerStale             MsgKey = "ws_picker_stale"
+	MsgWsNotEnabled              MsgKey = "ws_not_enabled"
+	MsgWsNoBinding               MsgKey = "ws_no_binding"
+	MsgWsInfo                    MsgKey = "ws_info"
+	MsgWsInfoShared              MsgKey = "ws_info_shared"
+	MsgWsUsage                   MsgKey = "ws_usage"
+	MsgWsInitUsage               MsgKey = "ws_init_usage"
+	MsgWsBindUsage               MsgKey = "ws_bind_usage"
+	MsgWsBindSuccess             MsgKey = "ws_bind_success"
+	MsgWsBindNotFound            MsgKey = "ws_bind_not_found"
+	MsgWsRouteUsage              MsgKey = "ws_route_usage"
+	MsgWsRouteSuccess            MsgKey = "ws_route_success"
+	MsgWsRouteAbsoluteRequired   MsgKey = "ws_route_absolute_required"
+	MsgWsRouteNotFound           MsgKey = "ws_route_not_found"
+	MsgWsRouteNotDirectory       MsgKey = "ws_route_not_directory"
+	MsgWsUnbindSuccess           MsgKey = "ws_unbind_success"
+	MsgWsListEmpty               MsgKey = "ws_list_empty"
+	MsgWsListTitle               MsgKey = "ws_list_title"
+	MsgWsSharedNoBinding         MsgKey = "ws_shared_no_binding"
+	MsgWsSharedUsage             MsgKey = "ws_shared_usage"
+	MsgWsSharedBindSuccess       MsgKey = "ws_shared_bind_success"
+	MsgWsSharedRouteSuccess      MsgKey = "ws_shared_route_success"
+	MsgWsSharedUnbindSuccess     MsgKey = "ws_shared_unbind_success"
+	MsgWsSharedListEmpty         MsgKey = "ws_shared_list_empty"
+	MsgWsSharedListTitle         MsgKey = "ws_shared_list_title"
+	MsgWsSharedOnlyHint          MsgKey = "ws_shared_only_hint"
+	MsgWsNotFoundHint            MsgKey = "ws_not_found_hint"
+	MsgWsNotFoundHintGitOnly     MsgKey = "ws_not_found_hint_git_only"
+	MsgWsResolutionError         MsgKey = "ws_resolution_error"
+	MsgWsCloneProgress           MsgKey = "ws_clone_progress"
+	MsgWsCloneSuccess            MsgKey = "ws_clone_success"
+	MsgWsCloneFailed             MsgKey = "ws_clone_failed"
+	MsgWsInitDirNotFound         MsgKey = "ws_init_dir_not_found"
+	MsgWsInitInvalidTarget       MsgKey = "ws_init_invalid_target"
+	MsgWsInitLocalPathsDisabled  MsgKey = "ws_init_local_paths_disabled"
+	MsgWsWorktreeUsage           MsgKey = "ws_worktree_usage"
+	MsgWsWorktreeNotRepo         MsgKey = "ws_worktree_not_repo"
+	MsgWsWorktreeListTitle       MsgKey = "ws_worktree_list_title"
+	MsgWsWorktreeMainLabel       MsgKey = "ws_worktree_main_label"
+	MsgWsWorktreeInvalidName     MsgKey = "ws_worktree_invalid_name"
+	MsgWsWorktreeSwitched        MsgKey = "ws_worktree_switched"
+	MsgWsWorktreePathTaken       MsgKey = "ws_worktree_path_taken"
+	MsgWsWorktreeCreated         MsgKey = "ws_worktree_created"
+	MsgWsWorktreeCreatedExisting MsgKey = "ws_worktree_created_existing"
+	MsgWsWorktreeFailed          MsgKey = "ws_worktree_failed"
+	MsgWsWorktreeNotFound        MsgKey = "ws_worktree_not_found"
+	MsgWsWorktreeBusy            MsgKey = "ws_worktree_busy"
+	MsgWsWorktreeDirty           MsgKey = "ws_worktree_dirty"
+	MsgWsWorktreeRemoved         MsgKey = "ws_worktree_removed"
+	MsgBackgroundAutoDenied      MsgKey = "background_auto_denied"
 
 	// Agent system-prompt tool sections (Issue #1655). These are appended
 	// to the agent's own system prompt by core/interfaces.go AgentSystemPromptForLang
@@ -4426,11 +4440,11 @@ var messages = map[MsgKey]map[Language]string{
 		LangSpanish:            "Workspace: `%s`\nVinculado: %s\nOrigen: shared",
 	},
 	MsgWsUsage: {
-		LangEnglish:            "Usage: `/workspace [bind <name> | route <absolute-path> | init <url> | unbind | list | shared ...]`",
-		LangChinese:            "用法: `/workspace [bind <名称> | route <绝对路径> | init <仓库地址> | unbind | list | shared ...]`",
-		LangTraditionalChinese: "用法: `/workspace [bind <名稱> | route <絕對路徑> | init <倉庫地址> | unbind | list | shared ...]`",
-		LangJapanese:           "使い方: `/workspace [bind <名前> | route <絶対パス> | init <url> | unbind | list | shared ...]`",
-		LangSpanish:            "Uso: `/workspace [bind <nombre> | route <ruta-absoluta> | init <url> | unbind | list | shared ...]`",
+		LangEnglish:            "Usage: `/workspace [bind <name> | route <absolute-path> | init <url> | unbind | list | worktree ... | shared ...]`",
+		LangChinese:            "用法: `/workspace [bind <名称> | route <绝对路径> | init <仓库地址> | unbind | list | worktree ... | shared ...]`",
+		LangTraditionalChinese: "用法: `/workspace [bind <名稱> | route <絕對路徑> | init <倉庫地址> | unbind | list | worktree ... | shared ...]`",
+		LangJapanese:           "使い方: `/workspace [bind <名前> | route <絶対パス> | init <url> | unbind | list | worktree ... | shared ...]`",
+		LangSpanish:            "Uso: `/workspace [bind <nombre> | route <ruta-absoluta> | init <url> | unbind | list | worktree ... | shared ...]`",
 	},
 	MsgWsInitUsage: {
 		LangEnglish:            "Usage: `/workspace init <git-url or directory-path>`",
@@ -4634,6 +4648,104 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "`/workspace init` 未啟用本機目錄目標。請使用 git 倉庫地址，或在此專案配置 `workspace_init_allow_local_paths = true`。",
 		LangJapanese:           "`/workspace init` ではローカルディレクトリ対象が無効です。git URL を使うか、このプロジェクトで `workspace_init_allow_local_paths = true` を有効にしてください。",
 		LangSpanish:            "Los destinos de directorio local están deshabilitados para `/workspace init`. Use una URL de git o habilite `workspace_init_allow_local_paths = true` para este proyecto.",
+	},
+	MsgWsWorktreeUsage: {
+		LangEnglish:            "Usage: `/workspace worktree [<name> | rm <name>]` (short: `/ws wt`). `<name>` creates or reuses `.worktrees/<name>` on branch `<name>` and switches this chat to it; without arguments, lists the worktrees.",
+		LangChinese:            "用法: `/workspace worktree [<名称> | rm <名称>]`（简写 `/ws wt`）。带名称：新建或复用 `.worktrees/<名称>`（分支同名），并把当前聊天切过去；不带参数：列出工作树。",
+		LangTraditionalChinese: "用法: `/workspace worktree [<名稱> | rm <名稱>]`（簡寫 `/ws wt`）。帶名稱：新建或沿用 `.worktrees/<名稱>`（分支同名），並把目前聊天切過去；不帶參數：列出工作樹。",
+		LangJapanese:           "使い方: `/workspace worktree [<名前> | rm <名前>]`（短縮形 `/ws wt`）。名前を指定すると `.worktrees/<名前>`（同名ブランチ）を作成または再利用し、このチャットを切り替えます。引数なしでワークツリーを一覧表示します。",
+		LangSpanish:            "Uso: `/workspace worktree [<nombre> | rm <nombre>]` (abreviado: `/ws wt`). Con `<nombre>` crea o reutiliza `.worktrees/<nombre>` en la rama `<nombre>` y cambia este chat a él; sin argumentos, lista los worktrees.",
+	},
+	MsgWsWorktreeNotRepo: {
+		LangEnglish:            "The bound directory `%s` is not a usable git repository: %v",
+		LangChinese:            "当前绑定的目录 `%s` 不是可用的 git 仓库: %v",
+		LangTraditionalChinese: "目前綁定的目錄 `%s` 不是可用的 git 倉庫: %v",
+		LangJapanese:           "バインド中のディレクトリ `%s` は利用できる git リポジトリではありません: %v",
+		LangSpanish:            "El directorio vinculado `%s` no es un repositorio git utilizable: %v",
+	},
+	MsgWsWorktreeListTitle: {
+		LangEnglish:            "Worktrees (main: `%s`):\n",
+		LangChinese:            "工作树（主仓库 `%s`）:\n",
+		LangTraditionalChinese: "工作樹（主倉庫 `%s`）:\n",
+		LangJapanese:           "ワークツリー（メイン: `%s`）:\n",
+		LangSpanish:            "Worktrees (principal: `%s`):\n",
+	},
+	MsgWsWorktreeMainLabel: {
+		LangEnglish:            "main",
+		LangChinese:            "主仓库",
+		LangTraditionalChinese: "主倉庫",
+		LangJapanese:           "メイン",
+		LangSpanish:            "principal",
+	},
+	MsgWsWorktreeInvalidName: {
+		LangEnglish:            "`%s` cannot be used as a branch name; choose another name.",
+		LangChinese:            "`%s` 不能用作分支名，换一个名称。",
+		LangTraditionalChinese: "`%s` 不能用作分支名，換一個名稱。",
+		LangJapanese:           "`%s` はブランチ名に使えません。別の名前にしてください。",
+		LangSpanish:            "`%s` no sirve como nombre de rama; elija otro nombre.",
+	},
+	MsgWsWorktreeSwitched: {
+		LangEnglish:            "🌿 Switched to worktree `%s`: `%s`\nThe next message is handled there.",
+		LangChinese:            "🌿 已切到工作树 `%s`: `%s`\n下一条消息在这里处理。",
+		LangTraditionalChinese: "🌿 已切到工作樹 `%s`: `%s`\n下一則訊息在這裡處理。",
+		LangJapanese:           "🌿 ワークツリー `%s` に切り替えました: `%s`\n次のメッセージからここで処理します。",
+		LangSpanish:            "🌿 Cambiado al worktree `%s`: `%s`\nEl próximo mensaje se procesa allí.",
+	},
+	MsgWsWorktreePathTaken: {
+		LangEnglish:            "`%s` already exists but is not a worktree of this repository.",
+		LangChinese:            "`%s` 已存在，但不是这个仓库的工作树。",
+		LangTraditionalChinese: "`%s` 已存在，但不是這個倉庫的工作樹。",
+		LangJapanese:           "`%s` は既に存在しますが、このリポジトリのワークツリーではありません。",
+		LangSpanish:            "`%s` ya existe pero no es un worktree de este repositorio.",
+	},
+	MsgWsWorktreeCreated: {
+		LangEnglish:            "🌿 Created worktree `%s` (new branch from `%s`): `%s`\nThis chat now works there; the next message starts a new session.",
+		LangChinese:            "🌿 已新建工作树 `%s`（新分支，基于 `%s`）: `%s`\n当前聊天已切过去，下一条消息在这里开始新会话。",
+		LangTraditionalChinese: "🌿 已新建工作樹 `%s`（新分支，基於 `%s`）: `%s`\n目前聊天已切過去，下一則訊息在這裡開始新會話。",
+		LangJapanese:           "🌿 ワークツリー `%s` を作成しました（`%s` からの新ブランチ）: `%s`\nこのチャットを切り替えました。次のメッセージから新しいセッションになります。",
+		LangSpanish:            "🌿 Worktree `%s` creado (rama nueva desde `%s`): `%s`\nEste chat trabaja ahora allí; el próximo mensaje inicia una sesión nueva.",
+	},
+	MsgWsWorktreeCreatedExisting: {
+		LangEnglish:            "🌿 Created a worktree for the existing branch `%s`: `%s`\nThis chat now works there; the next message starts a new session.",
+		LangChinese:            "🌿 已为已有分支 `%s` 新建工作树: `%s`\n当前聊天已切过去，下一条消息在这里开始新会话。",
+		LangTraditionalChinese: "🌿 已為既有分支 `%s` 新建工作樹: `%s`\n目前聊天已切過去，下一則訊息在這裡開始新會話。",
+		LangJapanese:           "🌿 既存ブランチ `%s` のワークツリーを作成しました: `%s`\nこのチャットを切り替えました。次のメッセージから新しいセッションになります。",
+		LangSpanish:            "🌿 Worktree creado para la rama existente `%s`: `%s`\nEste chat trabaja ahora allí; el próximo mensaje inicia una sesión nueva.",
+	},
+	MsgWsWorktreeFailed: {
+		LangEnglish:            "❌ Worktree command failed: %v",
+		LangChinese:            "❌ 工作树操作失败: %v",
+		LangTraditionalChinese: "❌ 工作樹操作失敗: %v",
+		LangJapanese:           "❌ ワークツリー操作に失敗しました: %v",
+		LangSpanish:            "❌ Falló la operación de worktree: %v",
+	},
+	MsgWsWorktreeNotFound: {
+		LangEnglish:            "No worktree named `%s`; send `/ws wt` to list them.",
+		LangChinese:            "没有叫 `%s` 的工作树，发 `/ws wt` 查看。",
+		LangTraditionalChinese: "沒有叫 `%s` 的工作樹，傳 `/ws wt` 查看。",
+		LangJapanese:           "`%s` というワークツリーはありません。`/ws wt` で一覧を確認してください。",
+		LangSpanish:            "No hay un worktree llamado `%s`; envíe `/ws wt` para listarlos.",
+	},
+	MsgWsWorktreeBusy: {
+		LangEnglish:            "A task is still running in worktree `%s`; remove it after the task ends (or after /stop).",
+		LangChinese:            "工作树 `%s` 里还有任务在运行，等它结束（或 /stop）后再删。",
+		LangTraditionalChinese: "工作樹 `%s` 裡還有任務在執行，等它結束（或 /stop）後再刪。",
+		LangJapanese:           "ワークツリー `%s` でタスクが実行中です。終了後（または /stop 後）に削除してください。",
+		LangSpanish:            "Aún hay una tarea en el worktree `%s`; elimínelo cuando termine (o tras /stop).",
+	},
+	MsgWsWorktreeDirty: {
+		LangEnglish:            "Worktree `%s` has uncommitted changes or new files; commit or clean them up before removing it.",
+		LangChinese:            "工作树 `%s` 里有未提交的改动或新文件，先提交或清理后再删。",
+		LangTraditionalChinese: "工作樹 `%s` 裡有未提交的變更或新檔案，先提交或清理後再刪。",
+		LangJapanese:           "ワークツリー `%s` に未コミットの変更か新しいファイルがあります。コミットか整理をしてから削除してください。",
+		LangSpanish:            "El worktree `%s` tiene cambios sin confirmar o archivos nuevos; confírmelos o límpielos antes de eliminarlo.",
+	},
+	MsgWsWorktreeRemoved: {
+		LangEnglish:            "🗑 Removed worktree `%s`; branch `%s` is kept. Chats bound to it now use the main worktree `%s`.",
+		LangChinese:            "🗑 已删除工作树 `%s`，分支 `%s` 保留。绑定到它的聊天已切回主仓库 `%s`。",
+		LangTraditionalChinese: "🗑 已刪除工作樹 `%s`，分支 `%s` 保留。綁定到它的聊天已切回主倉庫 `%s`。",
+		LangJapanese:           "🗑 ワークツリー `%s` を削除しました（ブランチ `%s` は残ります）。これをバインドしていたチャットはメイン `%s` に戻りました。",
+		LangSpanish:            "🗑 Worktree `%s` eliminado; la rama `%s` se conserva. Los chats vinculados a él usan ahora el principal `%s`.",
 	},
 	MsgAgentSendToolPrompt: {
 		LangEnglish: `### Send generated images, files, or voice messages back to the user
