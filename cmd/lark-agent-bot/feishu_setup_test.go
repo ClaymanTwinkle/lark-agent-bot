@@ -24,7 +24,7 @@ func TestSetupRegistrationURL_RoundTripTemplateAndPreset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(addons.Scopes.Tenant) != 35 || len(addons.Scopes.User) != 1 {
+	if len(addons.Scopes.Tenant) != 38 || len(addons.Scopes.User) != 1 {
 		t.Fatal("shared permissions changed; review the template contract")
 	}
 	if !slices.Contains(addons.Scopes.Tenant, "im:message.reactions:write_only") {
@@ -143,7 +143,7 @@ func TestLoadSetupTemplate_RejectsBrokenOverrides(t *testing.T) {
 
 func TestSetupCheck_VerifiesGrantedIdentityAndSubscriptions(t *testing.T) {
 	addons, _ := loadSetupTemplate("")
-	for _, scenario := range []string{"complete", "pending", "wrong-identity", "missing-event", "missing-recall", "omitted-subscriptions", "owner-is-bot", "denied"} {
+	for _, scenario := range []string{"complete", "pending", "wrong-identity", "missing-feature-scopes", "missing-event", "missing-recall", "omitted-subscriptions", "owner-is-bot", "denied"} {
 		t.Run(scenario, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
@@ -169,6 +169,9 @@ func TestSetupCheck_VerifiesGrantedIdentityAndSubscriptions(t *testing.T) {
 						names []string
 					}{{"tenant", addons.Scopes.Tenant}, {"user", addons.Scopes.User}} {
 						for _, name := range group.names {
+							if scenario == "missing-feature-scopes" && slices.Contains([]string{"contact:user.base:readonly", "im:chat.members:read", "im:message.group_msg"}, name) {
+								continue
+							}
 							status, identity := 1, group.id
 							if name == "im:resource" && scenario == "pending" {
 								status = 0
@@ -222,9 +225,16 @@ func TestSetupCheck_VerifiesGrantedIdentityAndSubscriptions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantMissing := scenario == "pending" || scenario == "wrong-identity" || scenario == "missing-event" || scenario == "missing-recall"
+			wantMissing := scenario == "pending" || scenario == "wrong-identity" || scenario == "missing-feature-scopes" || scenario == "missing-event" || scenario == "missing-recall"
 			if (len(check.Missing) > 0) != wantMissing {
 				t.Fatalf("missing: %v", check.Missing)
+			}
+			if scenario == "missing-feature-scopes" {
+				for _, scope := range []string{"contact:user.base:readonly", "im:chat.members:read", "im:message.group_msg"} {
+					if !slices.Contains(check.Missing, "tenant:"+scope) {
+						t.Errorf("check passed without permission for user names, mentions or group context: %s", scope)
+					}
+				}
 			}
 			if check.SubscriptionsVerified != (scenario != "omitted-subscriptions") {
 				t.Fatal("incorrect verification status")

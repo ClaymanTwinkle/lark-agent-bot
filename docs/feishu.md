@@ -41,7 +41,7 @@ lark-agent-bot feishu bind --project my-project --app cli_xxx:sec_xxx
 - `setup/new` 会在终端打印二维码和 URL，使用飞书/Lark 手机 App 扫码完成创建。
 - `--project` 不存在时会自动创建该项目；若项目存在但没有 `feishu/lark` 平台，也会自动补一个。
 - 写回配置时仅定点更新目标字段（`app_id`、`app_secret`、`allow_from` 等），尽量保留原有注释与排版。
-- 新建默认使用内置统一模板：35 项应用权限、1 项用户权限，覆盖消息、图片/文件、表情、卡片、文档及应用管理；Claude Code 和 Codex 使用同一模板。
+- 新建默认使用内置统一模板：38 项应用权限、1 项用户权限，覆盖消息、图片/文件、表情、卡片、发送者姓名、群成员查询、群消息上下文、文档及应用管理；Claude Code 和 Codex 使用同一模板。模板包含 `im:message.group_msg`，允许接收未 @ 机器人的群消息；`group_chat_history_share` 仍默认关闭。无需这一权限时，可使用移除该项的自定义模板。
 - 同时预填 `im.message.receive_v1`（接收消息）、`im.message.recalled_v1`（撤回消息）、`application.bot.menu_v6`（菜单点击）事件，以及 `card.action.trigger` 卡片回调。扫码确认页一次确认权限与订阅。撤回排队中的原消息会移除对应提示词；已开始的任务会尝试停止，不会回滚已执行的操作，排在它后面的消息也不会执行。
 - 注册成功后先保存凭证，再检查机器人能力、权限授予状态及可读取的订阅配置。失败会保留凭证并明确报错，避免重复创建应用。
 - 通过应用详情接口获取该应用身份下的所有者 ID，初始化尚未设置的 `admin_from`；全新项目同时设置 `allow_from` 为所有者。保留已有管理员、访问范围和项目设置。
@@ -228,6 +228,9 @@ app_secret = "QhkMpxxxxxxxxxxxxxxxxxxxx"
 | 权限名称 | 权限标识 | 何时需要 |
 |---------|---------|------|
 | 获取群组中所有消息（敏感权限） | `im:message.group_msg` | 开启 `group_chat_history_share`，把群里未 @ 机器人的消息作为上下文时 |
+| 查看群成员 | `im:chat.members:read` | 开启 `resolve_mentions`，按群成员显示名生成原生 @ 时；`im:chat:read` 不能替代此权限 |
+
+默认新建模板包含以上权限，`feishu check` 会核验模板中的每一项是否已授予。已有机器人需要在开放平台补充权限并发布；更新本地模板不会自动修改线上授权。清理机器人自己发送的预览消息可使用已有的 `im:message:send_as_bot`，不必额外申请 `im:message:recall`。
 
 > 飞书用这些权限限制可调用的接口；具体能读到哪些消息、联系人，仍受应用可用范围和数据权限限制。
 > 缺权限时相关调用会静默失败，只在 Debug 日志中出现（如 `add reaction failed`）。功能不生效时先核对这张表。
