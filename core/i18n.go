@@ -214,6 +214,12 @@ const (
 	MsgSetupTargetOccupied       MsgKey = "setup_targetoccupied"
 	MsgSetupMenuNotice           MsgKey = "setup_menunotice"
 	MsgSetupMenuGuidance         MsgKey = "setup_menuguidance"
+	MsgSetupProjectCreated       MsgKey = "setup_projectcreated"
+	MsgSetupStarterFilled        MsgKey = "setup_starterfilled"
+	MsgSetupPlatformAdded        MsgKey = "setup_platformadded"
+	MsgSetupWorkDirFilled        MsgKey = "setup_workdirfilled"
+	MsgSetupConfigCreated        MsgKey = "setup_configcreated"
+	MsgSetupNoProjects           MsgKey = "setup_noprojects"
 )
 
 const (
@@ -902,6 +908,48 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "註冊範本不包含選單內容；發布與可用範圍仍以平台及企業策略為準。",
 		LangJapanese:           "登録テンプレートにメニュー内容は含まれません。公開と利用範囲にはプラットフォームと組織の方針が適用されます。",
 		LangSpanish:            "La plantilla no incluye el contenido del menú; publicación y visibilidad dependen de la plataforma y la organización.",
+	},
+	MsgSetupProjectCreated: {
+		LangEnglish:            "Created project %q with agent %s (use --agent to choose another).",
+		LangChinese:            "已自动创建项目 %q，agent 为 %s（可用 --agent 指定其他 agent）。",
+		LangTraditionalChinese: "已自動建立專案 %q，agent 為 %s（可用 --agent 指定其他 agent）。",
+		LangJapanese:           "プロジェクト %q を作成しました。agent は %s です（--agent で変更できます）。",
+		LangSpanish:            "Proyecto %q creado con el agente %s (usa --agent para elegir otro).",
+	},
+	MsgSetupStarterFilled: {
+		LangEnglish:            "Filled in the starter project %q from the default config; agent: %s.",
+		LangChinese:            "已填入默认配置中的初始项目 %q，agent 为 %s。",
+		LangTraditionalChinese: "已填入預設設定中的初始專案 %q，agent 為 %s。",
+		LangJapanese:           "既定の設定にある初期プロジェクト %q を設定しました。agent は %s です。",
+		LangSpanish:            "Se completó el proyecto inicial %q de la configuración por defecto; agente: %s.",
+	},
+	MsgSetupPlatformAdded: {
+		LangEnglish:            "Project %q had no Feishu/Lark platform, added one automatically.",
+		LangChinese:            "项目 %q 没有飞书/Lark 平台，已自动添加。",
+		LangTraditionalChinese: "專案 %q 沒有飛書/Lark 平台，已自動新增。",
+		LangJapanese:           "プロジェクト %q に Feishu/Lark プラットフォームがなかったため、自動で追加しました。",
+		LangSpanish:            "El proyecto %q no tenía plataforma Feishu/Lark; se añadió una automáticamente.",
+	},
+	MsgSetupWorkDirFilled: {
+		LangEnglish:            "Set work_dir of project %q to %s.",
+		LangChinese:            "已将项目 %q 的 work_dir 设为 %s。",
+		LangTraditionalChinese: "已將專案 %q 的 work_dir 設為 %s。",
+		LangJapanese:           "プロジェクト %q の work_dir を %s に設定しました。",
+		LangSpanish:            "work_dir del proyecto %q establecido en %s.",
+	},
+	MsgSetupConfigCreated: {
+		LangEnglish:            "Created default config at %s\nEdit it to add your agent and platform credentials, then run lark-agent-bot again.\nOr create a Feishu/Lark bot by scanning a QR code, from the folder the agent should work in:\n  lark-agent-bot feishu setup --project my-project",
+		LangChinese:            "已在 %s 创建默认配置。\n编辑该文件填入 agent 和平台凭证后，再次运行 lark-agent-bot。\n也可以在 agent 要工作的目录下扫码创建飞书/Lark 机器人：\n  lark-agent-bot feishu setup --project my-project",
+		LangTraditionalChinese: "已在 %s 建立預設設定。\n編輯該檔案填入 agent 和平台憑證後，再次執行 lark-agent-bot。\n也可以在 agent 要工作的目錄下掃碼建立飛書/Lark 機器人：\n  lark-agent-bot feishu setup --project my-project",
+		LangJapanese:           "既定の設定を %s に作成しました。\nagent とプラットフォームの認証情報を記入してから、lark-agent-bot を再度実行してください。\nまたは agent が作業するフォルダで、QR コードをスキャンして Feishu/Lark ボットを作成できます：\n  lark-agent-bot feishu setup --project my-project",
+		LangSpanish:            "Configuración por defecto creada en %s\nEdítala con tu agente y las credenciales de la plataforma y vuelve a ejecutar lark-agent-bot.\nO crea un bot de Feishu/Lark escaneando un código QR, desde la carpeta donde trabajará el agente:\n  lark-agent-bot feishu setup --project my-project",
+	},
+	MsgSetupNoProjects: {
+		LangEnglish:            "Error: no projects configured in %s\nAdd at least one [[projects]] section to it, or create a Feishu/Lark bot by scanning a QR code, from the folder the agent should work in:\n  lark-agent-bot feishu setup --project my-project",
+		LangChinese:            "错误：%s 中没有配置任何项目。\n请在其中添加至少一个 [[projects]]，或在 agent 要工作的目录下扫码创建飞书/Lark 机器人：\n  lark-agent-bot feishu setup --project my-project",
+		LangTraditionalChinese: "錯誤：%s 中沒有設定任何專案。\n請在其中新增至少一個 [[projects]]，或在 agent 要工作的目錄下掃碼建立飛書/Lark 機器人：\n  lark-agent-bot feishu setup --project my-project",
+		LangJapanese:           "エラー：%s にプロジェクトが設定されていません。\n[[projects]] を1つ以上追加するか、agent が作業するフォルダで QR コードをスキャンして Feishu/Lark ボットを作成してください：\n  lark-agent-bot feishu setup --project my-project",
+		LangSpanish:            "Error: no hay proyectos configurados en %s\nAñade al menos una sección [[projects]] o crea un bot de Feishu/Lark escaneando un código QR, desde la carpeta donde trabajará el agente:\n  lark-agent-bot feishu setup --project my-project",
 	},
 	MsgSetupMenuGuidance: {
 		LangEnglish:            "Menu setup remains to be completed in the developer console (registration does not create menu items):\n1. Open %s and select your app → Bot → Custom menu.\n2. Enable the floating menu and add these three top-level items, all using Push event:\n   View help → event_key: help\n   Current status → event_key: status\n   Upgrade service → event_key: upgrade\n3. Confirm application.bot.menu_v6 and im.message.recalled_v1 are subscribed under Events & callbacks.\n4. Create and publish a version. Menu changes may take about 5 minutes to appear.\n",

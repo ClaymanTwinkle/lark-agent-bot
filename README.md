@@ -72,7 +72,7 @@ cd /path/to/your/repo
 lark-agent-bot feishu setup --project my-project
 ```
 
-Scan the QR code with the Feishu app. The bot is created and its `app_id` / `app_secret` are written to `~/.lark-agent-bot/config.toml` (a missing project is created with the current directory as its work dir). To bind an existing app instead:
+Scan the QR code with the Feishu app. The bot is created and its `app_id` / `app_secret` are written to `~/.lark-agent-bot/config.toml` (a missing project is created with the current directory as its work dir). A first project uses Claude Code if `claude` is installed, otherwise Codex if `codex` is; pass `--agent <type>` to choose (e.g. `--agent gemini`). To bind an existing app instead:
 
 ```bash
 lark-agent-bot feishu bind --project my-project --app cli_xxx:app_secret_xxx
@@ -109,7 +109,7 @@ lark-agent-bot --config /path/to.toml   # explicit config file
 lark-agent-bot daemon install           # install as a service (systemd / launchd / schtasks)
 ```
 
-Then message the bot in Feishu. The web admin listens on `http://localhost:9820` by default.
+Then message the bot in Feishu. The web admin is off by default: run `lark-agent-bot web` once to enable it (`http://localhost:9820` by default) and open it, then restart lark-agent-bot.
 
 ## Chat commands
 
@@ -122,6 +122,7 @@ Then message the bot in Feishu. The web admin listens on `http://localhost:9820`
 /provider switch <name>         switch API provider
 /dir [path|index|-]             show / change work dir
 /cron add <expr> <prompt>       create a scheduled task
+/doctor                         run diagnostics
 /help                           all commands
 ```
 

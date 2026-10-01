@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -78,6 +80,9 @@ func validateRunAsUser(prefix, name string) error {
 }
 
 // configMu serializes read-modify-write cycles to prevent lost updates.
+// ErrNoProjects is returned by Load when the config has no [[projects]] entry.
+var ErrNoProjects = errors.New("config: at least one [[projects]] entry is required")
+
 var configMu sync.Mutex
 
 // ConfigPath stores the path to the config file for saving
@@ -1078,7 +1083,7 @@ func (c *Config) validateInternal(permissive bool) error {
 		return fmt.Errorf("config: relay.visibility must be \"full\", \"summary\", or \"none\"")
 	}
 	if len(c.Projects) == 0 {
-		return fmt.Errorf("config: at least one [[projects]] entry is required")
+		return ErrNoProjects
 	}
 	for i, proj := range c.Projects {
 		prefix := fmt.Sprintf("projects[%d]", i)
@@ -1922,15 +1927,24 @@ type FeishuCredentialUpdateOptions struct {
 
 // EnsureProjectWithFeishuOptions controls project auto-provisioning for Feishu/Lark setup.
 type EnsureProjectWithFeishuOptions struct {
-	ProjectName      string // required
-	PlatformType     string // optional: "feishu" or "lark", default "feishu"
-	CloneFromProject string // optional source project name to clone agent config from
-	WorkDir          string // optional default work_dir when creating project
-	AgentType        string // optional default agent type when no source project exists, default "codex"
-	Model            string // optional model for a newly created project
-	Mode             string // optional agent permission mode for a newly created project
-	DisplayMode      string // optional display mode for a newly created project
+	ProjectName       string // required
+	PlatformType      string // optional: "feishu" or "lark", default "feishu"
+	CloneFromProject  string // optional source project name to clone agent config from
+	WorkDir           string // optional default work_dir when creating project
+	AgentType         string // optional agent type for a new project, or for the starter project
+	FallbackAgentType string // agent type when AgentType is empty and no project exists, default "claudecode"
+	Model             string // optional model for a new project, or for the starter project
+	Mode              string // optional agent permission mode for a new project, or for the starter project
+	DisplayMode       string // optional display mode for a newly created project
+	TakeOverStarter   bool   // when ProjectName does not exist, rename an unfilled starter project to it instead of adding one
 }
+
+// Placeholders in the starter config written on first run. Feishu setup treats
+// them as unset, so it can fill in the starter project instead of refusing it.
+const (
+	StarterWorkDir = "/path/to/your/project"
+	StarterAppID   = "your-feishu-app-id"
+)
 
 // EnsureProjectWithFeishuResult describes whether project provisioning created a new project.
 type EnsureProjectWithFeishuResult struct {
@@ -1939,6 +1953,9 @@ type EnsureProjectWithFeishuResult struct {
 	ProjectIndex     int
 	PlatformAbsIndex int // first feishu/lark platform in project, -1 if absent
 	PlatformType     string
+	AgentType        string // agent type of the project after provisioning
+	FromStarter      bool   // the existing platform still had the starter placeholder app_id
+	FilledWorkDir    bool   // the starter placeholder work_dir was replaced with opts.WorkDir
 }
 
 // FeishuCredentialUpdateResult describes where credentials were written.
@@ -1983,6 +2000,15 @@ func EnsureProjectWithFeishuPlatform(opts EnsureProjectWithFeishuOptions) (*Ensu
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 
+	// Setup under another name takes over the starter project, which would
+	// otherwise stay behind with placeholders that stop the service starting.
+	if starter := starterProjectIndex(cfg.Projects); opts.TakeOverStarter && starter >= 0 && projectIndex(cfg.Projects, projectName) < 0 {
+		if raw, err = renameProjectRaw(raw, starter, projectName); err != nil {
+			return nil, err
+		}
+		cfg.Projects[starter].Name = projectName
+	}
+
 	for i := range cfg.Projects {
 		if cfg.Projects[i].Name != projectName {
 			continue
@@ -2014,12 +2040,20 @@ func EnsureProjectWithFeishuPlatform(opts EnsureProjectWithFeishuOptions) (*Ensu
 			platformIdx = len(cfg.Projects[i].Platforms)
 			added = true
 		}
+		fromStarter := !added && strings.TrimSpace(stringOption(cfg.Projects[i].Platforms[platformIdx].Options["app_id"])) == StarterAppID
+		agentType, filledWorkDir, err := fillStarterProject(cfg.Projects[i], fromStarter, opts)
+		if err != nil {
+			return nil, err
+		}
 		return &EnsureProjectWithFeishuResult{
 			Created:          false,
 			AddedPlatform:    added,
 			ProjectIndex:     i,
 			PlatformAbsIndex: platformIdx,
 			PlatformType:     platformType,
+			AgentType:        agentType,
+			FromStarter:      fromStarter,
+			FilledWorkDir:    filledWorkDir,
 		}, nil
 	}
 
@@ -2029,7 +2063,7 @@ func EnsureProjectWithFeishuPlatform(opts EnsureProjectWithFeishuOptions) (*Ensu
 		Platforms: []PlatformConfig{{Type: platformType, Options: map[string]any{}}},
 	}
 	if proj.Agent.Type == "" {
-		proj.Agent.Type = "codex"
+		proj.Agent.Type = "claudecode"
 	}
 	if proj.Agent.Options == nil {
 		proj.Agent.Options = map[string]any{}
@@ -2088,7 +2122,99 @@ func EnsureProjectWithFeishuPlatform(opts EnsureProjectWithFeishuOptions) (*Ensu
 		ProjectIndex:     len(cfg.Projects),
 		PlatformAbsIndex: 0,
 		PlatformType:     platformType,
+		AgentType:        proj.Agent.Type,
 	}, nil
+}
+
+func projectIndex(projects []ProjectConfig, name string) int {
+	for i := range projects {
+		if projects[i].Name == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// starterProjectIndex returns the first project whose Feishu/Lark app is still
+// the starter placeholder, or -1.
+func starterProjectIndex(projects []ProjectConfig) int {
+	for i := range projects {
+		if idx := firstFeishuPlatformIndex(projects[i].Platforms); idx >= 0 &&
+			strings.TrimSpace(stringOption(projects[i].Platforms[idx].Options["app_id"])) == StarterAppID {
+			return i
+		}
+	}
+	return -1
+}
+
+// renameProjectRaw sets the name of the idx-th project, writes the config and
+// returns the new content. The caller must hold configMu.
+func renameProjectRaw(raw string, idx int, name string) (string, error) {
+	lines, hadTrailing := splitConfigLines(raw)
+	spans := buildRawProjectSpans(lines)
+	if idx >= len(spans) {
+		return "", fmt.Errorf("project %d located in parsed config but not raw file", idx)
+	}
+	end := spans[idx].end
+	for ln := spans[idx].start + 1; ln <= spans[idx].end; ln++ {
+		if isAnyTableHeader(lines[ln]) {
+			end = ln - 1
+			break
+		}
+	}
+	lines = upsertTomlStringKey(lines, spans[idx].start+1, end, "name", name)
+	if err := writeRawConfig(joinConfigLines(lines, hadTrailing)); err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return "", fmt.Errorf("read config: %w", err)
+	}
+	return string(data), nil
+}
+
+// fillStarterProject replaces what the starter config left as placeholders and
+// returns the project's agent type. A placeholder work_dir is never usable, so
+// it is filled for any project; the starter's agent settings are only defaults,
+// so setup's --agent/--model/--mode override them when the app is the starter's.
+// The caller must hold configMu.
+func fillStarterProject(proj ProjectConfig, fromStarter bool, opts EnsureProjectWithFeishuOptions) (agentType string, filledWorkDir bool, err error) {
+	agentType = proj.Agent.Type
+	if workDir := strings.TrimSpace(opts.WorkDir); workDir != "" && stringOption(proj.Agent.Options["work_dir"]) == StarterWorkDir {
+		if err := patchProjectAgentOption(proj.Name, "work_dir", workDir); err != nil {
+			return "", false, err
+		}
+		filledWorkDir = true
+	}
+	if !fromStarter {
+		return agentType, filledWorkDir, nil
+	}
+	if strings.TrimSpace(opts.AgentType) != "" {
+		agent := pickAgentTemplateForNewProject(&Config{}, opts)
+		if err := patchProjectAgentType(proj.Name, agent.Type); err != nil {
+			return "", false, err
+		}
+		agentType = agent.Type
+		keys := make([]string, 0, len(agent.Options))
+		for key := range agent.Options {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			if err := patchProjectAgentOption(proj.Name, key, stringOption(agent.Options[key])); err != nil {
+				return "", false, err
+			}
+		}
+	}
+	for _, opt := range [][2]string{{"model", opts.Model}, {"mode", opts.Mode}} {
+		if opt[1] == "" {
+			continue
+		}
+		if err := patchProjectAgentOption(proj.Name, opt[0], opt[1]); err != nil {
+			return "", false, err
+		}
+	}
+	return agentType, filledWorkDir, nil
 }
 
 // SaveFeishuPlatformCredentials updates app_id/app_secret for a project's
@@ -2333,8 +2459,12 @@ func pickAgentTemplateForNewProject(cfg *Config, opts EnsureProjectWithFeishuOpt
 	if len(cfg.Projects) > 0 {
 		return cloneAgentConfig(cfg.Projects[0].Agent)
 	}
+	agentType := strings.TrimSpace(opts.FallbackAgentType)
+	if agentType == "" {
+		agentType = "claudecode"
+	}
 	return AgentConfig{
-		Type:    "codex",
+		Type:    agentType,
 		Options: map[string]any{},
 	}
 }
@@ -2459,6 +2589,34 @@ func patchProjectAgentOption(projectName, key, value string) error {
 	}
 
 	lines = upsertTomlStringKey(lines, projSpan.agentOptionsStart+1, projSpan.agentOptionsEnd, key, value)
+	return writeRawConfig(joinConfigLines(lines, hadTrailing))
+}
+
+// patchProjectAgentType sets type under [projects.agent] for the given project,
+// keeping comments and formatting. The caller must hold configMu.
+func patchProjectAgentType(projectName, agentType string) error {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+	cfg := &Config{}
+	if err := toml.Unmarshal(data, cfg); err != nil {
+		return fmt.Errorf("parse config: %w", err)
+	}
+	projectIdx := -1
+	for i := range cfg.Projects {
+		if cfg.Projects[i].Name == projectName {
+			projectIdx = i
+			break
+		}
+	}
+	lines, hadTrailing := splitConfigLines(string(data))
+	spans := buildRawProjectSpans(lines)
+	if projectIdx < 0 || projectIdx >= len(spans) || spans[projectIdx].agentStart < 0 {
+		return fmt.Errorf("project %q: [projects.agent] not found in config", projectName)
+	}
+	span := spans[projectIdx]
+	lines = upsertTomlStringKey(lines, span.agentStart+1, span.agentEnd, "type", agentType)
 	return writeRawConfig(joinConfigLines(lines, hadTrailing))
 }
 

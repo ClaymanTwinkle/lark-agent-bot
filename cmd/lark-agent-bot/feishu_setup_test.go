@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -17,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/ClaymanTwinkle/lark-agent-bot/config"
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 func TestSetupRegistrationURL_RoundTripTemplateAndPreset(t *testing.T) {
@@ -309,6 +311,136 @@ func TestPreflightNewSetup_PreventsReplacingExistingBot(t *testing.T) {
 	}
 	if err := preflightNewSetup("new-project", 2); err == nil {
 		t.Fatal("accepted impossible index")
+	}
+}
+
+func TestPreflightNewSetup_CreatesMissingConfigDir(t *testing.T) {
+	old := config.ConfigPath
+	t.Cleanup(func() { config.ConfigPath = old })
+	config.ConfigPath = filepath.Join(t.TempDir(), ".lark-agent-bot", "config.toml")
+	if err := preflightNewSetup("new", 0); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(config.ConfigPath); err != nil || len(data) != 0 {
+		t.Fatalf("fresh config: %v", err)
+	}
+}
+
+// Running lark-agent-bot once writes the starter config; setup must then fill
+// in its project instead of refusing the placeholder app_id.
+func TestFeishuSetup_TakesOverStarterConfig(t *testing.T) {
+	old := config.ConfigPath
+	t.Cleanup(func() { config.ConfigPath = old })
+	config.ConfigPath = filepath.Join(t.TempDir(), ".lark-agent-bot", "config.toml")
+	if err := bootstrapConfig(config.ConfigPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := preflightNewSetup("my-project", 0); err != nil {
+		t.Fatalf("starter project rejected: %v", err)
+	}
+	workDir := t.TempDir()
+	result, err := config.EnsureProjectWithFeishuPlatform(config.EnsureProjectWithFeishuOptions{ProjectName: "my-project", WorkDir: workDir, Mode: "default", TakeOverStarter: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Created || !result.FromStarter || !result.FilledWorkDir {
+		t.Fatalf("result: %+v", result)
+	}
+	// Same as the second save after a QR scan.
+	_, err = config.SaveFeishuPlatformCredentials(config.FeishuCredentialUpdateOptions{
+		ProjectName: "my-project", AppID: "cli_x", AppSecret: "sec_x",
+		OwnerOpenID: "ou_x", SetAllowFromEmpty: result.FromStarter, SetAdminFromEmpty: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(config.ConfigPath)
+	if err != nil {
+		t.Fatalf("taken-over starter config does not load: %v", err)
+	}
+	proj := cfg.Projects[0]
+	if proj.Agent.Type != "claudecode" || proj.Agent.Options["work_dir"] != workDir || proj.Agent.Options["mode"] != "default" {
+		t.Fatalf("agent: %+v", proj.Agent)
+	}
+	opts := proj.Platforms[0].Options
+	if opts["app_id"] != "cli_x" || opts["app_secret"] != "sec_x" || opts["allow_from"] != "ou_x" || proj.AdminFrom != "ou_x" {
+		t.Fatalf("platform: %+v admin_from=%q", opts, proj.AdminFrom)
+	}
+	if data, _ := os.ReadFile(config.ConfigPath); !strings.Contains(string(data), "# mode: leave unset") {
+		t.Fatal("starter comments lost")
+	}
+}
+
+func TestStartupHints_AllLanguagesNameSetupCommand(t *testing.T) {
+	for _, lang := range []core.Language{core.LangEnglish, core.LangChinese, core.LangTraditionalChinese, core.LangJapanese, core.LangSpanish} {
+		for _, key := range []core.MsgKey{core.MsgSetupConfigCreated, core.MsgSetupNoProjects} {
+			got := core.NewI18n(lang).Tf(key, "/cfg/config.toml")
+			if !strings.Contains(got, "/cfg/config.toml") || !strings.Contains(got, "lark-agent-bot feishu setup --project my-project") {
+				t.Errorf("%s %s: %q", lang, key, got)
+			}
+		}
+	}
+}
+
+func TestResolveTargetProject_FreshMachine(t *testing.T) {
+	old := config.ConfigPath
+	t.Cleanup(func() { config.ConfigPath = old })
+	config.ConfigPath = filepath.Join(t.TempDir(), "missing", "config.toml")
+	if got, err := resolveTargetProject(""); err != nil || got != "my-project" {
+		t.Fatalf("resolveTargetProject = %q, %v; want my-project", got, err)
+	}
+}
+
+// Setup under another name must not leave the starter project behind: its
+// placeholder work_dir would stop the service from starting.
+func TestFeishuSetup_OtherNameTakesOverStarterProject(t *testing.T) {
+	old := config.ConfigPath
+	t.Cleanup(func() { config.ConfigPath = old })
+	config.ConfigPath = filepath.Join(t.TempDir(), "config.toml")
+	if err := bootstrapConfig(config.ConfigPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := preflightNewSetup("backend", 0); err != nil {
+		t.Fatal(err)
+	}
+	workDir := t.TempDir()
+	result, err := config.EnsureProjectWithFeishuPlatform(config.EnsureProjectWithFeishuOptions{ProjectName: "backend", WorkDir: workDir, TakeOverStarter: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Created || !result.FromStarter || !result.FilledWorkDir {
+		t.Fatalf("result: %+v", result)
+	}
+	if _, err := config.SaveFeishuPlatformCredentials(config.FeishuCredentialUpdateOptions{ProjectName: "backend", AppID: "cli_x", AppSecret: "sec_x"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(config.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Projects) != 1 || cfg.Projects[0].Name != "backend" || cfg.Projects[0].Agent.Options["work_dir"] != workDir {
+		t.Fatalf("projects: %+v", cfg.Projects)
+	}
+}
+
+func TestDefaultSetupAgent_PrefersInstalledCLI(t *testing.T) {
+	for _, tc := range []struct {
+		installed []string
+		want      string
+	}{
+		{[]string{"claude", "codex"}, "claudecode"},
+		{[]string{"codex"}, "codex"},
+		{nil, "claudecode"},
+	} {
+		lookPath := func(bin string) (string, error) {
+			if slices.Contains(tc.installed, bin) {
+				return "/bin/" + bin, nil
+			}
+			return "", exec.ErrNotFound
+		}
+		if got := defaultSetupAgent(lookPath); got != tc.want {
+			t.Fatalf("installed %v: got %q, want %q", tc.installed, got, tc.want)
+		}
 	}
 }
 

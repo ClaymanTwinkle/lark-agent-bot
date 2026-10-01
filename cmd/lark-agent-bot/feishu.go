@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"slices"
 	"sort"
 	"strings"
@@ -173,15 +174,16 @@ func runFeishuSetup(args []string, requestedMode string) {
 		}
 		return
 	}
+	// Both modes can create a project or fill in the starter one.
+	if !slices.Contains([]string{"quiet", "compact", "full"}, *display) {
+		fmt.Fprintln(os.Stderr, "display must be quiet, compact or full")
+		os.Exit(1)
+	}
+	if *agentType != "" && !slices.Contains(core.ListRegisteredAgents(), *agentType) {
+		fmt.Fprintf(os.Stderr, "unknown agent %q\n", *agentType)
+		os.Exit(1)
+	}
 	if effectiveMode == feishuSetupModeNew {
-		if !slices.Contains([]string{"quiet", "compact", "full"}, *display) {
-			fmt.Fprintln(os.Stderr, "display must be quiet, compact or full")
-			os.Exit(1)
-		}
-		if *agentType != "" && !slices.Contains(core.ListRegisteredAgents(), *agentType) {
-			fmt.Fprintf(os.Stderr, "unknown agent %q\n", *agentType)
-			os.Exit(1)
-		}
 		if err := preflightNewSetup(targetProject, *platformIndex); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -242,23 +244,35 @@ func runFeishuSetup(args []string, requestedMode string) {
 	if *workDirFlag != "" {
 		workDir = *workDirFlag
 	}
+	if err := ensureSetupConfig(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 	provisionResult, err := config.EnsureProjectWithFeishuPlatform(config.EnsureProjectWithFeishuOptions{
-		ProjectName:  targetProject,
-		PlatformType: provisionType,
-		WorkDir:      workDir,
-		AgentType:    *agentType,
-		Model:        *model,
-		Mode:         *mode,
-		DisplayMode:  *display,
+		ProjectName:       targetProject,
+		PlatformType:      provisionType,
+		WorkDir:           workDir,
+		AgentType:         *agentType,
+		FallbackAgentType: defaultSetupAgent(exec.LookPath),
+		Model:             *model,
+		Mode:              *mode,
+		DisplayMode:       *display,
+		TakeOverStarter:   true,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: prepare project failed: %v\n", err)
 		os.Exit(1)
 	}
-	if provisionResult.Created {
-		fmt.Printf("Created project %q automatically.\n", targetProject)
-	} else if provisionResult.AddedPlatform {
-		fmt.Printf("Project %q had no Feishu/Lark platform, added one automatically.\n", targetProject)
+	switch {
+	case provisionResult.Created:
+		fmt.Println(setupText(core.MsgSetupProjectCreated, targetProject, provisionResult.AgentType))
+	case provisionResult.FromStarter:
+		fmt.Println(setupText(core.MsgSetupStarterFilled, targetProject, provisionResult.AgentType))
+	case provisionResult.AddedPlatform:
+		fmt.Println(setupText(core.MsgSetupPlatformAdded, targetProject))
+	}
+	if provisionResult.FilledWorkDir {
+		fmt.Println(setupText(core.MsgSetupWorkDirFilled, targetProject, workDir))
 	}
 
 	saveResult, err := config.SaveFeishuPlatformCredentials(config.FeishuCredentialUpdateOptions{
@@ -283,7 +297,7 @@ func runFeishuSetup(args []string, requestedMode string) {
 			saveResult, err = config.SaveFeishuPlatformCredentials(config.FeishuCredentialUpdateOptions{
 				ProjectName: targetProject, PlatformIndex: *platformIndex,
 				AppID: resolvedAppID, AppSecret: resolvedAppSecret,
-				OwnerOpenID: ownerOpenID, SetAllowFromEmpty: *setAllowFromEmpty || provisionResult.Created,
+				OwnerOpenID: ownerOpenID, SetAllowFromEmpty: *setAllowFromEmpty || provisionResult.Created || provisionResult.FromStarter,
 				SetAdminFromEmpty: true,
 			})
 			if err != nil {
@@ -312,6 +326,28 @@ func runFeishuSetup(args []string, requestedMode string) {
 	printBotMenuGuidance(saveResult.PlatformType)
 
 	fmt.Println(setupText(core.MsgSetupMenuNotice))
+}
+
+// setupAgentCLIs lists, in order of preference, the agents a first project
+// created by setup defaults to when their CLI is installed.
+var setupAgentCLIs = []struct{ agent, bin string }{
+	{"claudecode", "claude"},
+	{"codex", "codex"},
+}
+
+// defaultSetupAgent picks the agent for a first project created without
+// --agent: the first installed CLI from setupAgentCLIs, else Claude Code.
+func defaultSetupAgent(lookPath func(string) (string, error)) string {
+	registered := core.ListRegisteredAgents()
+	for _, c := range setupAgentCLIs {
+		if !slices.Contains(registered, c.agent) {
+			continue
+		}
+		if _, err := lookPath(c.bin); err == nil {
+			return c.agent
+		}
+	}
+	return "claudecode"
 }
 
 func printAllowFromGuidance(appID, appSecret, ownerOpenID string, result *config.FeishuCredentialUpdateResult) {
@@ -495,12 +531,13 @@ func resolveTargetProject(project string) (string, error) {
 		return project, nil
 	}
 	projects, err := config.ListProjects()
-	if err != nil {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
 	switch len(projects) {
 	case 0:
-		return "", fmt.Errorf("no project found in config")
+		// First setup on this machine: use the starter config's project name.
+		return "my-project", nil
 	case 1:
 		return projects[0], nil
 	default:

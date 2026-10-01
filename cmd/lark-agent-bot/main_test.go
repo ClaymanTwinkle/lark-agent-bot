@@ -308,13 +308,20 @@ func captureStderr(t *testing.T, fn func()) string {
 		os.Stderr = old
 	}()
 
+	// Drain while fn writes: output larger than the pipe buffer blocks otherwise.
+	var buf bytes.Buffer
+	copied := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(&buf, r)
+		copied <- err
+	}()
+
 	fn()
 
 	if err := w.Close(); err != nil {
 		t.Fatalf("close writer: %v", err)
 	}
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
+	if err := <-copied; err != nil {
 		t.Fatalf("copy stderr: %v", err)
 	}
 	if err := r.Close(); err != nil {

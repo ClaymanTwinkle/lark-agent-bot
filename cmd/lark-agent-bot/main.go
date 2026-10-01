@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -330,12 +331,16 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error creating config: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("Created default config at %s\n", configPath)
-		fmt.Println("Please edit this file to add your agent and platform credentials, then run lark-agent-bot again.")
+		fmt.Println(setupText(core.MsgSetupConfigCreated, configPath))
 		os.Exit(0)
 	}
 
 	cfg, err := config.Load(configPath)
+	if errors.Is(err, config.ErrNoProjects) {
+		// e.g. the empty file left behind when QR setup was cancelled.
+		fmt.Fprintln(os.Stderr, setupText(core.MsgSetupNoProjects, configPath))
+		os.Exit(1)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config (%s): %v\n", configPath, err)
 		os.Exit(1)
@@ -343,13 +348,6 @@ func main() {
 
 	config.ConfigPath = configPath
 	slog.Info("config loaded", "path", configPath)
-
-	if len(cfg.Projects) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: no projects configured in %s\n", configPath)
-		fmt.Fprintln(os.Stderr, "Add at least one [[project]] section to your config.toml, or run:")
-		fmt.Fprintln(os.Stderr, "  lark-agent-bot init")
-		os.Exit(1)
-	}
 
 	setupLogger(cfg.Log.Level, logWriter)
 
@@ -1538,8 +1536,13 @@ func bootstrapConfig(path string) error {
 		return err
 	}
 
+	// Comments sit under their section header: setup appends keys at the end
+	// of a section, which would otherwise land below a comment meant for the
+	// next one.
 	const tmpl = `# lark-agent-bot configuration
 # Docs: https://github.com/ClaymanTwinkle/lark-agent-bot
+# Full annotated example:
+# https://github.com/ClaymanTwinkle/lark-agent-bot/blob/main/config.example.toml
 
 [log]
 level = "info"
@@ -1557,18 +1560,14 @@ work_dir = "/path/to/your/project"
 # mode = "default"
 # model = "opus"   # Claude Code alias: "fable" | "opus" | "sonnet" | "haiku", or a full id like "claude-opus-5-5"
 
-# --- Choose at least one platform below ---
-
-# Feishu / Lark (WebSocket, no public IP needed)
 [[projects.platforms]]
+# Feishu / Lark (WebSocket, no public IP needed). Fill in app_id / app_secret, or create
+# a bot by scanning a QR code: lark-agent-bot feishu setup --project my-project
 type = "feishu"
 
 [projects.platforms.options]
 app_id = "your-feishu-app-id"
 app_secret = "your-feishu-app-secret"
-
-# Full annotated example:
-# https://github.com/ClaymanTwinkle/lark-agent-bot/blob/main/config.example.toml
 `
 	return os.WriteFile(path, []byte(tmpl), 0o644)
 }
@@ -1586,7 +1585,7 @@ func printUsage() {
   lark-agent-bot %s%s
 
   Bridge Feishu / Lark to local AI coding agents.
-  Supports: Claude Code, Codex, Cursor, Gemini CLI, Qoder CLI, OpenCode
+  Agents:  %s
 
   GitHub:  https://github.com/ClaymanTwinkle/lark-agent-bot
   Docs:    https://github.com/ClaymanTwinkle/lark-agent-bot/blob/main/INSTALL.md
@@ -1614,11 +1613,19 @@ Commands:
   send               Send a message to an active session via internal API
                      (-m <text> | --stdin, -p <project>, -s <session>)
 
-  cron               Manage scheduled tasks
+  cron               Manage scheduled tasks (recurring)
     add              Create a scheduled task (-c <expr> --prompt <text>)
     list             List scheduled tasks
+    info             Show a scheduled task
+    edit             Change one field of a scheduled task
     exec             Trigger a scheduled task immediately
     del              Delete a scheduled task by ID
+
+  timer              Manage one-time delayed tasks (alias: at)
+    add              Create a timer (--delay 30m | --at <time>, --prompt <text>)
+    list             List timers
+    info             Show a timer
+    del              Delete a timer by ID
 
   sessions           Browse session history
     list             List all sessions (pipe-friendly)
@@ -1640,11 +1647,17 @@ Commands:
     setup            Smart setup (QR create or bind when --app is provided)
     new              Force QR onboarding to create a new bot
     bind             Bind existing app_id/app_secret
+    check            Check an existing bot's permissions (read-only)
+
+  web                Enable the web admin and open it in a browser (--no-browser)
 
   config             Manage configuration
     example          Print a complete annotated config.toml example
     format           Format the config file (alias: fmt)
     path             Print the resolved config file path
+
+  doctor             Diagnostics
+    user-isolation   Audit run_as_user projects (Linux / macOS)
 
   update             Check for updates and upgrade the binary (--pre for beta)
   check-update       Check if a newer version is available
@@ -1662,7 +1675,13 @@ Examples:
   lark-agent-bot config format            Format the config file
   lark-agent-bot config example > c.toml  Save example config to a file
 
-`, v, updateHint)
+`, v, updateHint, strings.Join(sortedAgentNames(), ", "))
+}
+
+func sortedAgentNames() []string {
+	names := core.ListRegisteredAgents()
+	sort.Strings(names)
+	return names
 }
 
 func setupLogger(level string, w io.Writer) {

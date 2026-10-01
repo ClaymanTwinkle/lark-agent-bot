@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -376,15 +377,8 @@ func preflightNewSetup(project string, index int) error {
 		}
 	}
 	// Make an empty config before registration, so a first-ever project works.
-	// Exclusive creation prevents concurrent setup from truncating a real file.
-	if _, err := os.Stat(config.ConfigPath); os.IsNotExist(err) {
-		file, err := os.OpenFile(config.ConfigPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if err != nil {
-			return fmt.Errorf("create setup config: %w", err)
-		}
-		if err := file.Close(); err != nil {
-			return err
-		}
+	if err := ensureSetupConfig(); err != nil {
+		return err
 	}
 	cfg, err := readSetupConfig()
 	if err != nil {
@@ -395,7 +389,8 @@ func preflightNewSetup(project string, index int) error {
 	}
 	platform, targetErr := setupPlatform(cfg, project, index)
 	if targetErr == nil {
-		if id, _ := platform.Options["app_id"].(string); strings.TrimSpace(id) != "" {
+		id, _ := platform.Options["app_id"].(string)
+		if id = strings.TrimSpace(id); id != "" && id != config.StarterAppID {
 			return fmt.Errorf("%s", setupText(core.MsgSetupTargetOccupied, project))
 		}
 		return nil
@@ -413,6 +408,23 @@ func preflightNewSetup(project string, index int) error {
 		}
 	}
 	return nil // first platform/project will be provisioned after authorization
+}
+
+// ensureSetupConfig creates an empty config file, and its directory, when there
+// is none yet: on a fresh machine ~/.lark-agent-bot does not exist.
+// Exclusive creation prevents concurrent setup from truncating a real file.
+func ensureSetupConfig() error {
+	if _, err := os.Stat(config.ConfigPath); !os.IsNotExist(err) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(config.ConfigPath), 0o755); err != nil {
+		return fmt.Errorf("create setup config dir: %w", err)
+	}
+	file, err := os.OpenFile(config.ConfigPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("create setup config: %w", err)
+	}
+	return file.Close()
 }
 
 func checkConfiguredSetup(project string, index int, template *setupAddons) error {

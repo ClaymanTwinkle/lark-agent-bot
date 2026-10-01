@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -1677,6 +1678,89 @@ func TestSaveFeishuPlatformCredentials_InitializesVerifiedOwnerWithoutReplacingA
 	}
 }
 
+func TestLoad_EmptyConfigReturnsErrNoProjects(t *testing.T) {
+	path := writeConfigFixture(t, "")
+	if _, err := Load(path); !errors.Is(err, ErrNoProjects) {
+		t.Fatalf("Load(empty) error = %v, want ErrNoProjects", err)
+	}
+}
+
+func TestEnsureProjectWithFeishuPlatform_FirstProjectAgentFallback(t *testing.T) {
+	for _, tc := range []struct{ fallback, want string }{{"", "claudecode"}, {"codex", "codex"}} {
+		path := writeConfigFixture(t, "")
+		patchConfigPath(t, path)
+		result, err := EnsureProjectWithFeishuPlatform(EnsureProjectWithFeishuOptions{ProjectName: "first", FallbackAgentType: tc.fallback})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := readConfigFixture(t, path).Projects[0].Agent.Type; got != tc.want || result.AgentType != tc.want {
+			t.Fatalf("fallback %q: agent = %q, result = %q, want %q", tc.fallback, got, result.AgentType, tc.want)
+		}
+	}
+}
+
+func TestEnsureProjectWithFeishuPlatform_StarterTakesSetupAgentFlags(t *testing.T) {
+	fixture := "[[projects]]\nname = \"my-project\"\n\n[projects.agent]\ntype = \"claudecode\"   # starter comment\n\n[projects.agent.options]\nwork_dir = \"" + StarterWorkDir + "\"\n\n[[projects.platforms]]\ntype = \"feishu\"\n\n[projects.platforms.options]\napp_id = \"" + StarterAppID + "\"\n"
+	path := writeConfigFixture(t, fixture)
+	patchConfigPath(t, path)
+	result, err := EnsureProjectWithFeishuPlatform(EnsureProjectWithFeishuOptions{
+		ProjectName: "my-project", WorkDir: "/srv/repo", AgentType: "codex", FallbackAgentType: "gemini", Model: "o3", Mode: "full-access",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.FromStarter || !result.FilledWorkDir || result.AgentType != "codex" {
+		t.Fatalf("result: %+v", result)
+	}
+	agent := readConfigFixture(t, path).Projects[0].Agent
+	if agent.Type != "codex" || agent.Options["work_dir"] != "/srv/repo" || agent.Options["model"] != "o3" || agent.Options["mode"] != "full-access" {
+		t.Fatalf("agent: %+v", agent)
+	}
+	if data, _ := os.ReadFile(path); !strings.Contains(string(data), "# starter comment") {
+		t.Fatal("lost comment on the agent type line")
+	}
+}
+
+func TestEnsureProjectWithFeishuPlatform_StarterRenamedOnlyWhenAsked(t *testing.T) {
+	fixture := "[[projects]]\nname = \"my-project\"\n\n[projects.agent]\ntype = \"claudecode\"\n\n[[projects.platforms]]\ntype = \"feishu\"\n\n[projects.platforms.options]\napp_id = \"" + StarterAppID + "\"\n"
+	for _, takeOver := range []bool{false, true} {
+		path := writeConfigFixture(t, fixture)
+		patchConfigPath(t, path)
+		result, err := EnsureProjectWithFeishuPlatform(EnsureProjectWithFeishuOptions{ProjectName: "backend", TakeOverStarter: takeOver})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, p := range readConfigFixture(t, path).Projects {
+			names = append(names, p.Name)
+		}
+		want := "my-project,backend"
+		if takeOver {
+			want = "backend"
+		}
+		if got := strings.Join(names, ","); got != want || result.Created == takeOver {
+			t.Fatalf("takeOver=%v: projects %s, created %v", takeOver, got, result.Created)
+		}
+	}
+}
+
+func TestEnsureProjectWithFeishuPlatform_KeepsConfiguredWorkDir(t *testing.T) {
+	fixture := "[[projects]]\nname='real'\n[projects.agent]\ntype='codex'\n[projects.agent.options]\nwork_dir='/srv/repo'\n[[projects.platforms]]\ntype='feishu'\n[projects.platforms.options]\napp_id='cli_real'\n"
+	path := writeConfigFixture(t, fixture)
+	patchConfigPath(t, path)
+	result, err := EnsureProjectWithFeishuPlatform(EnsureProjectWithFeishuOptions{ProjectName: "real", WorkDir: "/elsewhere", AgentType: "claudecode", Mode: "yolo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.FromStarter || result.FilledWorkDir || result.AgentType != "codex" {
+		t.Fatalf("treated a configured project as the starter: %+v", result)
+	}
+	agent := readConfigFixture(t, path).Projects[0].Agent
+	if agent.Type != "codex" || stringMapValue(agent.Options, "work_dir") != "/srv/repo" || agent.Options["mode"] != nil {
+		t.Fatalf("configured project changed: %+v", agent)
+	}
+}
+
 func TestEnsureProjectWithFeishuPlatform_AddsPlatformWhenProjectExistsWithoutFeishu(t *testing.T) {
 	configPath := writeConfigFixture(t, projectWithoutFeishuFixture)
 	patchConfigPath(t, configPath)
@@ -2607,12 +2691,12 @@ func TestPickAgentTemplateForNewProject(t *testing.T) {
 		}
 	})
 
-	t.Run("no projects uses default codex", func(t *testing.T) {
+	t.Run("no projects uses default claudecode", func(t *testing.T) {
 		cfg := &Config{Projects: []ProjectConfig{}}
 		opts := EnsureProjectWithFeishuOptions{}
 		got := pickAgentTemplateForNewProject(cfg, opts)
-		if got.Type != "codex" {
-			t.Errorf("Type = %q, want codex", got.Type)
+		if got.Type != "claudecode" {
+			t.Errorf("Type = %q, want claudecode", got.Type)
 		}
 		if got.Options == nil {
 			t.Error("Options should not be nil")

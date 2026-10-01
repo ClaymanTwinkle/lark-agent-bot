@@ -201,7 +201,8 @@ Notes:
   - no credentials => same as `new`
   - with `--app`/`--app-id` => same as `bind`
 - `setup/new` prints a terminal QR code + URL for mobile scanning.
-- If `--project` does not exist, lark-agent-bot creates it automatically.
+- If `--project` does not exist, lark-agent-bot creates it automatically, with the current directory as `work_dir`. A first project uses Claude Code if `claude` is installed, otherwise Codex if `codex` is; pass `--agent <type>` to choose another agent.
+- If you already ran `lark-agent-bot` once, setup takes over the starter project it wrote (renamed to `--project`, placeholder `app_id` / `work_dir` replaced) instead of adding a second one. It keeps the starter's Claude Code unless you pass `--agent`.
 - This flow fills `app_id` / `app_secret`; in QR onboarding flow, Feishu usually pre-configures permissions and event subscriptions.
 - Still verify app publish status and availability scope in Feishu Open Platform.
 
@@ -263,14 +264,6 @@ lark-agent-bot        # start the service
 ```
 
 > **Note:** `lark-agent-bot web` only configures the web admin and opens the dashboard in your browser — it does **not** start the lark-agent-bot service itself. You still need to run `lark-agent-bot` (or `lark-agent-bot --config <path>`) separately to actually start the bridge. Think of it as two steps: configure first, then run.
-
-**Important: If you are running inside a Claude Code session** (e.g., Claude Code helped you install and configure lark-agent-bot), you must unset the `CLAUDECODE` environment variable before starting, otherwise Claude Code will refuse to launch as a subprocess:
-
-```bash
-unset CLAUDECODE && lark-agent-bot
-```
-
-Alternatively, open a **separate terminal** and run lark-agent-bot there — this avoids the issue entirely.
 
 **Normal startup:**
 

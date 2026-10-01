@@ -39,13 +39,13 @@ lark-agent-bot feishu bind --project my-project --app cli_xxx:sec_xxx
 - `setup --app ...` 与 `bind --app ...` 功能等价。
 
 - `setup/new` 会在终端打印二维码和 URL，使用飞书/Lark 手机 App 扫码完成创建。
-- `--project` 不存在时会自动创建该项目；若项目存在但没有 `feishu/lark` 平台，也会自动补一个。
+- `--project` 不存在时会自动创建该项目；若项目存在但没有 `feishu/lark` 平台，也会自动补一个。如果之前运行过一次 `lark-agent-bot`，会接管它生成的初始项目（改名为 `--project`，替换占位的 `app_id` / `work_dir`），不再另建一个。
 - 写回配置时仅定点更新目标字段（`app_id`、`app_secret`、`allow_from` 等），尽量保留原有注释与排版。
 - 新建默认使用内置统一模板：38 项应用权限、1 项用户权限，覆盖消息、图片/文件、表情、卡片、发送者姓名、群成员查询、群消息上下文、文档及应用管理；Claude Code 和 Codex 使用同一模板。模板包含 `im:message.group_msg`，允许接收未 @ 机器人的群消息；`group_chat_history_share` 仍默认关闭。无需这一权限时，可使用移除该项的自定义模板。
 - 同时预填 `im.message.receive_v1`（接收消息）、`im.message.recalled_v1`（撤回消息）、`application.bot.menu_v6`（菜单点击）事件，以及 `card.action.trigger` 卡片回调。扫码确认页一次确认权限与订阅。撤回排队中的原消息会移除对应提示词；已开始的任务会尝试停止，不会回滚已执行的操作，排在它后面的消息也不会执行。
 - 注册成功后先保存凭证，再检查机器人能力、权限授予状态及可读取的订阅配置。失败会保留凭证并明确报错，避免重复创建应用。
 - 通过应用详情接口获取该应用身份下的所有者 ID，初始化尚未设置的 `admin_from`；全新项目同时设置 `allow_from` 为所有者。保留已有管理员、访问范围和项目设置。
-- 全新项目默认 `quiet` 消息模式，可用 `--display full` 或 `--display compact` 更改。模型、权限模式、工作目录和 agent 类型可在创建时指定；这些参数仅影响新项目。
+- 全新项目默认 `quiet` 消息模式，可用 `--display full` 或 `--display compact` 更改。模型、权限模式、工作目录和 agent 类型可在创建时指定；这些参数仅影响新项目和上面说的初始项目。第一个项目不指定 `--agent` 时，装了 `claude` 用 Claude Code，否则装了 `codex` 用 Codex。
 - `new` 和无凭证的 `setup` 拒绝覆盖已绑定应用的项目；`bind` 保持凭证绑定流程。
 
 ```powershell

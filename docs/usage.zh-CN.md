@@ -477,7 +477,9 @@ lark-agent-bot feishu bind --project my-project --app cli_xxx:sec_xxx
 
 行为说明（通用）：
 - `setup` 默认走二维码新建；传入 `--app` 时自动切换到关联已有机器人。
-- `--project` 不存在会自动创建。
+- `--project` 不存在会自动创建，工作目录为当前目录；不传 `--project` 且配置里没有项目时用 `my-project`。
+- 第一个项目不指定 `--agent` 时，装了 `claude` 用 Claude Code，否则装了 `codex` 用 Codex。
+- 如果之前运行过一次 `lark-agent-bot`，会接管它生成的初始项目（改名为 `--project`，替换占位的 `app_id` / `work_dir`），不再另建一个。
 - 项目存在但没有 `feishu/lark` 平台时会自动补一个平台配置。
 - 命令会回填凭证（`app_id` / `app_secret`）；扫码新建场景下飞书通常会预配权限和事件订阅。
 - 建议在飞书开放平台再核验一次发布状态与可用范围。

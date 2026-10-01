@@ -581,7 +581,9 @@ Differences:
 
 Behavior:
 - `setup` uses QR onboarding by default, or bind mode when `--app` is provided.
-- If `--project` does not exist, it is created automatically.
+- If `--project` does not exist, it is created automatically with the current directory as its work dir; without `--project` and with no project in the config, `my-project` is used.
+- Without `--agent`, a first project uses Claude Code if `claude` is installed, otherwise Codex if `codex` is.
+- If you ran `lark-agent-bot` once before, setup takes over the starter project it wrote (renamed to `--project`, placeholder `app_id` / `work_dir` replaced) instead of adding another.
 - If project exists but has no `feishu/lark` platform, one is added automatically.
 - The command writes credentials (`app_id`, `app_secret`); in QR onboarding flow, Feishu usually pre-configures permissions and event subscriptions.
 - Still verify app publish status and availability scope in Feishu Open Platform.

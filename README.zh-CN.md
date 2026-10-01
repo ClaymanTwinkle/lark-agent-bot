@@ -71,7 +71,7 @@ cd /path/to/your/repo
 lark-agent-bot feishu setup --project my-project
 ```
 
-终端会显示二维码，用飞书 App 扫码确认后，会自动创建机器人，并把 `app_id` / `app_secret` 写入 `~/.lark-agent-bot/config.toml`（项目不存在时以当前目录为工作目录新建）。已有飞书应用可以直接绑定：
+终端会显示二维码，用飞书 App 扫码确认后，会自动创建机器人，并把 `app_id` / `app_secret` 写入 `~/.lark-agent-bot/config.toml`（项目不存在时以当前目录为工作目录新建）。第一个项目默认用 Claude Code（装了 `claude` 时），否则用 Codex（装了 `codex` 时）；要用别的 Agent 加 `--agent <类型>`，例如 `--agent gemini`。已有飞书应用可以直接绑定：
 
 ```bash
 lark-agent-bot feishu bind --project my-project --app cli_xxx:app_secret_xxx
@@ -108,7 +108,7 @@ lark-agent-bot --config /path/to.toml   # 指定配置文件
 lark-agent-bot daemon install           # 安装为系统服务（systemd / launchd / schtasks）
 ```
 
-启动后在飞书里给机器人发消息即可。Web 管理后台默认地址为 `http://localhost:9820`。
+启动后在飞书里给机器人发消息即可。Web 管理后台默认关闭：运行一次 `lark-agent-bot web` 开启并打开它（默认地址 `http://localhost:9820`），然后重启 lark-agent-bot 生效。
 
 ## 常用命令
 
@@ -121,6 +121,7 @@ lark-agent-bot daemon install           # 安装为系统服务（systemd / laun
 /provider switch <名称>      切换 API Provider
 /dir [路径|序号|-]           查看 / 切换工作目录
 /cron add <表达式> <提示词>  创建定时任务
+/doctor                      运行系统诊断
 /help                        查看全部命令
 ```
 
