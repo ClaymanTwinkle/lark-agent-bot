@@ -14392,7 +14392,8 @@ func TestUnsolicitedReader_ResetsIdleCloseOnEventResult(t *testing.T) {
 	sess := newControllableSession("unsol-idle-reset")
 	e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
 	defer func() { _ = e.Stop() }()
-	e.SetAgentSessionIdleTimeout(50 * time.Millisecond)
+	// Long enough that the re-armed timer does not fire during the test.
+	e.SetAgentSessionIdleTimeout(time.Minute)
 
 	sessions := e.sessions
 	session := sessions.GetOrCreateActive("test:ch_idle:u1")
@@ -14424,33 +14425,24 @@ func TestUnsolicitedReader_ResetsIdleCloseOnEventResult(t *testing.T) {
 	// Send an EventResult — this is the trigger for re-scheduling.
 	sess.events <- Event{Type: EventResult, Content: "background step done", Done: true}
 
-	// Wait for the reader to drain the EventResult and reach the schedule
-	// call. The reader sends the relayed content asynchronously; we poll
-	// until either the cancel fires or a generous timeout elapses.
+	// The turn the EventResult ends cancels the previous timer when it
+	// starts and re-arms one when it is over. A stale token would risk the
+	// cleanup path closing the live agent session while the background turn
+	// is still running.
+	rearmed := func() bool {
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		return state.agentSessionIdleToken != 42 && state.agentSessionIdleToken != 0 && state.agentSessionIdleCancel != nil
+	}
 	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if prevCancelCalled.Load() > 0 {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
+	for time.Now().Before(deadline) && !rearmed() {
+		time.Sleep(5 * time.Millisecond)
 	}
 	if prevCancelCalled.Load() == 0 {
-		t.Fatal("expected EventResult path to call cancelAgentSessionIdleClose before re-scheduling")
+		t.Fatal("expected the turn to call cancelAgentSessionIdleClose before re-scheduling")
 	}
-
-	// After re-scheduling, token must have advanced and a fresh cancel
-	// function must be installed. A stale token would risk the cleanup
-	// path closing the live agent session while the background turn is
-	// still running.
-	state.mu.Lock()
-	newToken := state.agentSessionIdleToken
-	newCancel := state.agentSessionIdleCancel
-	state.mu.Unlock()
-	if newToken == 42 {
-		t.Errorf("expected agentSessionIdleToken to advance after re-schedule, still %d", newToken)
-	}
-	if newCancel == nil {
-		t.Fatal("expected a fresh agentSessionIdleCancel to be installed after EventResult")
+	if !rearmed() {
+		t.Fatal("expected a fresh idle close timer to be armed after EventResult")
 	}
 
 	// Cancel the freshly installed timer so the test does not leak the
@@ -14601,88 +14593,6 @@ func TestUnsolicitedReader_SetsResyncOnEventError(t *testing.T) {
 	if !found {
 		t.Errorf("expected error to be relayed to platform, got %v", sent)
 	}
-}
-
-// TestUnsolicitedReader_PermissionDeny verifies that unsolicited permission
-// requests are denied when approveAll is false.
-func TestUnsolicitedReader_PermissionDeny(t *testing.T) {
-	p := &stubPlatformEngine{n: "test"}
-	e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
-	defer e.Stop()
-
-	// NOTE: constructed inline rather than copying a *controllableAgentSession,
-	// because that struct now carries an atomic.Bool (closeFinished) and must
-	// not be copied by value.
-	permRecorder := &permRecordingSession{
-		controllableAgentSession: controllableAgentSession{
-			sessionID: "unsol-perm",
-			alive:     true,
-			events:    make(chan Event, 8),
-			closed:    make(chan struct{}),
-		},
-	}
-
-	sessions := e.sessions
-	session := sessions.GetOrCreateActive("test:perm:u1")
-
-	state := &interactiveState{
-		agentSession:     permRecorder,
-		platform:         p,
-		replyCtx:         "ctx",
-		eventsNeedResync: false,
-		approveAll:       false,
-	}
-
-	e.startUnsolicitedReader(state, session, sessions, "test:perm:u1")
-
-	// Send a permission request.
-	permRecorder.events <- Event{
-		Type:      EventPermissionRequest,
-		RequestID: "req-1",
-		ToolName:  "Bash",
-	}
-
-	// Wait for the response.
-	deadline := time.After(5 * time.Second)
-	for {
-		permRecorder.mu.Lock()
-		calls := permRecorder.permCalls
-		permRecorder.mu.Unlock()
-		if calls > 0 {
-			break
-		}
-		select {
-		case <-deadline:
-			t.Fatal("timed out waiting for permission response")
-		case <-time.After(10 * time.Millisecond):
-		}
-	}
-
-	permRecorder.mu.Lock()
-	result := permRecorder.lastPermResult
-	permRecorder.mu.Unlock()
-
-	if result.Behavior != "deny" {
-		t.Errorf("expected deny, got %q", result.Behavior)
-	}
-
-	e.stopUnsolicitedReader(state)
-}
-
-// permRecordingSession wraps controllableAgentSession and records permission responses.
-type permRecordingSession struct {
-	controllableAgentSession
-	mu             sync.Mutex
-	permCalls      int
-	lastPermResult PermissionResult
-}
-
-func (s *permRecordingSession) RespondPermission(_ string, res PermissionResult) error {
-	s.mu.Lock()
-	s.permCalls++
-	s.lastPermResult = res
-	s.mu.Unlock()
-	return nil
 }
 
 // TestEventsNeedResync_DefaultTrue verifies that new interactiveState

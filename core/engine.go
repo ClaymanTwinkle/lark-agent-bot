@@ -618,6 +618,9 @@ type interactiveState struct {
 	// to confirm it has exited before starting a new foreground turn.
 	unsolicitedCancel context.CancelFunc // nil when no reader is running
 	unsolicitedDone   chan struct{}      // closed when the reader goroutine exits
+	// agentTurnLeft is a turn the agent started on its own that the reader
+	// could not take before it was stopped; see runAgentTurnLeftByReader.
+	agentTurnLeft *agentTurn
 
 	// backgroundHolds are the messages kept marked in progress after their
 	// turn ended because background tasks they launched still run; see
@@ -810,6 +813,34 @@ func (s *interactiveState) markStopped() {
 		s.stopCh = make(chan struct{})
 	}
 	close(s.stopCh)
+}
+
+// agentAlive reports whether the session's agent can take a turn.
+func (s *interactiveState) agentAlive() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.agentSession != nil && s.agentSession.Alive() && !s.stopped
+}
+
+// setTurnMessage points the session's replies at msg, whose turn starts.
+func (s *interactiveState) setTurnMessage(p Platform, msg *Message) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.setCurrentMessageLocked(msg.MessageID)
+	s.platform = p
+	s.replyCtx = msg.ReplyCtx
+	s.currentTurnUserMessageTimeMs = msg.UserMessageTimeMs
+}
+
+// setCurrentMessageLocked makes messageID the message the running turn
+// answers; the recall probe starts over for a new one. s.mu must be held.
+func (s *interactiveState) setCurrentMessageLocked(messageID string) {
+	if s.currentMessageID != messageID {
+		s.lastRecallProbeMessageID = ""
+		s.lastRecallProbeAt = time.Time{}
+		s.recallProbeInFlight = false
+	}
+	s.currentMessageID = messageID
 }
 
 // resolve safely closes the Resolved channel exactly once.
@@ -3584,21 +3615,11 @@ func (e *Engine) drainOrphanedQueue(session *Session, sessions *SessionManager, 
 		return
 	}
 
-	// Stop unsolicited reader before draining — drainPendingMessages reads
-	// from Events() and we must not have concurrent readers.
-	e.stopUnsolicitedReader(state)
-
+	// drainPendingMessages takes the events from the reader for each queued
+	// message and hands them back before unlocking.
 	endTurn := state.beginTurn()
 	unlocked = e.drainPendingMessages(state, session, sessions, interactiveKey, lockGen)
 	endTurn()
-
-	// Restart unsolicited reader if the session is still alive and clean.
-	state.mu.Lock()
-	alive := state.agentSession != nil && state.agentSession.Alive() && !state.stopped && !state.eventsNeedResync
-	state.mu.Unlock()
-	if alive {
-		e.startUnsolicitedReader(state, session, sessions, interactiveKey)
-	}
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -4063,18 +4084,7 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 		state.mu.Unlock()
 	}
 
-	// Update reply context for this turn
-	state.mu.Lock()
-	if state.currentMessageID != msg.MessageID {
-		state.lastRecallProbeMessageID = ""
-		state.lastRecallProbeAt = time.Time{}
-		state.recallProbeInFlight = false
-	}
-	state.platform = p
-	state.replyCtx = msg.ReplyCtx
-	state.currentMessageID = msg.MessageID
-	state.currentTurnUserMessageTimeMs = msg.UserMessageTimeMs
-	state.mu.Unlock()
+	state.setTurnMessage(p, msg)
 	stopRecallMonitor := e.startMessageRecallMonitor(interactiveKey)
 	defer stopRecallMonitor()
 
@@ -4126,6 +4136,15 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 	// ownership to this foreground turn. Only drain events when the previous
 	// turn ended abnormally (eventsNeedResync=true, the default).
 	e.stopUnsolicitedReader(state)
+	// A turn the agent started on its own just before this message took the
+	// session runs first, so the message is not folded into it.
+	if e.runAgentTurnLeftByReader(state, session, sessions, interactiveKey, lockGen) {
+		state.setTurnMessage(p, msg)
+		if !state.agentAlive() {
+			e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgError), "agent session ended"))
+			return
+		}
+	}
 	state.mu.Lock()
 	needResync := state.eventsNeedResync
 	state.mu.Unlock()
@@ -4163,27 +4182,11 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 	}
 	stopTyping = nil // ownership transferred; prevent defer from double-stopping
 
-	// Start unsolicited reader and arm the idle close timer BEFORE draining
-	// queued messages. drainPendingMessages releases the session lock, and
-	// without this ordering the next user message can race in, call
-	// cancelAgentSessionIdleClose (a no-op since nothing was scheduled yet),
-	// and then the late schedule below arms a timer that no subsequent cancel
-	// will catch — closing the live session mid-turn. See #1686 P1-C P1-2.
-	// The schedule's own state checks (agentSession nil, stopped, etc.) and
-	// cleanupInteractiveStateForIdleToken's stale-token guard make it safe to
-	// leave a scheduled timer running across drain.
-	state.mu.Lock()
-	alive := state.agentSession != nil && state.agentSession.Alive() && !state.stopped && !state.eventsNeedResync
-	state.mu.Unlock()
-	if alive {
-		e.startUnsolicitedReader(state, session, sessions, interactiveKey)
-		e.scheduleAgentSessionIdleClose(interactiveKey, state)
-	}
-
 	// Guard against a narrow race: a message may have been queued between
 	// processInteractiveEvents observing an empty queue and returning here
 	// (session is still locked, so handleMessage's TryLock fails and routes
-	// the message to queueMessageForBusySession). Drain any such orphans.
+	// the message to queueMessageForBusySession). Drain any such orphans;
+	// drainPendingMessages also hands the events back to the reader.
 	if e.drainPendingMessages(state, session, sessions, interactiveKey, lockGen) {
 		unlocked = true
 	}
@@ -4884,6 +4887,14 @@ var agentErrorHandlers = []agentErrorHandler{
 }
 
 func (e *Engine) processInteractiveEvents(state *interactiveState, session *Session, sessions *SessionManager, sessionKey string, msgID string, turnStart time.Time, stopTypingFn func(), sendDone <-chan error, replyCtx any, lockGen uint64) {
+	e.processTurnEvents(state, session, sessions, sessionKey, msgID, turnStart, stopTypingFn, sendDone, replyCtx, lockGen, nil)
+}
+
+// processTurnEvents handles a turn's events. at is non-nil for a turn the
+// agent started on its own (see runAgentTurn): it starts with the events
+// already read, its message is the held one it continues, and it leaves
+// queued messages to the caller.
+func (e *Engine) processTurnEvents(state *interactiveState, session *Session, sessions *SessionManager, sessionKey string, msgID string, turnStart time.Time, stopTypingFn func(), sendDone <-chan error, replyCtx any, lockGen uint64, at *agentTurn) {
 	if msgID != "" {
 		state.mu.Lock()
 		state.currentMessageID = msgID
@@ -4913,7 +4924,14 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 	// bgBaseline is the background tasks already running when the current
 	// turn started; the ones running at its end that are not in it are the
 	// turn's own, and its message stays in progress until they finish.
-	bgBaseline := state.takeTurnStart()
+	var bgBaseline map[string]struct{}
+	// replay is the agent's own turn's events already read from the agent.
+	var replay []Event
+	if at != nil {
+		bgBaseline, replay = at.baseline, at.events
+	} else {
+		bgBaseline = state.takeTurnStart()
+	}
 	// heldForBackground is set when the last turn's message is held for its
 	// background tasks; its journal entry then stays until the hold ends.
 	heldForBackground := false
@@ -4933,6 +4951,18 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 		stopTyping = nil
 		return true
 	}
+	// endAgentTurn settles the held messages at the end of the agent's own
+	// turn: the tasks it launched continue the newest held message's work,
+	// and the holds, not the turn, mark their messages done.
+	endAgentTurn := func(silent bool) {
+		pending := state.pendingBackgroundTasks()
+		e.adoptBackgroundTasks(state, newBackgroundTasks(pending, bgBaseline))
+		how := holdDone
+		if silent {
+			how = holdDoneSilent
+		}
+		e.settleBackgroundHolds(state, sessionKey, pending, how)
+	}
 	defer func() {
 		if stopTyping != nil {
 			stopTyping()
@@ -4941,7 +4971,8 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			doneReaction()
 		}
 		// On shutdown the turn stays journaled so the next start reports it.
-		if e.ctx.Err() == nil && !heldForBackground {
+		// The agent's own turn has no entry: its held messages end theirs.
+		if e.ctx.Err() == nil && !heldForBackground && at == nil {
 			e.turnJournal.end(sessionKey)
 		}
 	}()
@@ -4983,7 +5014,8 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 	// Send instant confirmation reply if enabled and no streaming card is active.
 	// Streaming cards provide their own "processing" indicator, so instant reply
 	// is only needed when the platform doesn't support cards or card creation failed.
-	if e.instantReply.Enabled && streamCard == nil {
+	// The agent's own turn answers no message of the user's.
+	if e.instantReply.Enabled && streamCard == nil && at == nil {
 		replyContent := e.instantReply.Content
 		if replyContent == "" {
 			replyContent = e.i18n.T(MsgStarting)
@@ -5021,6 +5053,11 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 		var event Event
 		var ok bool
 
+		// Events already read go first, in order.
+		if len(replay) > 0 {
+			event, replay = replay[0], replay[1:]
+			goto received
+		}
 		select {
 		case <-stopCh:
 			sp.discard()
@@ -5141,6 +5178,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			return
 		}
 
+	received:
 		if state.isStopped() {
 			sp.discard()
 			state.mu.Lock()
@@ -5766,7 +5804,8 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			} else if fullResponse == "" && len(textParts) > 0 {
 				fullResponse = strings.Join(textParts, "")
 			}
-			if fullResponse == "" {
+			// The agent's own turn with nothing to say stays silent.
+			if fullResponse == "" && at == nil {
 				fullResponse = e.i18n.T(MsgEmptyResponse)
 			}
 
@@ -5875,7 +5914,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			session.AddHistory("assistant", baseResponse)
 			sessions.Save()
 
-			isSilent := isSilentReply(baseResponse)
+			isSilent := isSilentReply(baseResponse) || (at != nil && strings.TrimSpace(baseResponse) == "")
 			if !isSilent {
 				if stripped, ok := stripTrailingSilent(baseResponse); ok {
 					if strings.TrimSpace(stripped) == "" {
@@ -6147,11 +6186,21 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 					}
 					e.send(state.platform, state.replyCtx, compressNotice)
 
-					heldForBackground = holdTurnForBackground(p)
+					if at != nil {
+						endAgentTurn(isSilent)
+					} else {
+						heldForBackground = holdTurnForBackground(p)
+					}
 					// Run compress inline while the session is still locked.
 					e.runCompress(state, session, sessions, sessionKey, state.platform, state.replyCtx, true, lockGen)
 					return
 				}
+			}
+
+			// The agent's own turn leaves queued messages to its caller.
+			if at != nil {
+				endAgentTurn(isSilent)
+				return
 			}
 
 			// Check for queued messages — if present, continue the event loop
@@ -6385,6 +6434,10 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			if state.agentSession == nil || !state.agentSession.Alive() {
 				e.notifyDroppedQueuedMessages(state, event.Error)
 			}
+			// The work the held messages wait for failed with the turn.
+			if at != nil {
+				e.releaseBackgroundHolds(state, sessionKey, holdAbandoned)
+			}
 			return
 		}
 	}
@@ -6543,17 +6596,15 @@ func (e *Engine) notifyDroppedQueuedMessages(state *interactiveState, reason err
 }
 
 // drainPendingMessages processes all queued messages in the state's pendingMessages
-// queue. It atomically unlocks the session when the queue is empty (while holding
+// queue, then hands the agent's events back to the unsolicited reader. It
+// atomically unlocks the session when the queue is empty (while holding
 // state.mu) to close the race window between "queue empty" and "session unlocked".
 // Returns true if the session was unlocked by this call.
 func (e *Engine) drainPendingMessages(state *interactiveState, session *Session, sessions *SessionManager, sessionKey string, lockGen uint64) bool {
+	// resumed: the reader has had the events since the last turn ended.
+	resumed := false
 	for {
 		state.mu.Lock()
-		if len(state.pendingMessages) == 0 {
-			session.Unlock(lockGen)
-			state.mu.Unlock()
-			return true
-		}
 		droppedStale := 0
 		for len(state.pendingMessages) > 0 && e.isQueuedUserMessageStaleForDrainLocked(state, state.pendingMessages[0].userMessageTimeMs) {
 			state.pendingMessages[0].leaveQueue()
@@ -6566,10 +6617,37 @@ func (e *Engine) drainPendingMessages(state *interactiveState, session *Session,
 				"dropped", droppedStale,
 			)
 		}
-		if len(state.pendingMessages) == 0 {
+		if len(state.pendingMessages) == 0 && resumed {
 			session.Unlock(lockGen)
 			state.mu.Unlock()
 			return true
+		}
+		state.mu.Unlock()
+
+		// Take the events from the reader, if one runs: the next queued
+		// message or the reader restarted below gets them. A turn the agent
+		// started on its own meanwhile runs first.
+		e.stopUnsolicitedReader(state)
+		resumed = false
+		if e.runAgentTurnLeftByReader(state, session, sessions, sessionKey, lockGen) {
+			continue
+		}
+
+		state.mu.Lock()
+		if len(state.pendingMessages) == 0 {
+			state.mu.Unlock()
+			// Start the reader and arm the idle close timer BEFORE
+			// unlocking. Without this ordering the next user message can
+			// race in, call cancelAgentSessionIdleClose (a no-op since
+			// nothing was scheduled yet), and then a late schedule arms a
+			// timer that no subsequent cancel will catch — closing the live
+			// session mid-turn. See #1686 P1-C P1-2. The schedule's own state
+			// checks (agentSession nil, stopped, etc.) and
+			// cleanupInteractiveStateForIdleToken's stale-token guard make it
+			// safe to leave a scheduled timer running across drain.
+			e.resumeBetweenTurns(state, session, sessions, sessionKey)
+			resumed = true
+			continue
 		}
 		queued := state.pendingMessages[0]
 		state.pendingMessages = state.pendingMessages[1:]
@@ -10716,8 +10794,12 @@ func (e *Engine) runCompress(state *interactiveState, session *Session, sessions
 	// A compress is a turn: the idle close must not end the agent mid-way.
 	defer state.beginTurn()()
 
-	// Stop unsolicited reader before taking event channel ownership.
+	// Stop unsolicited reader before taking event channel ownership. A turn
+	// the agent started on its own meanwhile runs before the compress.
 	e.stopUnsolicitedReader(state)
+	if e.runAgentTurnLeftByReader(state, session, sessions, iKey, lockGen) && !state.agentAlive() {
+		return
+	}
 
 	state.mu.Lock()
 	state.platform = p
