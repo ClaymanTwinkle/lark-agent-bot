@@ -160,6 +160,19 @@ level = "info" # debug, info, warn, error
 # Agent 空闲超时：两次 agent 事件之间的最大等待分钟数，超时则认为会话卡住。设为 0 禁用。
 # idle_timeout_mins = 120  # default: 120 (2 hours) / 默认 120（2 小时）
 
+# Stall notice: when a turn has had no agent events for this many minutes, tell
+# the user once that it may be stuck (with what it is waiting on) and how to
+# /stop it. Notify only — the turn keeps running; idle_timeout_mins still ends
+# it. stall_notice_mins applies while the agent waits on the model,
+# stall_tool_notice_mins while a tool runs (tools are often silent longer).
+# Set to 0 to disable.
+# 卡住提醒：一轮对话超过这么多分钟没有任何 agent 事件时，提醒用户一次可能卡住了
+# （说明卡在等模型还是在跑哪个工具）以及可以 /stop。只提醒不中止，中止仍由
+# idle_timeout_mins 负责。stall_notice_mins 用于等模型返回时，
+# stall_tool_notice_mins 用于工具运行时（工具正常运行也可能长时间无输出）。设为 0 禁用。
+# stall_notice_mins = 5         # default: 5 / 默认 5
+# stall_tool_notice_mins = 15   # default: 15 / 默认 15
+
 # Absolute wall-clock cap per agent turn in minutes. Unlike idle_timeout_mins
 # (which resets on every event), this timer is never reset — it guarantees the
 # session is released even when a long bash command generates periodic tool events.

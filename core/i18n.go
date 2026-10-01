@@ -540,6 +540,8 @@ const (
 
 	MsgAgentExitedMidTurn MsgKey = "agent_exited_mid_turn"
 	MsgTurnInterrupted    MsgKey = "turn_interrupted"
+	MsgStallModel         MsgKey = "stall_model"
+	MsgStallTool          MsgKey = "stall_tool"
 
 	MsgUpgradeChecking    MsgKey = "upgrade_checking"
 	MsgUpgradeUpToDate    MsgKey = "upgrade_up_to_date"
@@ -1294,6 +1296,20 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "⚠️ %s 收到的訊息還沒回覆完，服務就中斷了（重啟或異常退出）。可以重新傳送，或讓它繼續。",
 		LangJapanese:           "⚠️ %s に受信したメッセージへの返信が終わる前に、サービスが停止しました（再起動または異常終了）。再送するか、続きを依頼してください。",
 		LangSpanish:            "⚠️ El servicio se detuvo (reinicio o fallo) antes de terminar la respuesta al mensaje recibido a las %s. Reenvíalo o pide que continúe.",
+	},
+	MsgStallModel: {
+		LangEnglish:            "⏳ No new output for %d minutes while waiting on the model, possibly a network or API problem. If it is stuck, send /stop to end it.",
+		LangChinese:            "⏳ 已经 %d 分钟没有新输出，在等模型返回，可能是网络或接口问题。如果卡住了，发 /stop 中止。",
+		LangTraditionalChinese: "⏳ 已經 %d 分鐘沒有新輸出，在等模型回傳，可能是網路或介面問題。如果卡住了，傳送 /stop 中止。",
+		LangJapanese:           "⏳ モデルの応答待ちのまま %d 分間新しい出力がありません。ネットワークまたは API の問題かもしれません。止まっている場合は /stop で中止してください。",
+		LangSpanish:            "⏳ Sin salida nueva durante %d minutos esperando al modelo; puede ser un problema de red o de la API. Si está atascado, envía /stop para detenerlo.",
+	},
+	MsgStallTool: {
+		LangEnglish:            "⏳ %s has been running for %d minutes with no new output. If it is stuck, send /stop to end it.",
+		LangChinese:            "⏳ 正在执行 %s，已经 %d 分钟没有新输出。如果卡住了，发 /stop 中止。",
+		LangTraditionalChinese: "⏳ 正在執行 %s，已經 %d 分鐘沒有新輸出。如果卡住了，傳送 /stop 中止。",
+		LangJapanese:           "⏳ %s を実行中で、%d 分間新しい出力がありません。止まっている場合は /stop で中止してください。",
+		LangSpanish:            "⏳ %s lleva %d minutos ejecutándose sin salida nueva. Si está atascado, envía /stop para detenerlo.",
 	},
 	MsgSessionNotStarted: {
 		LangEnglish:            "(new — not yet started)",

@@ -1806,6 +1806,21 @@ func TestLoad_ParsesAgentSessionIdleTimeoutMins(t *testing.T) {
 	}
 }
 
+func TestLoad_ParsesStallNoticeMins(t *testing.T) {
+	configPath := writeConfigFixture(t, "stall_notice_mins = 3\nstall_tool_notice_mins = 0\n"+projectWithAgentSessionIdleTimeoutFixture)
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.StallNoticeMins == nil || *cfg.StallNoticeMins != 3 {
+		t.Fatalf("stall_notice_mins = %v, want 3", cfg.StallNoticeMins)
+	}
+	if cfg.StallToolNoticeMins == nil || *cfg.StallToolNoticeMins != 0 {
+		t.Fatalf("stall_tool_notice_mins = %v, want 0", cfg.StallToolNoticeMins)
+	}
+}
+
 func TestLoad_RejectsNegativeAgentSessionIdleTimeoutMins(t *testing.T) {
 	configPath := writeConfigFixture(t, projectWithNegativeAgentSessionIdleTimeoutFixture)
 

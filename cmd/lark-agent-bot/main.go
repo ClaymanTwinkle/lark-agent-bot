@@ -659,6 +659,14 @@ func main() {
 			}
 		}
 
+		// Wire stall notices (unset keeps the engine defaults; <= 0 disables)
+		if cfg.StallNoticeMins != nil || cfg.StallToolNoticeMins != nil {
+			engine.SetStallNotice(
+				stallNoticeDuration(cfg.StallNoticeMins, core.DefaultStallNoticeModel),
+				stallNoticeDuration(cfg.StallToolNoticeMins, core.DefaultStallNoticeTool),
+			)
+		}
+
 		// Wire busy-lock stale-break threshold (#1829)
 		if cfg.BusyTimeoutMins != nil {
 			mins := *cfg.BusyTimeoutMins
@@ -1443,6 +1451,18 @@ func sessionStorePath(dataDir, name, workDir string) string {
 	}
 
 	return filepath.Join(dataDir, "sessions", filename)
+}
+
+// stallNoticeDuration converts a stall notice setting in minutes: unset keeps
+// def, <= 0 disables.
+func stallNoticeDuration(mins *int, def time.Duration) time.Duration {
+	if mins == nil {
+		return def
+	}
+	if *mins <= 0 {
+		return 0
+	}
+	return time.Duration(*mins) * time.Minute
 }
 
 func projectStatePath(dataDir, projectName string) string {

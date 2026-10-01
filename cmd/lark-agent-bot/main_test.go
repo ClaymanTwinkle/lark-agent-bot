@@ -435,3 +435,22 @@ func TestRunTopLevelCommandUnknown(t *testing.T) {
 		t.Fatal("runTopLevelCommand() handled unknown command")
 	}
 }
+
+func TestStallNoticeDuration(t *testing.T) {
+	def := 5 * time.Minute
+	zero, neg, three := 0, -1, 3
+	for _, tc := range []struct {
+		name string
+		mins *int
+		want time.Duration
+	}{
+		{"unset keeps default", nil, def},
+		{"zero disables", &zero, 0},
+		{"negative disables", &neg, 0},
+		{"minutes", &three, 3 * time.Minute},
+	} {
+		if got := stallNoticeDuration(tc.mins, def); got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

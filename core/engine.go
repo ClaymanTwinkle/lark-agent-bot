@@ -412,6 +412,8 @@ type Engine struct {
 	references          ReferenceRenderCfg
 	relayManager        *RelayManager
 	eventIdleTimeout    time.Duration
+	stallNoticeModel    time.Duration // silence while waiting on the model before telling the user; 0 disables
+	stallNoticeTool     time.Duration // same while a tool runs; 0 disables
 	staleLockBreakAfter time.Duration // busy-lock stale-break threshold; 0 disables
 	maxTurnTime         time.Duration // absolute wall-clock cap per turn (0 = disabled)
 	// agentSessionIdleTimeoutNanos 在单轮正常结束后关闭空闲的 live agent 进程，
@@ -789,6 +791,8 @@ func NewEngine(name string, ag Agent, platforms []Platform, sessionStorePath str
 		streamPreview:         DefaultStreamPreviewCfg(),
 		references:            DefaultReferenceRenderCfg(),
 		eventIdleTimeout:      defaultEventIdleTimeout,
+		stallNoticeModel:      DefaultStallNoticeModel,
+		stallNoticeTool:       DefaultStallNoticeTool,
 		staleLockBreakAfter:   busyStaleLockMaxHeld,
 		maxQueuedMessages:     defaultMaxQueuedMessages,
 		showContextIndicator:  true,
@@ -1401,6 +1405,15 @@ func (e *Engine) SetStaleLockBreakAfter(d time.Duration) {
 // 0 disables the timeout entirely.
 func (e *Engine) SetEventIdleTimeout(d time.Duration) {
 	e.eventIdleTimeout = d
+}
+
+// SetStallNotice sets how long a turn may go without agent events before the
+// user is told it may be stuck: model while the agent waits on the model,
+// tool while a tool runs. Unlike the idle timeout it only notifies once per
+// silence and never ends the turn. 0 disables the notice for that phase.
+func (e *Engine) SetStallNotice(model, tool time.Duration) {
+	e.stallNoticeModel = model
+	e.stallNoticeTool = tool
 }
 
 // SetMaxQueuedMessages sets the per-session message queue depth.
@@ -5309,6 +5322,11 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 		turnDeadlineCh = turnDeadlineTimer.C
 	}
 
+	// Stall notice: tells the user once when the agent stays silent longer
+	// than its current phase allows. Unlike the idle timeout it ends nothing.
+	stall := newTurnStallWatch(e.stallNoticeModel, e.stallNoticeTool)
+	defer stall.stop()
+
 	events := state.agentSession.Events()
 	stopCh := state.stopSignal()
 	for {
@@ -5319,6 +5337,31 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 		case <-stopCh:
 			sp.discard()
 			return
+		case <-stall.C():
+			stall.fired()
+			if e.ctx.Err() != nil || state.isStopped() {
+				continue
+			}
+			state.mu.Lock()
+			as := state.agentSession
+			p := state.platform
+			state.mu.Unlock()
+			// An agent whose process died without closing its event stream
+			// would otherwise hold the turn until the idle timeout. A buffered
+			// event means it is still mid-shutdown; let the loop drain it.
+			if as != nil && !as.Alive() && len(events) == 0 {
+				slog.Warn("agent process gone but event stream still open, ending turn",
+					"session_key", sessionKey, "elapsed", time.Since(turnStart))
+				goto channelClosed
+			}
+			if !stall.notified {
+				stall.notified = true
+				slog.Warn("agent silent too long, notifying user",
+					"session_key", sessionKey, "open_tools", stall.openTools, "tool", stall.toolName,
+					"silent", time.Since(stall.lastEvent))
+				e.send(p, replyCtx, stall.notice(e.i18n, time.Now()))
+			}
+			continue
 		case event, ok = <-events:
 			if !ok {
 				goto channelClosed
@@ -5428,6 +5471,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			}
 			idleTimer.Reset(e.eventIdleTimeout)
 		}
+		stall.observe(event)
 
 		if !firstEventLogged {
 			firstEventLogged = true
@@ -5954,6 +5998,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			if idleTimer != nil {
 				idleTimer.Stop()
 			}
+			stall.pause()
 
 			<-pending.Resolved
 			slog.Info("permission resolved", "request_id", event.RequestID)
@@ -5971,6 +6016,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			if idleTimer != nil {
 				idleTimer.Reset(e.eventIdleTimeout)
 			}
+			stall.resume()
 
 		case EventResult:
 			// Non-terminal result events (e.g. mid-turn compaction: Claude
@@ -6550,6 +6596,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 					}
 					idleTimer.Reset(e.eventIdleTimeout)
 				}
+				stall.reset()
 
 				slog.Info("processing queued message",
 					"session", sessionKey,

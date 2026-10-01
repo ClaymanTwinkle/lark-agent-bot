@@ -114,6 +114,12 @@ type Config struct {
 	IdleTimeoutMins    *int                    `toml:"idle_timeout_mins,omitempty"`  // max minutes between consecutive agent events; 0 = no timeout; default 120
 	BusyTimeoutMins    *int                    `toml:"busy_timeout_mins,omitempty"`  // minutes a dead agent's session busy lock may be held before the next message breaks it; 0 = disable; default 2
 	MaxTurnTimeMins    *int                    `toml:"max_turn_time_mins,omitempty"` // absolute wall-clock cap per turn in minutes; 0 = disabled (default)
+	// StallNoticeMins / StallToolNoticeMins: minutes without agent events
+	// before the user is told the turn may be stuck, while waiting on the
+	// model / while a tool runs. Notify only, once per silence; 0 = disabled;
+	// defaults 5 / 15.
+	StallNoticeMins     *int `toml:"stall_notice_mins,omitempty"`
+	StallToolNoticeMins *int `toml:"stall_tool_notice_mins,omitempty"`
 	// WorkspaceIdleTimeoutMins controls the workspace idle reaper timeout
 	// (multi-workspace mode) for every engine in the process. 0 disables
 	// reaping. Default: 15 minutes. Defined as a top-level (process-global)
