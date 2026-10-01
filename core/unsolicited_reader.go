@@ -4,16 +4,27 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 )
 
 // unsolicitedReaderStopTimeout bounds how long stopUnsolicitedReader waits
 // for the reader goroutine to exit. The reader is structured so its iterations
-// are short (blocking adapter calls like RespondPermission are offloaded), so
-// this timeout should almost always be non-binding. If it does fire, callers
-// force a resync of the Events channel to preserve single-reader correctness.
+// are short (a turn the agent starts on its own is handed off, not run by the
+// reader), so this timeout should almost always be non-binding. If it does
+// fire, callers force a resync of the Events channel to preserve
+// single-reader correctness.
 const unsolicitedReaderStopTimeout = 5 * time.Second
+
+// agentTurnLockRetry is how often the reader retries taking the session for
+// a turn the agent started on its own while another holder has it.
+const agentTurnLockRetry = 50 * time.Millisecond
+
+// agentTurn is a turn the agent started on its own, typically because a
+// background task finished.
+type agentTurn struct {
+	events   []Event             // the turn's events already read from the agent
+	baseline map[string]struct{} // the background tasks running when it started
+}
 
 // stopUnsolicitedReader cancels any running unsolicited reader goroutine and
 // waits (bounded) for it to exit. If the reader does not exit in time, the
@@ -54,9 +65,9 @@ func (e *Engine) stopUnsolicitedReader(state *interactiveState) {
 
 // startUnsolicitedReader launches a background goroutine that consumes agent
 // events produced between user-initiated turns (e.g. background task
-// completions in Claude Code). Events are relayed to the platform immediately.
-// The goroutine exits when its context is cancelled (by a new foreground turn
-// or session cleanup) or when the Events channel is closed.
+// completions in Claude Code). The goroutine exits when its context is
+// cancelled (by a new foreground turn or session cleanup), when the Events
+// channel is closed, or when the agent starts a turn, which it hands off.
 func (e *Engine) startUnsolicitedReader(state *interactiveState, session *Session, sessions *SessionManager, sessionKey string) {
 	// Ensure no previous reader is still running.
 	e.stopUnsolicitedReader(state)
@@ -82,6 +93,19 @@ func (e *Engine) startUnsolicitedReader(state *interactiveState, session *Sessio
 	go e.runUnsolicitedReader(ctx, cancel, done, state, agentSession, session, sessions, sessionKey)
 }
 
+// resumeBetweenTurns hands the agent's events to the reader once the turns
+// holding the session are over, and arms the idle close. A session whose
+// agent is gone, stopped or out of sync gets neither.
+func (e *Engine) resumeBetweenTurns(state *interactiveState, session *Session, sessions *SessionManager, sessionKey string) {
+	state.mu.Lock()
+	alive := state.agentSession != nil && state.agentSession.Alive() && !state.stopped && !state.eventsNeedResync
+	state.mu.Unlock()
+	if alive {
+		e.startUnsolicitedReader(state, session, sessions, sessionKey)
+		e.scheduleAgentSessionIdleClose(sessionKey, state)
+	}
+}
+
 // runUnsolicitedReader is the goroutine body for the unsolicited event reader.
 // agentSession is captured by the caller so we don't race with
 // cleanupInteractiveState nilling state.agentSession.
@@ -90,22 +114,6 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 	defer cancel()
 
 	events := agentSession.Events()
-
-	// turnActive is true from the first sign of the agent working on a turn
-	// of its own until the turn's EventResult.
-	var turnActive bool
-	// turnBaseline is the background tasks running when that turn started;
-	// the ones it launches continue the held message's work.
-	var turnBaseline map[string]struct{}
-	defer func() {
-		if turnActive {
-			state.setAgentTurn(false)
-		}
-	}()
-
-	var textParts []string
-	var toolsUsed []string
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -116,14 +124,7 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 
 		case event, ok := <-events:
 			if !ok {
-				// Channel closed — agent process exited. Log any buffered
-				// tool/text context so it isn't lost silently.
-				if len(toolsUsed) > 0 || len(textParts) > 0 {
-					slog.Warn("unsolicited reader: agent channel closed mid-turn",
-						"session", sessionKey,
-						"tools_used", toolsUsed,
-						"text_fragments", len(textParts))
-				}
+				// Channel closed — agent process exited.
 				state.mu.Lock()
 				state.eventsNeedResync = true
 				state.mu.Unlock()
@@ -136,186 +137,163 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 				return
 			}
 
-			// Go's select is non-deterministic when multiple cases are
-			// ready, so even after ctx is cancelled we may still read one
-			// last event from the channel. If ownership has been handed
-			// off, drop the event rather than processing it — otherwise we
-			// could relay (or worse, respond to) an event that belongs to
-			// the incoming foreground turn. The caller has already set
-			// eventsNeedResync on timeout, so any buffered events will be
-			// drained before the foreground turn reads them.
-			select {
-			case <-ctx.Done():
-				slog.Warn("unsolicited reader: event received after cancellation, dropping",
-					"session", sessionKey, "event_type", event.Type)
+			// The agent started a turn on its own, typically because a
+			// background task finished. Even if ownership has just been
+			// handed off, the event must not be lost: takeAgentTurn leaves
+			// it to the new owner.
+			if isAgentActivity(event) {
+				e.takeAgentTurn(ctx, done, state, session, sessions, sessionKey, event)
+				return
+			}
+
+			if event.Type == EventError {
 				state.mu.Lock()
 				state.eventsNeedResync = true
+				p := state.platform
+				replyCtx := state.replyCtx
 				state.mu.Unlock()
-				return
-			default:
-			}
-
-			// The agent started a turn on its own, typically because a
-			// background task finished. It is not idle until the turn ends,
-			// and the user's message shows it is being worked on.
-			if !turnActive && isAgentActivity(event) {
-				turnActive = true
-				state.setAgentTurn(true)
-				e.cancelAgentSessionIdleClose(state)
-				turnBaseline = state.pendingBackgroundTasks()
-				e.holdForFollowUpTurn(state)
-				slog.Info("unsolicited events detected, relaying to platform",
-					"session", sessionKey)
-			}
-
-			state.mu.Lock()
-			p := state.platform
-			replyCtx := state.replyCtx
-			state.mu.Unlock()
-
-			switch event.Type {
-			case EventText:
-				if event.Content != "" {
-					textParts = append(textParts, event.Content)
+				// Go's select is non-deterministic when multiple cases are
+				// ready, so even after ctx is cancelled we may still read one
+				// last event; the resync tells the new owner.
+				if ctx.Err() != nil {
+					return
 				}
-
-			case EventToolUse:
-				// Record tool name so we can log or surface context if the
-				// channel closes before a clean EventResult. Output is
-				// delivered via EventResult; we intentionally do not relay
-				// per-tool progress here (no active user turn to observe it).
-				if event.ToolName != "" {
-					toolsUsed = append(toolsUsed, event.ToolName)
-				}
-				slog.Debug("unsolicited tool use",
-					"session", sessionKey,
-					"tool", event.ToolName)
-
-			case EventToolResult:
-				slog.Debug("unsolicited tool result",
-					"session", sessionKey,
-					"status", event.ToolStatus)
-
-			case EventResult:
-				// A mid-turn compaction (Done=false) does not end the turn.
-				if !event.Done {
-					continue
-				}
-				fullResponse := event.Content
-				if fullResponse == "" && len(textParts) > 0 {
-					fullResponse = strings.Join(textParts, "")
-				}
-
-				// Respect NO_REPLY like a foreground turn: deliver nothing
-				// for a bare marker, strip a trailing one.
-				visible := fullResponse
-				if isSilentReply(visible) {
-					visible = ""
-				} else if stripped, ok := stripTrailingSilent(visible); ok {
-					visible = stripped
-				}
-				if strings.TrimSpace(visible) != "" {
-					for _, chunk := range SplitMessageCodeFenceAware(visible, maxPlatformMessageLen) {
-						e.send(p, replyCtx, chunk)
-					}
-				}
-
-				// Safety note: concurrent writes to session.History by the
-				// unsolicited reader and a foreground turn cannot overlap.
-				// Session.AddHistory takes session.mu internally, and
-				// stopUnsolicitedReader (called before any foreground turn
-				// takes event-channel ownership) blocks until this goroutine
-				// exits — so a foreground AddHistory is always ordered after
-				// any unsolicited AddHistory.
-				session.AddHistory("assistant", fullResponse)
-				sessions.Save()
-
-				// Tasks this turn launched continue the held message's work;
-				// held messages whose tasks are all done are done now.
-				pending := state.pendingBackgroundTasks()
-				e.adoptBackgroundTasks(state, newBackgroundTasks(pending, turnBaseline))
-				end := holdDone
-				if strings.TrimSpace(visible) == "" {
-					end = holdDoneSilent
-				}
-				e.settleBackgroundHolds(state, sessionKey, pending, end)
-
-				// Reset for potential subsequent unsolicited turn.
-				textParts = nil
-				toolsUsed = nil
-				turnActive = false
-				turnBaseline = nil
-				state.setAgentTurn(false)
-
-				// Mark clean exit so next foreground turn preserves events.
-				state.mu.Lock()
-				state.eventsNeedResync = false
-				state.mu.Unlock()
-
-				// Reset the per-session idle close timer so a series of
-				// background task completions does not get cut short by the
-				// idle timeout armed at the end of the last foreground turn.
-				// Without this, a long-running background turn (e.g. cron task
-				// that reports progress every minute) can be killed mid-flight
-				// when the original idle timer fires. See #1686 P1-C P1-1.
-				e.scheduleAgentSessionIdleClose(sessionKey, state)
-
-				slog.Info("unsolicited turn complete",
-					"session", sessionKey,
-					"response_len", len(fullResponse))
-
-			case EventPermissionRequest:
-				// If approveAll (/yolo) is set, grant the request. Otherwise
-				// deny — there is no active user turn to consult — and notify
-				// the user on the platform so a silently blocked background
-				// task is not invisible. RespondPermission may make a slow
-				// adapter call, so we run it in a detached goroutine to keep
-				// reader iterations fast (stopUnsolicitedReader relies on a
-				// bounded wait for the reader to exit).
-				state.mu.Lock()
-				autoApprove := state.approveAll
-				state.mu.Unlock()
-
-				result := PermissionResult{Behavior: "deny", Message: "denied: no active user turn"}
-				if autoApprove {
-					result = PermissionResult{Behavior: "allow", UpdatedInput: event.ToolInputRaw}
-				}
-				reqID := event.RequestID
-				respondCtx := ctx // capture current unsolicited reader context
-				go func() {
-					// Run in a goroutine to keep reader iterations fast, but honour
-					// the reader's context so we don't call into a dead session after
-					// stopUnsolicitedReader cancels the context.
-					select {
-					case <-respondCtx.Done():
-						return
-					default:
-					}
-					if err := agentSession.RespondPermission(reqID, result); err != nil {
-						if respondCtx.Err() == nil {
-							slog.Error("unsolicited: failed to respond permission", "error", err)
-						}
-					}
-				}()
-				if !autoApprove {
-					toolName := event.ToolName
-					if toolName == "" {
-						toolName = "(unknown)"
-					}
-					e.send(p, replyCtx, fmt.Sprintf(e.i18n.T(MsgBackgroundAutoDenied), toolName))
-				}
-
-			case EventError:
 				if event.Error != nil {
 					slog.Error("unsolicited agent error", "error", event.Error, "session", sessionKey)
 					e.send(p, replyCtx, fmt.Sprintf(e.i18n.T(MsgError), event.Error))
 				}
-				state.mu.Lock()
-				state.eventsNeedResync = true
-				state.mu.Unlock()
 				e.releaseBackgroundHolds(state, sessionKey, holdAbandoned)
 				return
 			}
+			// Agents also emit content-less events between turns — Claude
+			// Code turns each system message (background task progress, hook
+			// runs) into one — that say nothing about a turn.
 		}
 	}
+}
+
+// takeAgentTurn makes the turn the agent just started on its own (first is
+// its first event) a regular turn: it takes the session lock, so user
+// messages queue behind the turn instead of being folded into it, and the
+// turn shows progress, asks the user for permissions and is watched for
+// stalls like any other. While another holder has the lock, it waits; if the
+// holder takes the events from the reader meanwhile, the turn is left to it
+// (runAgentTurnLeftByReader).
+func (e *Engine) takeAgentTurn(ctx context.Context, done chan struct{}, state *interactiveState, session *Session, sessions *SessionManager, sessionKey string, first Event) {
+	// The agent is not idle until the turn ends, and the message whose work
+	// it continues shows it is being worked on.
+	state.setAgentTurn(true)
+	e.cancelAgentSessionIdleClose(state)
+	at := &agentTurn{events: []Event{first}, baseline: state.pendingBackgroundTasks()}
+	e.holdForFollowUpTurn(state)
+	slog.Info("agent started a turn on its own", "session", sessionKey)
+
+	for {
+		if ctx.Err() != nil {
+			state.leaveAgentTurn(at)
+			return
+		}
+		if lockGen, ok := session.TryLock(); ok {
+			// From here on the turn is not the reader's: stopping the reader
+			// does not wait for it, and a stop reaches it through the
+			// session's stop signal like any turn.
+			state.mu.Lock()
+			owned := state.unsolicitedDone == done
+			if owned {
+				state.unsolicitedCancel, state.unsolicitedDone = nil, nil
+			}
+			state.mu.Unlock()
+			if !owned { // being stopped: whoever stops the reader takes the turn
+				session.UnlockWithoutUpdate(lockGen)
+				state.leaveAgentTurn(at)
+				return
+			}
+			e.runAgentTurnLocked(state, session, sessions, sessionKey, at, lockGen)
+			return
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(agentTurnLockRetry):
+		}
+	}
+}
+
+// runAgentTurnLocked runs the agent's own turn under the session lock the
+// reader took for it, then the messages queued meanwhile, and unlocks.
+func (e *Engine) runAgentTurnLocked(state *interactiveState, session *Session, sessions *SessionManager, sessionKey string, at *agentTurn, lockGen uint64) {
+	unlocked := false
+	defer func() {
+		if !unlocked {
+			session.Unlock(lockGen)
+		}
+	}()
+	defer state.beginTurn()()
+
+	e.runAgentTurn(state, session, sessions, sessionKey, at, lockGen)
+	unlocked = e.drainPendingMessages(state, session, sessions, sessionKey, lockGen)
+}
+
+// runAgentTurn runs a turn the agent started on its own as a regular turn,
+// up to its result. The caller holds the session lock and handles the
+// queued messages afterwards. The turn replies to the message whose work it
+// continues: the newest held message.
+func (e *Engine) runAgentTurn(state *interactiveState, session *Session, sessions *SessionManager, sessionKey string, at *agentTurn, lockGen uint64) {
+	defer state.setAgentTurn(false)
+	if !state.agentAlive() {
+		return
+	}
+	state.setAgentTurn(true)
+	defer state.beginTurn()()
+	e.cancelAgentSessionIdleClose(state)
+	e.holdForFollowUpTurn(state)
+	replyCtx := state.anchorToNewestHold()
+	e.processTurnEvents(state, session, sessions, sessionKey, "", time.Now(), nil, nil, replyCtx, lockGen, at)
+}
+
+// runAgentTurnLeftByReader runs the turn the agent started on its own just
+// before the caller took the events from the reader (see takeAgentTurn), so
+// the caller's prompt is not folded into it. The caller holds the session
+// lock and has stopped the reader. It reports whether a turn ran.
+func (e *Engine) runAgentTurnLeftByReader(state *interactiveState, session *Session, sessions *SessionManager, sessionKey string, lockGen uint64) bool {
+	state.mu.Lock()
+	at := state.agentTurnLeft
+	state.agentTurnLeft = nil
+	// Out of sync, the turn's events are stale: the caller drains them.
+	stale := state.eventsNeedResync
+	state.mu.Unlock()
+	if at == nil || stale {
+		return false
+	}
+	slog.Info("running the agent's own turn before the next prompt", "session", sessionKey)
+	e.runAgentTurn(state, session, sessions, sessionKey, at, lockGen)
+	return true
+}
+
+// leaveAgentTurn hands the agent's own turn the reader could not take to
+// whoever takes the events from it (runAgentTurnLeftByReader).
+func (s *interactiveState) leaveAgentTurn(at *agentTurn) {
+	s.mu.Lock()
+	s.agentTurnLeft = at
+	s.mu.Unlock()
+	s.setAgentTurn(false)
+}
+
+// anchorToNewestHold points the session's replies at the newest held
+// message, whose work the agent's own turn continues, and returns its reply
+// context.
+func (s *interactiveState) anchorToNewestHold() any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if n := len(s.backgroundHolds); n > 0 {
+		if h := s.backgroundHolds[n-1]; h.platform != nil {
+			s.platform, s.replyCtx = h.platform, h.replyCtx
+			if h.messageID != "" {
+				s.setCurrentMessageLocked(h.messageID)
+			}
+		}
+	}
+	// Leftovers of the last user turn do not apply to this one.
+	s.fromVoice = false
+	s.sideText = ""
+	return s.replyCtx
 }

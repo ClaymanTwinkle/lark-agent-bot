@@ -24,6 +24,7 @@ type bgTaskSession struct {
 	tasks  []BackgroundTask
 	sends  int
 	onSend func(n int) // called with the 1-based Send count
+	perms  []PermissionResult
 }
 
 func newBgTaskSession() *bgTaskSession {
@@ -59,10 +60,28 @@ func (s *bgTaskSession) Send(string, string, []ImageAttachment, []FileAttachment
 	return nil
 }
 
-func (s *bgTaskSession) RespondPermission(string, PermissionResult) error { return nil }
-func (s *bgTaskSession) Events() <-chan Event                             { return s.events }
-func (s *bgTaskSession) CurrentSessionID() string                         { return "bg-session" }
-func (s *bgTaskSession) Alive() bool                                      { return s.alive.Load() }
+func (s *bgTaskSession) sendCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sends
+}
+
+func (s *bgTaskSession) RespondPermission(_ string, res PermissionResult) error {
+	s.mu.Lock()
+	s.perms = append(s.perms, res)
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *bgTaskSession) permissions() []PermissionResult {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.perms)
+}
+
+func (s *bgTaskSession) Events() <-chan Event     { return s.events }
+func (s *bgTaskSession) CurrentSessionID() string { return "bg-session" }
+func (s *bgTaskSession) Alive() bool              { return s.alive.Load() }
 func (s *bgTaskSession) Close() error {
 	s.closeOnce.Do(func() {
 		s.alive.Store(false)
