@@ -414,6 +414,7 @@ type Engine struct {
 	eventIdleTimeout    time.Duration
 	stallNoticeModel    time.Duration // silence while waiting on the model before telling the user; 0 disables
 	stallNoticeTool     time.Duration // same while a tool runs; 0 disables
+	retryNoticeAttempts int           // model-request retry attempt that triggers a notice; 0 disables
 	staleLockBreakAfter time.Duration // busy-lock stale-break threshold; 0 disables
 	maxTurnTime         time.Duration // absolute wall-clock cap per turn (0 = disabled)
 	// agentSessionIdleTimeoutNanos 在单轮正常结束后关闭空闲的 live agent 进程，
@@ -793,6 +794,7 @@ func NewEngine(name string, ag Agent, platforms []Platform, sessionStorePath str
 		eventIdleTimeout:      defaultEventIdleTimeout,
 		stallNoticeModel:      DefaultStallNoticeModel,
 		stallNoticeTool:       DefaultStallNoticeTool,
+		retryNoticeAttempts:   DefaultRetryNoticeAttempts,
 		staleLockBreakAfter:   busyStaleLockMaxHeld,
 		maxQueuedMessages:     defaultMaxQueuedMessages,
 		showContextIndicator:  true,
@@ -1414,6 +1416,14 @@ func (e *Engine) SetEventIdleTimeout(d time.Duration) {
 func (e *Engine) SetStallNotice(model, tool time.Duration) {
 	e.stallNoticeModel = model
 	e.stallNoticeTool = tool
+}
+
+// SetRetryNoticeAttempts sets the attempt at which an agent's retries of a
+// failed model request are reported to the user, once per run of retries.
+// Retries whose next attempt is a minute or more away, or that got no
+// response at all, are reported right away. 0 disables the notice.
+func (e *Engine) SetRetryNoticeAttempts(n int) {
+	e.retryNoticeAttempts = n
 }
 
 // SetMaxQueuedMessages sets the per-session message queue depth.
@@ -5326,6 +5336,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 	// than its current phase allows. Unlike the idle timeout it ends nothing.
 	stall := newTurnStallWatch(e.stallNoticeModel, e.stallNoticeTool)
 	defer stall.stop()
+	retries := &turnRetryWatch{minAttempt: e.retryNoticeAttempts}
 
 	events := state.agentSession.Events()
 	stopCh := state.stopSignal()
@@ -5472,6 +5483,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			idleTimer.Reset(e.eventIdleTimeout)
 		}
 		stall.observe(event)
+		notifyRetry := retries.observe(event)
 
 		if !firstEventLogged {
 			firstEventLogged = true
@@ -5505,6 +5517,12 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 		}
 
 		switch event.Type {
+		case EventRetry:
+			if notifyRetry {
+				slog.Warn("agent retrying model request, notifying user",
+					"session_key", sessionKey, "attempt", event.Retry.Attempt, "reason", event.Retry.Reason)
+				e.send(p, replyCtx, retryNotice(e.i18n, event.Retry))
+			}
 		case EventHookRejected:
 			// Claude Code emits this between a Stop-hook-rejected draft and its
 			// rewritten answer. Discard only per-segment assistant text state so
@@ -6597,6 +6615,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 					idleTimer.Reset(e.eventIdleTimeout)
 				}
 				stall.reset()
+				retries.reset()
 
 				slog.Info("processing queued message",
 					"session", sessionKey,

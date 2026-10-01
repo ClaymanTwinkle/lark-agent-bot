@@ -173,6 +173,16 @@ level = "info" # debug, info, warn, error
 # stall_notice_mins = 5         # default: 5 / 默认 5
 # stall_tool_notice_mins = 15   # default: 15 / 默认 15
 
+# Retry notice: when the agent keeps retrying a failed model request (network
+# error, rate limit, overload...), tell the user once per run of retries, with
+# the attempt and reason, at this attempt. Retries that will wait a minute or
+# more, or that got no response at all, are reported right away. Currently
+# reported by Claude Code. Set to 0 to disable.
+# 重试提醒：agent 连续重试失败的模型请求（网络错误、限流、过载等）时，在第几次重试
+# 提醒用户一次，并说明次数和原因；同一段连续重试只提醒一次。下次重试要等 1 分钟
+# 以上、或请求完全没有响应时立即提醒。目前由 Claude Code 上报。设为 0 禁用。
+# retry_notice_attempts = 3     # default: 3 / 默认 3
+
 # Absolute wall-clock cap per agent turn in minutes. Unlike idle_timeout_mins
 # (which resets on every event), this timer is never reset — it guarantees the
 # session is released even when a long bash command generates periodic tool events.

@@ -543,6 +543,15 @@ const (
 	MsgStallModel         MsgKey = "stall_model"
 	MsgStallTool          MsgKey = "stall_tool"
 
+	MsgRetryNotice           MsgKey = "retry_notice"
+	MsgRetryNextIn           MsgKey = "retry_next_in"
+	MsgRetryReasonRateLimit  MsgKey = "retry_reason_rate_limit"
+	MsgRetryReasonOverloaded MsgKey = "retry_reason_overloaded"
+	MsgRetryReasonAuth       MsgKey = "retry_reason_auth"
+	MsgRetryReasonServer     MsgKey = "retry_reason_server"
+	MsgRetryReasonNoResponse MsgKey = "retry_reason_no_response"
+	MsgRetryReasonNetwork    MsgKey = "retry_reason_network"
+
 	MsgUpgradeChecking    MsgKey = "upgrade_checking"
 	MsgUpgradeUpToDate    MsgKey = "upgrade_up_to_date"
 	MsgUpgradeAvailable   MsgKey = "upgrade_available"
@@ -1310,6 +1319,62 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "⏳ 正在執行 %s，已經 %d 分鐘沒有新輸出。如果卡住了，傳送 /stop 中止。",
 		LangJapanese:           "⏳ %s を実行中で、%d 分間新しい出力がありません。止まっている場合は /stop で中止してください。",
 		LangSpanish:            "⏳ %s lleva %d minutos ejecutándose sin salida nueva. Si está atascado, envía /stop para detenerlo.",
+	},
+	MsgRetryNotice: {
+		LangEnglish:            "⚠️ The model request failed and is being retried automatically (attempt %s, reason: %s%s). If every retry fails you will get an error; send /stop to give up now.",
+		LangChinese:            "⚠️ 模型接口请求失败，正在自动重试（第 %s 次，原因：%s%s）。全部重试失败会返回错误；不想等可以发 /stop 中止。",
+		LangTraditionalChinese: "⚠️ 模型介面請求失敗，正在自動重試（第 %s 次，原因：%s%s）。全部重試失敗會回傳錯誤；不想等可以傳送 /stop 中止。",
+		LangJapanese:           "⚠️ モデルへのリクエストが失敗したため自動で再試行しています（%s 回目、原因：%s%s）。すべて失敗した場合はエラーが返ります。待たない場合は /stop で中止してください。",
+		LangSpanish:            "⚠️ La solicitud al modelo falló y se está reintentando automáticamente (intento %s, motivo: %s%s). Si todos los reintentos fallan recibirás un error; envía /stop para abandonar ahora.",
+	},
+	MsgRetryNextIn: {
+		LangEnglish:            ", next try in %s",
+		LangChinese:            "，%s后再试",
+		LangTraditionalChinese: "，%s後再試",
+		LangJapanese:           "、%s後に再試行",
+		LangSpanish:            ", próximo intento en %s",
+	},
+	MsgRetryReasonRateLimit: {
+		LangEnglish:            "rate limited",
+		LangChinese:            "触发限流",
+		LangTraditionalChinese: "觸發限流",
+		LangJapanese:           "レート制限",
+		LangSpanish:            "límite de uso alcanzado",
+	},
+	MsgRetryReasonOverloaded: {
+		LangEnglish:            "service overloaded",
+		LangChinese:            "服务过载",
+		LangTraditionalChinese: "服務過載",
+		LangJapanese:           "サービス過負荷",
+		LangSpanish:            "servicio sobrecargado",
+	},
+	MsgRetryReasonAuth: {
+		LangEnglish:            "authentication failed",
+		LangChinese:            "认证失败",
+		LangTraditionalChinese: "認證失敗",
+		LangJapanese:           "認証失敗",
+		LangSpanish:            "autenticación fallida",
+	},
+	MsgRetryReasonServer: {
+		LangEnglish:            "server error",
+		LangChinese:            "服务端错误",
+		LangTraditionalChinese: "服務端錯誤",
+		LangJapanese:           "サーバーエラー",
+		LangSpanish:            "error del servidor",
+	},
+	MsgRetryReasonNoResponse: {
+		LangEnglish:            "no response for a long time",
+		LangChinese:            "长时间没有响应",
+		LangTraditionalChinese: "長時間沒有回應",
+		LangJapanese:           "長時間応答なし",
+		LangSpanish:            "sin respuesta durante mucho tiempo",
+	},
+	MsgRetryReasonNetwork: {
+		LangEnglish:            "network or unknown error",
+		LangChinese:            "网络或未知错误",
+		LangTraditionalChinese: "網路或未知錯誤",
+		LangJapanese:           "ネットワークまたは不明なエラー",
+		LangSpanish:            "error de red o desconocido",
 	},
 	MsgSessionNotStarted: {
 		LangEnglish:            "(new — not yet started)",

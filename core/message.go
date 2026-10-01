@@ -457,6 +457,30 @@ const (
 	EventError             EventType = "error"              // error occurred
 	EventPermissionRequest EventType = "permission_request" // agent requests permission via stdio protocol
 	EventThinking          EventType = "thinking"           // thinking/processing status
+	EventRetry             EventType = "retry"              // agent is retrying a failed model request; see Event.Retry
+)
+
+// RetryInfo describes an agent retrying a failed model API request.
+type RetryInfo struct {
+	Attempt     int           // 1-based number of the retry
+	MaxAttempts int           // 0 = unknown
+	Delay       time.Duration // wait before the next attempt
+	Status      int           // HTTP status of the failure; 0 = none (e.g. network error)
+	// Reason is the agent's failure category: RetryReasonRateLimit,
+	// RetryReasonOverloaded, RetryReasonAuth, RetryReasonServer, or empty
+	// when unknown (typically a network error).
+	Reason string
+	// NoResponse is set when the request was retried because it got no
+	// response at all.
+	NoResponse bool
+}
+
+// RetryInfo.Reason values.
+const (
+	RetryReasonRateLimit  = "rate_limit"
+	RetryReasonOverloaded = "overloaded"
+	RetryReasonAuth       = "auth"
+	RetryReasonServer     = "server_error"
 )
 
 // UserQuestion represents a structured question from AskUserQuestion.
@@ -495,6 +519,7 @@ type Event struct {
 	CacheReadInputTokens     int            // cache-read tokens (prior context retrieved from cache)
 	Metadata                 map[string]any // optional metadata from agent (e.g. compaction_continue)
 	Synthetic                bool           // true if this is a synthetic/generated message (not from real user)
+	Retry                    *RetryInfo     // populated for EventRetry
 }
 
 // HistoryEntry is one turn in a conversation.

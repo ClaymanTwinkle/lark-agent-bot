@@ -666,6 +666,9 @@ func main() {
 				stallNoticeDuration(cfg.StallToolNoticeMins, core.DefaultStallNoticeTool),
 			)
 		}
+		if cfg.RetryNoticeAttempts != nil {
+			engine.SetRetryNoticeAttempts(max(*cfg.RetryNoticeAttempts, 0))
+		}
 
 		// Wire busy-lock stale-break threshold (#1829)
 		if cfg.BusyTimeoutMins != nil {

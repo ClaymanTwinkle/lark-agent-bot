@@ -120,6 +120,10 @@ type Config struct {
 	// defaults 5 / 15.
 	StallNoticeMins     *int `toml:"stall_notice_mins,omitempty"`
 	StallToolNoticeMins *int `toml:"stall_tool_notice_mins,omitempty"`
+	// RetryNoticeAttempts: retry attempt of a failed model request at which
+	// the user is told the agent keeps failing to reach the model (once per
+	// run of retries); 0 = disabled; default 3.
+	RetryNoticeAttempts *int `toml:"retry_notice_attempts,omitempty"`
 	// WorkspaceIdleTimeoutMins controls the workspace idle reaper timeout
 	// (multi-workspace mode) for every engine in the process. 0 disables
 	// reaping. Default: 15 minutes. Defined as a top-level (process-global)

@@ -58,8 +58,12 @@ func (w *turnStallWatch) reset() {
 	w.arm()
 }
 
-// observe records an agent event and restarts the silence clock.
+// observe records an agent event and restarts the silence clock. A retry of a
+// failed model request is not progress, so it leaves the clock running.
 func (w *turnStallWatch) observe(ev Event) {
+	if ev.Type == EventRetry {
+		return
+	}
 	now := time.Now()
 	w.lastEvent = now
 	w.notified = false
@@ -144,4 +148,77 @@ func (w *turnStallWatch) notice(i18n *I18n, now time.Time) string {
 		return i18n.Tf(MsgStallTool, tool, int(now.Sub(w.lastEvent).Minutes()))
 	}
 	return i18n.Tf(MsgStallModel, int(now.Sub(w.lastEvent).Minutes()))
+}
+
+// DefaultRetryNoticeAttempts is the retry attempt at which the user is told
+// that the agent keeps failing to reach the model.
+const DefaultRetryNoticeAttempts = 3
+
+// turnRetryWatch decides when the agent's retries of a failed model request
+// are worth telling the user about: once per run of consecutive retries, when
+// they reach minAttempt, when the next attempt is at least a minute away, or
+// when the request got no response at all. It is owned by the turn's event
+// loop goroutine.
+type turnRetryWatch struct {
+	minAttempt int // 0 disables the notice
+	notified   bool
+}
+
+// observe records an agent event and reports whether it is a retry the user
+// should now hear about. Any real output ends the run of retries.
+func (w *turnRetryWatch) observe(ev Event) bool {
+	switch ev.Type {
+	case EventRetry:
+		r := ev.Retry
+		if w.minAttempt <= 0 || w.notified || r == nil {
+			return false
+		}
+		if r.Attempt >= w.minAttempt || r.Delay >= time.Minute || r.NoResponse {
+			w.notified = true
+			return true
+		}
+	case EventText, EventThinking:
+		if ev.Content != "" {
+			w.notified = false
+		}
+	case EventToolUse, EventToolResult, EventResult:
+		w.notified = false
+	}
+	return false
+}
+
+func (w *turnRetryWatch) reset() {
+	w.notified = false
+}
+
+// retryNotice describes a retry of a failed model request for the user.
+func retryNotice(i18n *I18n, r *RetryInfo) string {
+	attempt := fmt.Sprintf("%d", r.Attempt)
+	if r.MaxAttempts > 0 {
+		attempt = fmt.Sprintf("%d/%d", r.Attempt, r.MaxAttempts)
+	}
+	var reason MsgKey
+	switch {
+	case r.NoResponse:
+		reason = MsgRetryReasonNoResponse
+	case r.Reason == RetryReasonRateLimit:
+		reason = MsgRetryReasonRateLimit
+	case r.Reason == RetryReasonOverloaded:
+		reason = MsgRetryReasonOverloaded
+	case r.Reason == RetryReasonAuth:
+		reason = MsgRetryReasonAuth
+	case r.Reason == RetryReasonServer:
+		reason = MsgRetryReasonServer
+	default:
+		reason = MsgRetryReasonNetwork
+	}
+	why := i18n.T(reason)
+	if r.Status > 0 {
+		why += fmt.Sprintf(" (HTTP %d)", r.Status)
+	}
+	next := ""
+	if r.Delay >= time.Minute {
+		next = i18n.Tf(MsgRetryNextIn, formatDurationI18n(r.Delay, i18n.CurrentLang()))
+	}
+	return i18n.Tf(MsgRetryNotice, attempt, why, next)
 }

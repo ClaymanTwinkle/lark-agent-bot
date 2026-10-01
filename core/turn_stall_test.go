@@ -201,3 +201,80 @@ func TestTurnStallWatch_DisabledPhaseNeverFires(t *testing.T) {
 		t.Fatal("disabled tool phase returned a channel")
 	}
 }
+
+func TestTurnRetryWatch_NotifiesOncePerRunOfRetries(t *testing.T) {
+	w := &turnRetryWatch{minAttempt: 3}
+	retry := func(attempt int) Event {
+		return Event{Type: EventRetry, Retry: &RetryInfo{Attempt: attempt, MaxAttempts: 10, Delay: time.Second}}
+	}
+	for _, a := range []int{1, 2} {
+		if w.observe(retry(a)) {
+			t.Fatalf("notified at attempt %d, below the threshold", a)
+		}
+	}
+	if !w.observe(retry(3)) {
+		t.Fatal("not notified at the threshold attempt")
+	}
+	if w.observe(retry(4)) {
+		t.Fatal("notified twice in one run of retries")
+	}
+
+	// Real output ends the run; a content-less event does not.
+	w.observe(Event{Type: EventText, SessionID: "sid"})
+	if w.observe(retry(5)) {
+		t.Fatal("content-less event started a new run of retries")
+	}
+	w.observe(Event{Type: EventText, Content: "back"})
+	if !w.observe(retry(3)) {
+		t.Fatal("new run of retries not notified")
+	}
+}
+
+func TestTurnRetryWatch_LongWaitOrNoResponseNotifiesAtOnce(t *testing.T) {
+	long := &turnRetryWatch{minAttempt: 3}
+	if !long.observe(Event{Type: EventRetry, Retry: &RetryInfo{Attempt: 1, Delay: 2 * time.Minute}}) {
+		t.Fatal("a retry a minute or more away was not notified at once")
+	}
+	silent := &turnRetryWatch{minAttempt: 3}
+	if !silent.observe(Event{Type: EventRetry, Retry: &RetryInfo{Attempt: 1, NoResponse: true}}) {
+		t.Fatal("a retry after no response was not notified at once")
+	}
+	off := &turnRetryWatch{minAttempt: 0}
+	if off.observe(Event{Type: EventRetry, Retry: &RetryInfo{Attempt: 9, NoResponse: true}}) {
+		t.Fatal("disabled watch notified")
+	}
+}
+
+func TestRetryNotice_Text(t *testing.T) {
+	i18n := NewI18n(LangChinese)
+	got := retryNotice(i18n, &RetryInfo{Attempt: 3, MaxAttempts: 10, Delay: 3 * time.Minute, Status: 429, Reason: RetryReasonRateLimit})
+	if !strings.Contains(got, "第 3/10 次，原因：触发限流 (HTTP 429)，3分钟后再试）") {
+		t.Fatalf("notice = %q", got)
+	}
+	got = retryNotice(i18n, &RetryInfo{Attempt: 4, MaxAttempts: 10, Delay: 4 * time.Second})
+	if !strings.Contains(got, "第 4/10 次，原因：网络或未知错误）") {
+		t.Fatalf("notice = %q", got)
+	}
+	got = retryNotice(i18n, &RetryInfo{Attempt: 1, NoResponse: true, Reason: RetryReasonServer})
+	if !strings.Contains(got, "第 1 次，原因：长时间没有响应）") {
+		t.Fatalf("notice = %q", got)
+	}
+}
+
+func TestStallNotice_RetriesSendNoticeAndDoNotCountAsOutput(t *testing.T) {
+	tt := startStallTestTurn(t, 400*time.Millisecond, time.Hour, true)
+	// Retries every 100ms for over a second: if they counted as output the
+	// silence clock would never reach 400ms while they keep coming.
+	for a := 1; a <= 12; a++ {
+		tt.session.events <- Event{Type: EventRetry, Retry: &RetryInfo{Attempt: a, MaxAttempts: 10, Delay: time.Second, Status: 529, Reason: RetryReasonOverloaded}}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if got := tt.sentMatching(stallModelMarker); len(got) != 1 {
+		t.Fatalf("silence notices while retries kept coming = %d, want 1", len(got))
+	}
+	got := tt.sentMatching("service overloaded (HTTP 529)")
+	if len(got) != 1 || !strings.Contains(got[0], "attempt 3/10") {
+		t.Fatalf("retry notices = %#v, want one at the third attempt", got)
+	}
+	tt.finish(t)
+}

@@ -717,6 +717,20 @@ func (cs *claudeSession) handleSystem(raw map[string]any) {
 	if model, ok := raw["model"].(string); ok && model != "" {
 		cs.activeModel.Store(model)
 	}
+	if subtype, _ := raw["subtype"].(string); subtype == "api_retry" {
+		info := claudeRetryInfo(raw)
+		if info.Attempt == 0 {
+			slog.Warn("claudeSession: api_retry message without attempt; its shape may have changed", "raw", raw)
+		}
+		slog.Warn("claudeSession: model request failed, retrying",
+			"attempt", info.Attempt, "max_attempts", info.MaxAttempts, "status", info.Status,
+			"reason", info.Reason, "no_response", info.NoResponse, "delay", info.Delay)
+		select {
+		case cs.events <- core.Event{Type: core.EventRetry, Retry: info}:
+		case <-cs.ctx.Done():
+		}
+		return
+	}
 	if sid, ok := raw["session_id"].(string); ok && sid != "" {
 		cs.sessionID.Store(sid)
 		evt := core.Event{Type: core.EventText, SessionID: sid}
@@ -743,6 +757,37 @@ func (cs *claudeSession) handleSystem(raw map[string]any) {
 			cs.usageMu.Unlock()
 		}
 	})
+}
+
+// claudeRetryInfo parses a `type:"system", subtype:"api_retry"` message,
+// which Claude Code emits each time it retries a failed model request:
+// attempt, max_retries, retry_delay_ms, error_status (HTTP status or null),
+// error (failure category) and, for a request that got no response at all,
+// a no_response object.
+func claudeRetryInfo(raw map[string]any) *core.RetryInfo {
+	num := func(key string) int {
+		v, _ := raw[key].(float64)
+		return int(v)
+	}
+	info := &core.RetryInfo{
+		Attempt:     num("attempt"),
+		MaxAttempts: num("max_retries"),
+		Delay:       time.Duration(num("retry_delay_ms")) * time.Millisecond,
+		Status:      num("error_status"),
+	}
+	_, info.NoResponse = raw["no_response"].(map[string]any)
+	category, _ := raw["error"].(string)
+	switch category {
+	case "rate_limit":
+		info.Reason = core.RetryReasonRateLimit
+	case "overloaded":
+		info.Reason = core.RetryReasonOverloaded
+	case "authentication_failed", "cloud_credential_error":
+		info.Reason = core.RetryReasonAuth
+	case "server_error":
+		info.Reason = core.RetryReasonServer
+	}
+	return info
 }
 
 // claudeUsageFromTranscriptLine parses one JSONL transcript line and returns

@@ -1807,7 +1807,7 @@ func TestLoad_ParsesAgentSessionIdleTimeoutMins(t *testing.T) {
 }
 
 func TestLoad_ParsesStallNoticeMins(t *testing.T) {
-	configPath := writeConfigFixture(t, "stall_notice_mins = 3\nstall_tool_notice_mins = 0\n"+projectWithAgentSessionIdleTimeoutFixture)
+	configPath := writeConfigFixture(t, "stall_notice_mins = 3\nstall_tool_notice_mins = 0\nretry_notice_attempts = 5\n"+projectWithAgentSessionIdleTimeoutFixture)
 
 	cfg, err := Load(configPath)
 	if err != nil {
@@ -1818,6 +1818,9 @@ func TestLoad_ParsesStallNoticeMins(t *testing.T) {
 	}
 	if cfg.StallToolNoticeMins == nil || *cfg.StallToolNoticeMins != 0 {
 		t.Fatalf("stall_tool_notice_mins = %v, want 0", cfg.StallToolNoticeMins)
+	}
+	if cfg.RetryNoticeAttempts == nil || *cfg.RetryNoticeAttempts != 5 {
+		t.Fatalf("retry_notice_attempts = %v, want 5", cfg.RetryNoticeAttempts)
 	}
 }
 
