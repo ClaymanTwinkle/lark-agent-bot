@@ -239,6 +239,12 @@ type Platform struct {
 	// When nil, defaults to core.ProbeVideo. Indirected so unit tests don't
 	// need ffmpeg.
 	probeVideo func(ctx context.Context, video []byte, ext string) core.VideoMeta
+	// typingLedger records typing reactions until they are removed. Nil when
+	// no data directory is configured.
+	typingLedger *typingReactionLedger
+	// typingDeleteBackoff overrides defaultTypingDeleteBackoff. Indirected so
+	// unit tests don't wait seconds between attempts.
+	typingDeleteBackoff []time.Duration
 }
 
 // defaultImageBatchWindow is the quiet period after the last image in a
@@ -477,6 +483,8 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		callbackPath = "/feishu/webhook"
 	}
 	encryptKey, _ := opts["encrypt_key"].(string)
+	dataDir, _ := opts["cc_data_dir"].(string)
+	project, _ := opts["cc_project"].(string)
 
 	var clientOpts []lark.ClientOptionFunc
 	if domain != lark.FeishuBaseUrl {
@@ -516,6 +524,7 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		resourceDownloadHTTP:       &http.Client{Timeout: 60 * time.Second},
 		resourceChunkSize:          resourceChunkSize,
 		resourceMaxBytes:           defaultResourceMaxBytes,
+		typingLedger:               openTypingReactionLedger(typingReactionLedgerPath(dataDir, name, project, appID)),
 	}
 	if !useInteractiveCard {
 		base.self = base
@@ -573,6 +582,8 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 	p.mu.Lock()
 	p.handler = handler
 	p.mu.Unlock()
+
+	go p.sweepTypingReactions(context.Background())
 
 	// In webhook mode (private/self-hosted Feishu/Lark), startup must not depend
 	// on a successful bot-info API call. Older private deployments may not support
@@ -651,7 +662,7 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 			return nil // ignore reaction events (triggered by our own addReaction)
 		}).
 		OnP2MessageReactionDeletedV1(func(ctx context.Context, event *larkim.P2MessageReactionDeletedV1) error {
-			return nil // ignore reaction removal events (triggered by our own removeReaction)
+			return nil // ignore reaction removal events (triggered by our own removeTypingReaction)
 		}).
 		OnP2CardActionTrigger(func(ctx context.Context, event *callback.CardActionTriggerEvent) (*callback.CardActionTriggerResponse, error) {
 			// Fan out card actions: try each platform, return first non-nil response.
@@ -1061,26 +1072,10 @@ func (p *Platform) addReactionWithEmojiContext(ctx context.Context, messageID, e
 	return ""
 }
 
-func (p *Platform) removeReaction(messageID, reactionID string) {
-	if reactionID == "" || messageID == "" {
-		return
-	}
-	resp, err := p.client.Im.MessageReaction.Delete(context.Background(),
-		larkim.NewDeleteMessageReactionReqBuilder().
-			MessageId(messageID).
-			ReactionId(reactionID).
-			Build())
-	if err != nil {
-		slog.Debug(p.tag()+": remove reaction failed", "error", err)
-		return
-	}
-	if !resp.Success() {
-		slog.Debug(p.tag()+": remove reaction failed", "code", resp.Code, "msg", resp.Msg)
-	}
-}
-
 // StartTyping adds an emoji reaction to the user's message and returns a stop
-// function that removes the reaction when processing is complete.
+// function that removes the reaction when processing is complete. The
+// reaction is recorded in the typing ledger until it is removed, so one left
+// behind by a crash or a failed delete is cleaned up on the next start.
 func (p *Platform) StartTyping(ctx context.Context, rctx any) (stop func()) {
 	rc, ok := rctx.(replyContext)
 	if !ok || rc.messageID == "" {
@@ -1093,8 +1088,17 @@ func (p *Platform) StartTyping(ctx context.Context, rctx any) (stop func()) {
 		return func() {}
 	}
 	reactionID := p.addReaction(rc.messageID)
+	if reactionID == "" {
+		return func() {}
+	}
+	r := typingReaction{MessageID: rc.messageID, ReactionID: reactionID, AddedAt: time.Now()}
+	p.typingLedger.add(r)
 	return func() {
-		go p.removeReaction(rc.messageID, reactionID)
+		go func() {
+			if err := p.removeTypingReaction(context.Background(), r); err != nil {
+				slog.Warn(p.tag()+": typing reaction not removed, will retry on next start", "message_id", r.MessageID, "error", err)
+			}
+		}()
 	}
 }
 
