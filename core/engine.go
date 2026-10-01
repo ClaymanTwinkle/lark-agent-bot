@@ -30,6 +30,10 @@ import (
 const maxPlatformMessageLen = 4000
 const defaultMaxQueuedMessages = 5 // default cap for queued messages per session
 
+// queuedMarkTimeout bounds QueuedIndicator.MarkQueued, which runs while the
+// session state is locked.
+const queuedMarkTimeout = 5 * time.Second
+
 // defaultPendingRestartTimeout is how long the post-restart notify
 // dispatcher waits for the target platform to reach ready before
 // dropping the notify with a warning. 10s covers the typical 2-3s
@@ -550,6 +554,22 @@ type queuedMessage struct {
 	msgSessionKey     string // session key for extracting chat ID
 	channelKey        string // platform-provided channel identifier (preferred over sessionKey extraction)
 	userMessageTimeMs int64  // Feishu create_time ms (optional); see Message.UserMessageTimeMs
+	clearMark         func() // removes the platform's queued mark; nil when none was shown
+}
+
+// leaveQueue removes the queued mark once the message leaves the queue,
+// whether it is about to be processed or was dropped.
+func (q queuedMessage) leaveQueue() {
+	if q.clearMark != nil {
+		q.clearMark()
+	}
+}
+
+// leaveQueueAll calls leaveQueue on each message.
+func leaveQueueAll(queue []queuedMessage) {
+	for _, q := range queue {
+		q.leaveQueue()
+	}
 }
 
 // interactiveState tracks a running interactive agent session and its permission state.
@@ -2623,6 +2643,7 @@ func (e *Engine) removeQueuedMessageByID(messageID string) (string, queuedMessag
 		if removed {
 			state.pendingMessages = filtered
 			state.mu.Unlock()
+			recalled.leaveQueue()
 			return sessionKey, recalled, true
 		}
 		state.mu.Unlock()
@@ -3449,6 +3470,21 @@ func (e *Engine) queueMessageForBusySession(p Platform, msg *Message, interactiv
 		e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgQueueFull), depth))
 		return true // handled: queue-full reply sent
 	}
+	// Mark before appending, so the clear func is in place by the time the
+	// event loop can take the message (it needs state.mu, held here).
+	var clearMark func()
+	marked := false
+	if qi, ok := p.(QueuedIndicator); ok {
+		ctx, cancel := context.WithTimeout(e.ctx, queuedMarkTimeout)
+		clear, ok := qi.MarkQueued(ctx, msg.ReplyCtx)
+		cancel()
+		if ok {
+			marked = true
+			if clear != nil {
+				clearMark = sync.OnceFunc(clear)
+			}
+		}
+	}
 	state.pendingMessages = append(state.pendingMessages, queuedMessage{
 		messageID:         msg.MessageID,
 		platform:          p,
@@ -3463,6 +3499,7 @@ func (e *Engine) queueMessageForBusySession(p Platform, msg *Message, interactiv
 		msgSessionKey:     msg.SessionKey,
 		channelKey:        msg.ChannelKey,
 		userMessageTimeMs: msg.UserMessageTimeMs,
+		clearMark:         clearMark,
 	})
 	runMessageAccepted(msg)
 	queueDepth := len(state.pendingMessages)
@@ -3479,8 +3516,11 @@ func (e *Engine) queueMessageForBusySession(p Platform, msg *Message, interactiv
 		"session", msg.SessionKey,
 		"user", msg.UserName,
 		"queue_depth", queueDepth,
+		"marked", marked,
 	)
-	e.reply(p, msg.ReplyCtx, e.i18n.T(MsgMessageQueued))
+	if !marked {
+		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgMessageQueued))
+	}
 	return true
 }
 
@@ -6099,6 +6139,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			state.mu.Lock()
 			droppedStale := 0
 			for len(state.pendingMessages) > 0 && e.isQueuedUserMessageStaleForDrainLocked(state, state.pendingMessages[0].userMessageTimeMs) {
+				state.pendingMessages[0].leaveQueue()
 				state.pendingMessages = state.pendingMessages[1:]
 				droppedStale++
 			}
@@ -6120,18 +6161,25 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 				state.mu.Unlock()
 
 				// Keep the previous message in progress if it left background
-				// tasks running; otherwise stop its typing indicator.
-				holdTurnForBackground(p)
+				// tasks running; otherwise stop its typing indicator and mark
+				// it done, as a turn without a queued follow-up would be.
+				held := holdTurnForBackground(p)
 				bgBaseline = state.pendingBackgroundTasks()
 				if stopTyping != nil {
 					stopTyping()
 					stopTyping = nil
 				}
+				if !held && !isSilent && !hasRichCard {
+					if doneTI, ok := p.(TypingIndicatorDone); ok {
+						doneTI.AddDoneReaction(replyCtx)
+					}
+				}
+				queued.leaveQueue()
 				// Start a new typing indicator for the queued message's context
 				if ti, ok := queued.platform.(TypingIndicator); ok {
 					stopTyping = ti.StartTyping(e.ctx, queued.replyCtx)
 				}
-				// Agent continues working — don't add done reaction for this turn.
+				// The queued turn sets its own done reaction when it ends.
 				doneReaction = nil
 
 				// Drain stale events before starting the next turn. Between
@@ -6459,6 +6507,7 @@ func takePendingMessages(state *interactiveState) []queuedMessage {
 	defer state.mu.Unlock()
 	pending := state.pendingMessages
 	state.pendingMessages = nil
+	leaveQueueAll(pending)
 	return pending
 }
 
@@ -6467,6 +6516,7 @@ func (e *Engine) notifyDroppedQueuedMessages(state *interactiveState, reason err
 	remaining := state.pendingMessages
 	state.pendingMessages = nil
 	state.mu.Unlock()
+	leaveQueueAll(remaining)
 	for _, q := range remaining {
 		e.send(q.platform, q.replyCtx, fmt.Sprintf(e.i18n.T(MsgError), reason))
 	}
@@ -6486,6 +6536,7 @@ func (e *Engine) drainPendingMessages(state *interactiveState, session *Session,
 		}
 		droppedStale := 0
 		for len(state.pendingMessages) > 0 && e.isQueuedUserMessageStaleForDrainLocked(state, state.pendingMessages[0].userMessageTimeMs) {
+			state.pendingMessages[0].leaveQueue()
 			state.pendingMessages = state.pendingMessages[1:]
 			droppedStale++
 		}
@@ -6508,6 +6559,7 @@ func (e *Engine) drainPendingMessages(state *interactiveState, session *Session,
 		state.fromVoice = queued.fromVoice
 		state.currentTurnUserMessageTimeMs = queued.userMessageTimeMs
 		state.mu.Unlock()
+		queued.leaveQueue()
 
 		e.i18n.DetectAndSet(queued.content)
 		prompt := e.buildSenderPrompt(queued.content, queued.userID, queued.userName, queued.msgPlatform, queued.msgSessionKey, queued.channelKey)

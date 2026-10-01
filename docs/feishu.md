@@ -155,8 +155,9 @@ app_secret = "QhkMpxxxxxxxxxxxxxxxxxxxx"
 # group_chat_history_share = false  # 可选：共享未 @ 机器人的群消息作为下一次触发的上下文；消息本身不会触发回复
 # progress_style = "legacy"  # 可选：legacy | compact | card
 # ack_emoji = "Get"           # 可选：消息被接受处理或入队时立即添加并保留的确认表情；默认禁用
+# queued_emoji = "OneSecond"   # 可选：消息排队等待时的表情（默认“稍等”），代替文字提示，开始处理时移除；设为 "none" 恢复文字提示
 # reaction_emoji = "OnIt"      # 可选：agent 处理期间的临时表情，结束后移除
-# done_emoji = "none"          # 可选：agent 完成回复后添加的表情回复（如 "Done"）；设为 "none" 可禁用
+# done_emoji = "none"          # 可选：agent 完成回复后添加的表情回复（如 "DONE"）；设为 "none" 可禁用
 # image_batch_window_ms = 500  # 可选：连续多图合批窗口（默认 500ms，详见下文）
 ```
 
@@ -176,7 +177,10 @@ app_secret = "QhkMpxxxxxxxxxxxxxxxxxxxx"
 > Claude Code 的后台任务（`run_in_background` 的命令、后台 subagent）在本轮回复发出后还会继续跑。这时 `reaction_emoji` 会留在发起这些任务的那条消息上，直到任务都结束、Claude 接着处理完结果，才换成 `done_emoji`；Claude 因任务结束自己开始的新一轮，也会在最近一条消息上显示处理中。消息只等自己这一轮发起的任务，所以一直不退出的后台命令（如开发服务器）只会让发起它的那条消息保持处理中。还有后台任务在跑时，`agent_session_idle_timeout_mins`、`workspace_idle_timeout_mins` 和 `reset_on_idle_mins` 都不会把这个会话当成空闲来关闭；`/stop` 会撤掉处理中表情。
 > **English:** Claude Code background tasks (`run_in_background` commands, background subagents) keep running after the turn's reply is sent. The `reaction_emoji` stays on the message whose turn launched them until they have all finished and Claude has handled their results; only then does `done_emoji` replace it. A turn Claude starts on its own because a task finished also shows the latest message in progress. A message waits only for the tasks its own turn launched, so a command that never exits (such as a dev server) keeps only that one message in progress. While background tasks run, `agent_session_idle_timeout_mins`, `workspace_idle_timeout_mins` and `reset_on_idle_mins` do not treat the session as idle; `/stop` clears the processing reaction.
 
-> `done_emoji` 设置后，agent 每次完成回复时会在用户消息上添加指定表情（如 `"Done"` → ✅）。先清理临时处理表情（与接收确认相同的表情会保留），再添加 done 表情。在 quiet 模式下特别有用，因为飞书卡片原地更新不触发推送，done 表情可以通知用户 agent 已完成。设为 `"none"` 或不配置则禁用。
+> 上一条消息还在处理时又发来新消息，新消息会排队，并加上 `queued_emoji` 表情（默认 `"OneSecond"`，即“稍等”），不再回复“消息已收到，将在当前任务完成后处理”。轮到它处理时撤掉这个表情、换上 `reaction_emoji`；因 `/stop`、`/new`、撤回、会话出错等原因被丢弃时也会撤掉。它和处理中表情一样记在上面的数据目录文件里，进程中途退出留下的会在下次启动时清掉。表情加不上（如缺少权限）时退回文字提示；队列已满的提示始终是文字。`queued_emoji` 与 `reaction_emoji` 相同时无法区分排队和处理中，会退回文字提示。设为 `"none"` 恢复文字提示。
+> **English:** A message that arrives while the previous one is still being processed is queued and gets the `queued_emoji` reaction (default `"OneSecond"`) instead of the "will process after the current task finishes" text. The reaction is removed when the message starts processing (and `reaction_emoji` takes over) or is dropped (`/stop`, `/new`, recall, session error). It is recorded in the same data-directory file as the processing reaction, so one left behind by a crash is removed on the next start. If the reaction cannot be added (for example, missing permission), the text notice is sent instead; the queue-full notice is always text. A `queued_emoji` equal to `reaction_emoji` falls back to the text notice, since queued and processing would look the same. Set `"none"` to restore the text notice.
+
+> `done_emoji` 设置后，agent 每次完成回复时会在用户消息上添加指定表情（如 `"DONE"` → ✅）。后面还有排队消息时，上一条也会在接着处理下一条之前加上完成表情。先清理临时处理表情（与接收确认相同的表情会保留），再添加 done 表情。在 quiet 模式下特别有用，因为飞书卡片原地更新不触发推送，done 表情可以通知用户 agent 已完成。设为 `"none"` 或不配置则禁用。
 > `image_batch_window_ms` 控制连续多张图片合并成一条 agent 消息的等待窗口（默认 500ms）。飞书手机端一次连发多张图时，每张图是独立事件；lark-agent-bot 会在窗口内将它们合并成一条多图消息再分发给 agent。如果你的网络/设备发送间隔超过 500ms 且仍被拆成多轮回复（每张图独立处理），可调高到 800–1200ms；如果以单图为主、希望响应更快，可适当调低。设为 `0` 时回退到默认 500ms。
 
 ---
@@ -218,7 +222,7 @@ app_secret = "QhkMpxxxxxxxxxxxxxxxxxxxx"
 | 更新消息 | `im:message:update` | 流式输出、进度等消息的原地更新 |
 | 获取单聊、群组消息 | `im:message:readonly` | 读取被引用 / 合并转发的消息内容 |
 | 获取与上传图片或文件资源 | `im:resource` | 接收用户发来的图片 / 文件；发送图片、文件、语音、视频（包括 agent 调用 `lark-agent-bot send`） |
-| 发送、删除消息表情回复 | `im:message.reactions:write_only` | 处理中表情（`reaction_emoji`）和完成表情（`done_emoji`） |
+| 发送、删除消息表情回复 | `im:message.reactions:write_only` | 排队表情（`queued_emoji`）、处理中表情（`reaction_emoji`）和完成表情（`done_emoji`） |
 | 创建与更新卡片 | `cardkit:card:write` | 流式卡片 |
 | 查看群信息 | `im:chat:read` | 读取群信息 |
 

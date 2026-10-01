@@ -1120,10 +1120,12 @@ app_secret = "your-feishu-app-secret"
 #                           # 设为 true 时，仅响应群聊消息，忽略私聊（P2P）消息（默认 false）
 # ack_emoji = "Get"        # Immediate persistent receipt when accepted for processing/queueing; omitted/"none" disables
 #                           # 消息被接受处理或入队时立即添加并保留的确认表情；不配置或设为 "none" 可禁用
+# queued_emoji = "OneSecond" # Reaction on a message queued behind a running turn, replacing the text notice (default: "OneSecond"); "none" restores the text notice
+#                           # 消息排在正在处理的任务后面时添加的表情，代替文字提示（默认 "OneSecond" 稍等），开始处理时移除；设为 "none" 恢复文字提示
 # reaction_emoji = "OnIt"  # Temporary reaction while the agent is processing (default: "OnIt"); "none" disables
 #                           # Agent 处理期间的临时表情（默认 "OnIt"），结束后移除；设为 "none" 可禁用
-# done_emoji = "none"       # Emoji reaction when agent finishes a reply (e.g. "Done"); set to "none" to disable
-#                           # Agent 完成回复后添加的表情回复（如 "Done"）；设为 "none" 可禁用
+# done_emoji = "none"       # Emoji reaction when agent finishes a reply (e.g. "DONE"); set to "none" to disable
+#                           # Agent 完成回复后添加的表情回复（如 "DONE"）；设为 "none" 可禁用
 # group_reply_all = false   # If true, respond to ALL group messages without requiring @mention
 #                           # 设为 true 时，群聊中无需 @机器人 也会响应所有消息（默认 false）
 # share_session_in_channel = false  # If true, all users in a group share one agent session
@@ -1187,6 +1189,7 @@ app_secret = "your-feishu-app-secret"
 # encrypt_key = ""               # Event encrypt key (optional) / 事件加密密钥（可选）
 # enable_feishu_card = true
 # allow_from = "*"
+# queued_emoji = "OneSecond"
 # reaction_emoji = "OnIt"
 # done_emoji = "none"
 # progress_style = "legacy"  # legacy | compact | card

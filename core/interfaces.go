@@ -234,6 +234,17 @@ type TypingIndicatorDone interface {
 	AddDoneReaction(replyCtx any)
 }
 
+// QueuedIndicator is an optional interface for platforms that can mark a
+// message waiting behind a running turn (e.g. with an emoji reaction). The
+// engine then skips its text notice for the queued message. ok is false when
+// no mark was shown, and the engine falls back to the text notice. The
+// engine calls clear once the message leaves the queue, whether it is
+// processed or dropped, sometimes with the session state locked: clear must
+// not block.
+type QueuedIndicator interface {
+	MarkQueued(ctx context.Context, replyCtx any) (clear func(), ok bool)
+}
+
 // AtMentionSender is an optional interface for platforms that support @mention in
 // reply messages (e.g. DingTalk). Platforms that implement this interface can
 // include @user notifications when replying in group chats.

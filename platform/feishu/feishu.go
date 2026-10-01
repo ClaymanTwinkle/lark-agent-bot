@@ -128,6 +128,7 @@ type Platform struct {
 	reactionEmoji              string
 	ackEmoji                   string
 	doneEmoji                  string
+	queuedEmoji                string
 	allowFrom                  string
 	allowChat                  string
 	groupOnly                  bool
@@ -379,6 +380,7 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 	if doneEmoji == "none" {
 		doneEmoji = ""
 	}
+	queuedEmoji := parseQueuedEmoji(name, opts, reactionEmoji)
 	allowFrom, _ := opts["allow_from"].(string)
 	core.CheckAllowFrom(name, allowFrom)
 	allowChat, _ := opts["allow_chat"].(string)
@@ -501,6 +503,7 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		reactionEmoji:              reactionEmoji,
 		ackEmoji:                   ackEmoji,
 		doneEmoji:                  doneEmoji,
+		queuedEmoji:                queuedEmoji,
 		allowFrom:                  allowFrom,
 		allowChat:                  allowChat,
 		groupOnly:                  groupOnly,
