@@ -24,13 +24,14 @@ func normalizeWorkspacePath(path string) string {
 }
 
 // workspaceState holds the runtime state for a single workspace.
+// lastActivity tracks messages and relays addressed to the workspace; the
+// work of its agent sessions is tracked on the sessions (see sessionWork).
 type workspaceState struct {
 	mu           sync.Mutex
 	workspace    string
 	sessions     *SessionManager
 	agent        Agent
 	lastActivity time.Time
-	activeTurns  int
 }
 
 func newWorkspaceState(workspace string) *workspaceState {
@@ -44,28 +45,6 @@ func (ws *workspaceState) Touch() {
 	ws.mu.Lock()
 	ws.lastActivity = time.Now()
 	ws.mu.Unlock()
-}
-
-func (ws *workspaceState) BeginTurn() {
-	ws.mu.Lock()
-	ws.activeTurns++
-	ws.lastActivity = time.Now()
-	ws.mu.Unlock()
-}
-
-func (ws *workspaceState) EndTurn() {
-	ws.mu.Lock()
-	if ws.activeTurns > 0 {
-		ws.activeTurns--
-	}
-	ws.lastActivity = time.Now()
-	ws.mu.Unlock()
-}
-
-func (ws *workspaceState) HasActiveTurn() bool {
-	ws.mu.Lock()
-	defer ws.mu.Unlock()
-	return ws.activeTurns > 0
 }
 
 func (ws *workspaceState) LastActivity() time.Time {
@@ -135,24 +114,36 @@ func (p *workspacePool) GetOrCreate(workspace string) *workspaceState {
 	return s
 }
 
-// ReapIdle removes and returns workspace paths that have been idle longer than idleTimeout.
+// ReapIdle removes and returns the workspaces idle longer than idleTimeout:
+// no message for that long, and not in use according to inUse, which gets the
+// cutoff time (sessions busy, or done working after it, keep the workspace).
 // A zero idleTimeout disables reaping entirely.
-func (p *workspacePool) ReapIdle() []string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.idleTimeout <= 0 {
-		return nil
+func (p *workspacePool) ReapIdle(inUse func(workspace string, cutoff time.Time) bool) []string {
+	p.mu.RLock()
+	timeout := p.idleTimeout
+	var candidates []string
+	cutoff := time.Now().Add(-timeout)
+	if timeout > 0 {
+		for path, state := range p.states {
+			if state.LastActivity().Before(cutoff) {
+				candidates = append(candidates, path)
+			}
+		}
 	}
-	cutoff := time.Now().Add(-p.idleTimeout)
+	p.mu.RUnlock()
+
+	// inUse looks at the engine's sessions; ask it without holding the pool.
 	var reaped []string
-	for path, state := range p.states {
-		if state.HasActiveTurn() {
+	for _, path := range candidates {
+		if inUse != nil && inUse(path, cutoff) {
 			continue
 		}
-		if state.LastActivity().Before(cutoff) {
-			reaped = append(reaped, path)
+		p.mu.Lock()
+		if state, ok := p.states[path]; ok && state.LastActivity().Before(cutoff) {
 			delete(p.states, path)
+			reaped = append(reaped, path)
 		}
+		p.mu.Unlock()
 	}
 	return reaped
 }

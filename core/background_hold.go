@@ -75,18 +75,27 @@ func (s *interactiveState) pendingBackgroundTasks() map[string]struct{} {
 	return pendingBackgroundTasks(as)
 }
 
-// hasBackgroundWorkLocked reports whether the agent still works outside a
-// foreground turn: background tasks are running, or a message is still held
-// for them, which includes a follow-up turn the agent started on its own.
-// Such a session is not idle. s.mu must be held.
-func (s *interactiveState) hasBackgroundWorkLocked() bool {
-	return len(s.backgroundHolds) > 0 || len(pendingBackgroundTasks(s.agentSession)) > 0
+// noteTurnStart records the background tasks running before a turn's prompt
+// is sent, so the turn tells its own tasks from older ones however soon the
+// agent reports them.
+func (s *interactiveState) noteTurnStart() {
+	tasks := s.pendingBackgroundTasks()
+	s.mu.Lock()
+	s.turnStartTasks, s.turnStartNoted = tasks, true
+	s.mu.Unlock()
 }
 
-func (s *interactiveState) hasBackgroundWork() bool {
+// takeTurnStart returns what noteTurnStart recorded for the turn now
+// starting, or the tasks running now when nothing was recorded.
+func (s *interactiveState) takeTurnStart() map[string]struct{} {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.hasBackgroundWorkLocked()
+	tasks, noted := s.turnStartTasks, s.turnStartNoted
+	s.turnStartTasks, s.turnStartNoted = nil, false
+	s.mu.Unlock()
+	if noted {
+		return tasks
+	}
+	return s.pendingBackgroundTasks()
 }
 
 // holdForBackground keeps the message of a turn that just ended marked in

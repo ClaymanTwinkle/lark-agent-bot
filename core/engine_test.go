@@ -9621,7 +9621,7 @@ func TestDrainOrphanedQueue_UsesWorkspaceSessionManager(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		e.drainOrphanedQueue(session, wsSessions, key, agent, "", 0)
+		e.drainOrphanedQueue(session, wsSessions, key, agent, 0)
 		close(done)
 	}()
 
@@ -14351,7 +14351,7 @@ func TestUnsolicitedReader_RelaysEventResult(t *testing.T) {
 	e.interactiveStates[iKey] = state
 	e.interactiveMu.Unlock()
 
-	e.startUnsolicitedReader(state, session, sessions, iKey, "")
+	e.startUnsolicitedReader(state, session, sessions, iKey)
 	defer e.stopUnsolicitedReader(state)
 
 	// Send only EventResult (no EventText) to ensure the reader uses EventResult.Content.
@@ -14418,7 +14418,7 @@ func TestUnsolicitedReader_ResetsIdleCloseOnEventResult(t *testing.T) {
 	state.agentSessionIdleToken = 42
 	state.mu.Unlock()
 
-	e.startUnsolicitedReader(state, session, sessions, iKey, "")
+	e.startUnsolicitedReader(state, session, sessions, iKey)
 	defer e.stopUnsolicitedReader(state)
 
 	// Send an EventResult — this is the trigger for re-scheduling.
@@ -14479,7 +14479,7 @@ func TestUnsolicitedReader_StopsOnCancel(t *testing.T) {
 		eventsNeedResync: false,
 	}
 
-	e.startUnsolicitedReader(state, session, sessions, "test:ch1:u1", "")
+	e.startUnsolicitedReader(state, session, sessions, "test:ch1:u1")
 
 	// Capture the done channel before stop nils it.
 	state.mu.Lock()
@@ -14525,7 +14525,7 @@ func TestUnsolicitedReader_SetsResyncOnChannelClose(t *testing.T) {
 		eventsNeedResync: false,
 	}
 
-	e.startUnsolicitedReader(state, session, sessions, "test:close:u1", "")
+	e.startUnsolicitedReader(state, session, sessions, "test:close:u1")
 
 	state.mu.Lock()
 	doneCh := state.unsolicitedDone
@@ -14567,7 +14567,7 @@ func TestUnsolicitedReader_SetsResyncOnEventError(t *testing.T) {
 		eventsNeedResync: false,
 	}
 
-	e.startUnsolicitedReader(state, session, sessions, "test:error:u1", "")
+	e.startUnsolicitedReader(state, session, sessions, "test:error:u1")
 
 	state.mu.Lock()
 	doneCh := state.unsolicitedDone
@@ -14633,7 +14633,7 @@ func TestUnsolicitedReader_PermissionDeny(t *testing.T) {
 		approveAll:       false,
 	}
 
-	e.startUnsolicitedReader(state, session, sessions, "test:perm:u1", "")
+	e.startUnsolicitedReader(state, session, sessions, "test:perm:u1")
 
 	// Send a permission request.
 	permRecorder.events <- Event{
@@ -14765,7 +14765,7 @@ func TestCleanupInteractiveState_StopsUnsolicitedReader(t *testing.T) {
 	e.interactiveStates[iKey] = state
 	e.interactiveMu.Unlock()
 
-	e.startUnsolicitedReader(state, session, sessions, iKey, "")
+	e.startUnsolicitedReader(state, session, sessions, iKey)
 
 	// Capture the done channel before cleanup nils it.
 	state.mu.Lock()
@@ -14828,7 +14828,7 @@ func TestReapIdle_DisabledWhenZeroTimeout(t *testing.T) {
 	ws := pool.GetOrCreate("/test/workspace")
 	ws.Touch()
 	// Even with an existing workspace, zero timeout disables reaping.
-	reaped := pool.ReapIdle()
+	reaped := pool.ReapIdle(nil)
 	if len(reaped) != 0 {
 		t.Errorf("expected no reaping with zero timeout, got %v", reaped)
 	}

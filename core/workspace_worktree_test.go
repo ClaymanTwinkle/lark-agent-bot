@@ -106,12 +106,28 @@ func TestWorktreeCommand_CreateListSwitchRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ws := c.e.workspacePool.GetOrCreate(wt)
-	ws.BeginTurn()
+	// A session working there, in a turn or with background tasks left
+	// running, keeps the worktree: removing it would kill that work.
+	busy := &interactiveState{agentSession: newControllableSession("wt-busy"), workspaceDir: wt}
+	endTurn := busy.beginTurn()
+	c.e.interactiveMu.Lock()
+	c.e.interactiveStates["busy"] = busy
+	c.e.interactiveMu.Unlock()
 	if got := c.run("/ws wt rm feat-a"); !strings.Contains(got, "still running") {
 		t.Fatalf("busy remove reply = %q", got)
 	}
-	ws.EndTurn()
+	endTurn()
+	bg := newBgTaskSession()
+	bg.setTasks("survey")
+	c.e.interactiveMu.Lock()
+	c.e.interactiveStates["busy"] = &interactiveState{agentSession: bg, workspaceDir: wt}
+	c.e.interactiveMu.Unlock()
+	if got := c.run("/ws wt rm feat-a"); !strings.Contains(got, "still running") {
+		t.Fatalf("remove with background tasks running reply = %q", got)
+	}
+	c.e.interactiveMu.Lock()
+	delete(c.e.interactiveStates, "busy")
+	c.e.interactiveMu.Unlock()
 
 	live := newControllableSession("wt-session")
 	liveKey := wt + ":" + c.msg.SessionKey

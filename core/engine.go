@@ -592,10 +592,22 @@ type interactiveState struct {
 	// turn ended because background tasks they launched still run; see
 	// backgroundHold.
 	backgroundHolds []*backgroundHold
+	// turnStartTasks are the background tasks running before the next turn's
+	// prompt was sent (turnStartNoted); see noteTurnStart.
+	turnStartTasks map[string]struct{}
+	turnStartNoted bool
+
+	// What the agent is doing; see sessionWork.
+	turns       int       // user, scheduled, queued or compress turns running
+	agentTurn   bool      // a turn the agent started on its own is running
+	workEndedAt time.Time // when the last turn of either kind ended
 
 	// agentSessionIdleCancel 取消当前会话的 idle 关闭计时器。
 	agentSessionIdleCancel context.CancelFunc
 	agentSessionIdleToken  uint64
+	// idleCloseKeptFor is why the last idle close left the session alive,
+	// so a session that stays busy for hours logs it once, not every time.
+	idleCloseKeptFor sessionWork
 
 	// eventsNeedResync is true when buffered events should be drained before
 	// the next turn (e.g. after an abnormal exit). Defaults to true (safe);
@@ -871,23 +883,13 @@ func (e *Engine) reapIdleWorkspaces() {
 		return
 	}
 
-	// An agent still working in the background keeps its workspace alive:
-	// reaping would close the agent and kill that work.
-	e.interactiveMu.Lock()
-	var busy []string
-	for _, state := range e.interactiveStates {
-		if state.workspaceDir != "" && state.hasBackgroundWork() {
-			busy = append(busy, state.workspaceDir)
+	reaped := e.workspacePool.ReapIdle(func(dir string, cutoff time.Time) bool {
+		inUse, why := e.workspaceInUse(dir, cutoff)
+		if why != workIdle {
+			slog.Debug("workspace not reaped: a session is busy", "workspace", dir, "work", why)
 		}
-	}
-	e.interactiveMu.Unlock()
-	for _, dir := range busy {
-		if ws := e.workspacePool.Get(dir); ws != nil {
-			ws.Touch()
-		}
-	}
-
-	reaped := e.workspacePool.ReapIdle()
+		return inUse
+	})
 	if len(reaped) == 0 {
 		return
 	}
@@ -3315,7 +3317,7 @@ func (e *Engine) handleMessage(p Platform, msg *Message) {
 			// and the queue append. Re-try TryLock — if it succeeds, no one is
 			// draining the queue so we must start a processor ourselves.
 			if g, ok := session.TryLock(); ok {
-				go e.drainOrphanedQueue(session, sessions, interactiveKey, agent, resolvedWorkspace, g)
+				go e.drainOrphanedQueue(session, sessions, interactiveKey, agent, g)
 			}
 			return
 		}
@@ -3407,15 +3409,17 @@ func (e *Engine) maybeAutoResetSessionOnIdle(p Platform, msg *Message, sessions 
 		return nil, 0
 	}
 
-	// The user was away, but the agent was not: work it still runs in the
-	// background would die with the reset.
+	// The user was away, but the agent may not have been: whatever it still
+	// works on (background tasks, a turn of its own) would die with the reset.
 	e.interactiveMu.Lock()
 	idleState := e.interactiveStates[interactiveKey]
 	e.interactiveMu.Unlock()
-	if idleState != nil && idleState.hasBackgroundWork() {
-		slog.Info("idle session not reset: agent still has background work",
-			"session_key", msg.SessionKey, "session_id", session.ID, "idle_for", time.Since(lastActive))
-		return nil, 0
+	if idleState != nil {
+		if why := idleState.work(); why != workIdle {
+			slog.Info("idle session not reset: agent still busy",
+				"session_key", msg.SessionKey, "session_id", session.ID, "idle_for", time.Since(lastActive), "work", why)
+			return nil, 0
+		}
 	}
 
 	slog.Info("auto-resetting idle session",
@@ -3555,7 +3559,7 @@ func (e *Engine) ensureInteractiveStateForQueueing(key string, p Platform, reply
 // has already exited. It processes all pending messages in the state, similar
 // to the drain loop in processInteractiveMessageWith but as a standalone
 // goroutine.
-func (e *Engine) drainOrphanedQueue(session *Session, sessions *SessionManager, interactiveKey string, agent Agent, workspaceDir string, lockGen uint64) {
+func (e *Engine) drainOrphanedQueue(session *Session, sessions *SessionManager, interactiveKey string, agent Agent, lockGen uint64) {
 	unlocked := false
 	defer func() {
 		if !unlocked {
@@ -3578,14 +3582,16 @@ func (e *Engine) drainOrphanedQueue(session *Session, sessions *SessionManager, 
 	// from Events() and we must not have concurrent readers.
 	e.stopUnsolicitedReader(state)
 
+	endTurn := state.beginTurn()
 	unlocked = e.drainPendingMessages(state, session, sessions, interactiveKey, lockGen)
+	endTurn()
 
 	// Restart unsolicited reader if the session is still alive and clean.
 	state.mu.Lock()
 	alive := state.agentSession != nil && state.agentSession.Alive() && !state.stopped && !state.eventsNeedResync
 	state.mu.Unlock()
 	if alive {
-		e.startUnsolicitedReader(state, session, sessions, interactiveKey, workspaceDir)
+		e.startUnsolicitedReader(state, session, sessions, interactiveKey)
 	}
 }
 
@@ -4071,11 +4077,10 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 		return
 	}
 	e.cancelAgentSessionIdleClose(state)
+	defer state.beginTurn()()
 
 	if workspaceDir != "" && e.workspacePool != nil {
-		ws := e.workspacePool.GetOrCreate(workspaceDir)
-		ws.BeginTurn()
-		defer ws.EndTurn()
+		e.workspacePool.GetOrCreate(workspaceDir)
 	}
 
 	// Apply per-message permission mode override (e.g. cron jobs with mode = "bypassPermissions").
@@ -4135,6 +4140,7 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 	// Run Send concurrently with processInteractiveEvents. Some agents block inside
 	// Send until the prompt turn finishes (e.g. ACP session/prompt); they may emit
 	// EventPermissionRequest while blocked — the event loop must run in parallel.
+	state.noteTurnStart()
 	sendDone := make(chan error, 1)
 	go func() {
 		if as == nil {
@@ -4164,7 +4170,7 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 	alive := state.agentSession != nil && state.agentSession.Alive() && !state.stopped && !state.eventsNeedResync
 	state.mu.Unlock()
 	if alive {
-		e.startUnsolicitedReader(state, session, sessions, interactiveKey, workspaceDir)
+		e.startUnsolicitedReader(state, session, sessions, interactiveKey)
 		e.scheduleAgentSessionIdleClose(interactiveKey, state)
 	}
 
@@ -4665,12 +4671,11 @@ func (e *Engine) scheduleAgentSessionIdleClose(sessionKey string, state *interac
 	ctx, cancel := context.WithCancel(e.ctx)
 	token := e.agentSessionIdleSeq.Add(1)
 	state.mu.Lock()
+	// Whether the session is busy is decided when the timer fires.
 	if state.stopped ||
 		state.agentSession == nil ||
 		!state.agentSession.Alive() ||
-		state.eventsNeedResync ||
-		state.pending != nil ||
-		len(state.pendingMessages) > 0 {
+		state.eventsNeedResync {
 		state.mu.Unlock()
 		cancel()
 		return
@@ -4706,24 +4711,30 @@ func (e *Engine) cleanupInteractiveStateForIdleToken(sessionKey string, expected
 		state.agentSession == nil ||
 		!state.agentSession.Alive() ||
 		state.stopped ||
-		state.eventsNeedResync ||
-		state.pending != nil ||
-		len(state.pendingMessages) > 0 {
+		state.eventsNeedResync {
 		state.mu.Unlock()
 		e.interactiveMu.Unlock()
 		return
 	}
-	// The turn that armed the timer ended, but the agent still works in the
-	// background; closing the process would kill that work. Look again later
-	// rather than relying on the work's last turn to re-arm the timer.
-	if state.hasBackgroundWorkLocked() {
+	// The turn that armed the timer ended, but the session may still be
+	// busy (background tasks, a turn the agent started, queued messages);
+	// closing the process would kill that work. Look again later rather than
+	// relying on the work's last turn to re-arm the timer.
+	if why := state.workLocked(); why != workIdle {
+		repeat := state.idleCloseKeptFor == why
+		state.idleCloseKeptFor = why
 		state.mu.Unlock()
 		e.interactiveMu.Unlock()
-		slog.Info("agent session idle timeout: background work still running, keeping session",
-			"session_key", sessionKey, "timeout", timeout)
+		logKept := slog.Info
+		if repeat {
+			logKept = slog.Debug
+		}
+		logKept("agent session idle timeout: session still busy, keeping it",
+			"session_key", sessionKey, "timeout", timeout, "work", why)
 		e.scheduleAgentSessionIdleClose(sessionKey, state)
 		return
 	}
+	state.idleCloseKeptFor = workIdle
 	agentSession = state.agentSession
 	state.agentSession = nil
 	state.agentSessionIdleCancel = nil
@@ -5030,7 +5041,7 @@ func (e *Engine) stopUnsolicitedReader(state *interactiveState) {
 // completions in Claude Code). Events are relayed to the platform immediately.
 // The goroutine exits when its context is cancelled (by a new foreground turn
 // or session cleanup) or when the Events channel is closed.
-func (e *Engine) startUnsolicitedReader(state *interactiveState, session *Session, sessions *SessionManager, sessionKey string, workspaceDir string) {
+func (e *Engine) startUnsolicitedReader(state *interactiveState, session *Session, sessions *SessionManager, sessionKey string) {
 	// Ensure no previous reader is still running.
 	e.stopUnsolicitedReader(state)
 
@@ -5052,13 +5063,13 @@ func (e *Engine) startUnsolicitedReader(state *interactiveState, session *Sessio
 	state.unsolicitedDone = done
 	state.mu.Unlock()
 
-	go e.runUnsolicitedReader(ctx, cancel, done, state, agentSession, session, sessions, sessionKey, workspaceDir)
+	go e.runUnsolicitedReader(ctx, cancel, done, state, agentSession, session, sessions, sessionKey)
 }
 
 // runUnsolicitedReader is the goroutine body for the unsolicited event reader.
 // agentSession is captured by the caller so we don't race with
 // cleanupInteractiveState nilling state.agentSession.
-func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.CancelFunc, done chan struct{}, state *interactiveState, agentSession AgentSession, session *Session, sessions *SessionManager, sessionKey string, workspaceDir string) {
+func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.CancelFunc, done chan struct{}, state *interactiveState, agentSession AgentSession, session *Session, sessions *SessionManager, sessionKey string) {
 	defer close(done)
 	defer cancel()
 
@@ -5072,11 +5083,7 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 	var turnBaseline map[string]struct{}
 	defer func() {
 		if turnActive {
-			if workspaceDir != "" && e.workspacePool != nil {
-				if ws := e.workspacePool.Get(workspaceDir); ws != nil {
-					ws.EndTurn()
-				}
-			}
+			state.setAgentTurn(false)
 		}
 	}()
 
@@ -5137,11 +5144,7 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 			// and the user's message shows it is being worked on.
 			if !turnActive && isAgentActivity(event) {
 				turnActive = true
-				if workspaceDir != "" && e.workspacePool != nil {
-					if ws := e.workspacePool.Get(workspaceDir); ws != nil {
-						ws.BeginTurn()
-					}
-				}
+				state.setAgentTurn(true)
 				e.cancelAgentSessionIdleClose(state)
 				turnBaseline = state.pendingBackgroundTasks()
 				e.holdForFollowUpTurn(state)
@@ -5226,11 +5229,7 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 				toolsUsed = nil
 				turnActive = false
 				turnBaseline = nil
-				if workspaceDir != "" && e.workspacePool != nil {
-					if ws := e.workspacePool.Get(workspaceDir); ws != nil {
-						ws.EndTurn()
-					}
-				}
+				state.setAgentTurn(false)
 
 				// Mark clean exit so next foreground turn preserves events.
 				state.mu.Lock()
@@ -5344,7 +5343,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 	// bgBaseline is the background tasks already running when the current
 	// turn started; the ones running at its end that are not in it are the
 	// turn's own, and its message stays in progress until they finish.
-	bgBaseline := state.pendingBackgroundTasks()
+	bgBaseline := state.takeTurnStart()
 	// heldForBackground is set when the last turn's message is held for its
 	// background tasks; its journal entry then stays until the hold ends.
 	heldForBackground := false
@@ -7016,6 +7015,7 @@ func (e *Engine) drainPendingMessages(state *interactiveState, session *Session,
 
 		session.AddHistory("user", queued.content)
 
+		state.noteTurnStart()
 		sendDone := make(chan error, 1)
 		go func() {
 			if as == nil {
@@ -11131,6 +11131,8 @@ func (e *Engine) runCompress(state *interactiveState, session *Session, sessions
 			session.Unlock(lockGen)
 		}
 	}()
+	// A compress is a turn: the idle close must not end the agent mid-way.
+	defer state.beginTurn()()
 
 	// Stop unsolicited reader before taking event channel ownership.
 	e.stopUnsolicitedReader(state)

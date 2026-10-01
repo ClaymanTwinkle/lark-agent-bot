@@ -362,7 +362,7 @@ func TestUnsolicitedReader_FollowUpTurnMarksLatestMessageInProgress(t *testing.T
 	state := &interactiveState{agentSession: sess, platform: p, replyCtx: "ctx-latest"}
 	e.interactiveStates["k"] = state
 
-	e.startUnsolicitedReader(state, session, e.sessions, "k", "")
+	e.startUnsolicitedReader(state, session, e.sessions, "k")
 	defer e.stopUnsolicitedReader(state)
 
 	sess.events <- Event{Type: EventText} // content-less: not a turn
@@ -397,7 +397,7 @@ func TestUnsolicitedReader_ContentlessEventsDoNotCancelIdleClose(t *testing.T) {
 		t.Fatal("expected an idle close to be scheduled")
 	}
 
-	e.startUnsolicitedReader(state, session, e.sessions, "k", "")
+	e.startUnsolicitedReader(state, session, e.sessions, "k")
 	defer e.stopUnsolicitedReader(state)
 
 	// Claude Code sends task progress and similar system messages between
@@ -422,7 +422,7 @@ func TestUnsolicitedReader_SilentReplyIsNotSent(t *testing.T) {
 	state := &interactiveState{agentSession: sess, platform: p, replyCtx: "ctx"}
 	e.interactiveStates["k"] = state
 
-	e.startUnsolicitedReader(state, session, e.sessions, "k", "")
+	e.startUnsolicitedReader(state, session, e.sessions, "k")
 	defer e.stopUnsolicitedReader(state)
 
 	sess.events <- Event{Type: EventResult, Content: "NO_REPLY", Done: true}
@@ -451,7 +451,7 @@ func TestUnsolicitedReader_AgentExitWhileHeldTellsUser(t *testing.T) {
 	stop := p.StartTyping(context.Background(), "ctx-held")
 	e.holdForBackground(state, "k", &backgroundHold{messageID: "m1", platform: p, replyCtx: "ctx-held", stopTyping: stop, waitFor: map[string]struct{}{"survey": {}}})
 
-	e.startUnsolicitedReader(state, session, e.sessions, "k", "")
+	e.startUnsolicitedReader(state, session, e.sessions, "k")
 	defer e.stopUnsolicitedReader(state)
 	_ = sess.Close() // the process died
 

@@ -305,19 +305,14 @@ func (e *Engine) removeWorktree(ctx context.Context, p Platform, msg *Message, t
 	e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsWorktreeRemoved, name, tree.Branch, root))
 }
 
+// worktreeHasActiveTurn reports whether an agent session still works in the
+// worktree at path; removing it would close that session and kill its work.
 func (e *Engine) worktreeHasActiveTurn(path string) bool {
-	e.interactiveMu.Lock()
-	pool := e.workspacePool
-	e.interactiveMu.Unlock()
-	if pool == nil {
-		return false
+	busy, why := e.workspaceInUse(path, time.Time{})
+	if busy {
+		slog.Info("worktree: not removed, a session is busy", "worktree", path, "work", why)
 	}
-	for dir, ws := range pool.All() {
-		if sameWorkspacePath(normalizeWorkspacePath(dir), path) && ws.HasActiveTurn() {
-			return true
-		}
-	}
-	return false
+	return busy
 }
 
 // closeWorkspaceSessions closes the live agent sessions working in dir.
