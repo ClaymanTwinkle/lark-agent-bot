@@ -183,6 +183,18 @@ level = "info" # debug, info, warn, error
 # 以上、或请求完全没有响应时立即提醒。目前由 Claude Code 上报。设为 0 禁用。
 # retry_notice_attempts = 3     # default: 3 / 默认 3
 
+# Restart after /upgrade: a restart stops every agent process, so when /upgrade
+# installs an update while tasks are in progress (running turns, queued
+# messages, background tasks, pending permission prompts), the restart waits
+# for them to finish, up to this many minutes; then it restarts anyway and the
+# interrupted chats are told. /restart still restarts at once. 0 restarts
+# immediately.
+# /upgrade 后的重启：重启会结束所有 agent 进程，所以 /upgrade 装好更新时如果还有任务
+# 在处理（正在进行的对话、排队的消息、后台任务、等待确认的权限请求），会等它们做完再
+# 重启，最多等这么多分钟；到时间仍会重启，被打断的会话会收到提示。/restart 仍立即
+# 重启。设为 0 表示立即重启。
+# upgrade_restart_wait_mins = 120  # default: 120 / 默认 120
+
 # Absolute wall-clock cap per agent turn in minutes. Unlike idle_timeout_mins
 # (which resets on every event), this timer is never reset — it guarantees the
 # session is released even when a long bash command generates periodic tool events.

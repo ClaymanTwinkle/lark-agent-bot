@@ -111,7 +111,16 @@ var ErrAttachmentSendDisabled = errors.New("attachment send is disabled by confi
 type RestartRequest struct {
 	SessionKey string `json:"session_key"`
 	Platform   string `json:"platform"`
+	// WaitIdle asks main to hold the restart until no session has work in
+	// progress, up to MaxWait (no limit when 0). A request without it
+	// restarts at once, also while an earlier request waits.
+	WaitIdle bool          `json:"wait_idle,omitempty"`
+	MaxWait  time.Duration `json:"max_wait,omitempty"`
 }
+
+// DefaultUpgradeRestartWait is how long the restart after /upgrade waits for
+// tasks in progress to finish by default.
+const DefaultUpgradeRestartWait = 120 * time.Minute
 
 type replyFooterUsageCache struct {
 	text      string
@@ -419,6 +428,8 @@ type Engine struct {
 	stallNoticeModel    time.Duration // silence while waiting on the model before telling the user; 0 disables
 	stallNoticeTool     time.Duration // same while a tool runs; 0 disables
 	retryNoticeAttempts int           // model-request retry attempt that triggers a notice; 0 disables
+	upgradeRestartWait  time.Duration // how long the restart after /upgrade waits for tasks; 0 restarts at once
+	processWork         func() int    // sessions with work in progress across the process; nil = this engine's
 	staleLockBreakAfter time.Duration // busy-lock stale-break threshold; 0 disables
 	maxTurnTime         time.Duration // absolute wall-clock cap per turn (0 = disabled)
 	// agentSessionIdleTimeoutNanos 在单轮正常结束后关闭空闲的 live agent 进程，
@@ -833,6 +844,7 @@ func NewEngine(name string, ag Agent, platforms []Platform, sessionStorePath str
 		stallNoticeModel:      DefaultStallNoticeModel,
 		stallNoticeTool:       DefaultStallNoticeTool,
 		retryNoticeAttempts:   DefaultRetryNoticeAttempts,
+		upgradeRestartWait:    DefaultUpgradeRestartWait,
 		staleLockBreakAfter:   busyStaleLockMaxHeld,
 		maxQueuedMessages:     defaultMaxQueuedMessages,
 		showContextIndicator:  true,
@@ -1413,6 +1425,14 @@ func (e *Engine) SetStallNotice(model, tool time.Duration) {
 // response at all, are reported right away. 0 disables the notice.
 func (e *Engine) SetRetryNoticeAttempts(n int) {
 	e.retryNoticeAttempts = n
+}
+
+// SetUpgradeRestartWait sets how long the restart after /upgrade waits for
+// tasks in progress (0 restarts at once), and how to count those tasks
+// across the process: the restart stops every engine, not just this one.
+func (e *Engine) SetUpgradeRestartWait(maxWait time.Duration, processWork func() int) {
+	e.upgradeRestartWait = maxWait
+	e.processWork = processWork
 }
 
 // SetMaxQueuedMessages sets the per-session message queue depth.
@@ -15625,27 +15645,53 @@ func (e *Engine) cmdUpgradeConfirm(p Platform, msg *Message) {
 		return
 	}
 
+	var installedText string
 	if installed, ok := upgradeAlreadyInstalled(release.TagName); ok {
 		// Another bot sharing this binary already installed the update; only
 		// a restart is needed to load it.
-		e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgUpgradeAlreadyInstalled), installed))
+		installedText = fmt.Sprintf(e.i18n.T(MsgUpgradeAlreadyInstalled), installed)
 	} else {
 		e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgUpgradeDownloading), release.TagName))
 		if err := SelfUpdate(release.TagName); err != nil {
 			e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgError, err))
 			return
 		}
-		e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgUpgradeSuccess), release.TagName))
+		installedText = fmt.Sprintf(e.i18n.T(MsgUpgradeSuccess), release.TagName)
 	}
 
-	// Auto-restart to apply the update
+	e.restartAfterUpgrade(p, msg, installedText)
+}
+
+// restartAfterUpgrade restarts into the installed update. A restart stops
+// every agent process, so while tasks are in progress anywhere in the
+// process it waits for them to finish (up to upgradeRestartWait) instead of
+// cutting them off; /restart still restarts at once.
+func (e *Engine) restartAfterUpgrade(p Platform, msg *Message, installedText string) {
+	req := RestartRequest{SessionKey: msg.SessionKey, Platform: p.Name()}
+	busy := 0
+	if e.upgradeRestartWait > 0 {
+		busy = e.processWorkInProgress()
+	}
+	if busy > 0 {
+		req.WaitIdle = true
+		req.MaxWait = e.upgradeRestartWait
+		e.reply(p, msg.ReplyCtx, installedText+"\n"+e.i18n.Tf(MsgUpgradeRestartWaiting, busy, int(e.upgradeRestartWait/time.Minute)))
+	} else {
+		e.reply(p, msg.ReplyCtx, installedText+"\n"+e.i18n.T(MsgRestarting))
+	}
 	select {
-	case RestartCh <- RestartRequest{
-		SessionKey: msg.SessionKey,
-		Platform:   p.Name(),
-	}:
+	case RestartCh <- req:
 	default:
 	}
+}
+
+// processWorkInProgress counts the sessions with work in progress across
+// the process.
+func (e *Engine) processWorkInProgress() int {
+	if e.processWork != nil {
+		return e.processWork()
+	}
+	return e.WorkInProgress()
 }
 
 func (e *Engine) cmdConfigReload(p Platform, msg *Message) {

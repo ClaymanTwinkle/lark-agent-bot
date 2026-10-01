@@ -135,6 +135,11 @@ type Config struct {
 	// setting so the reaper policy is consistent across projects; per-project
 	// configuration is intentionally not supported.
 	WorkspaceIdleTimeoutMins *int `toml:"workspace_idle_timeout_mins,omitempty"`
+	// UpgradeRestartWaitMins: after /upgrade installs an update while tasks
+	// are in progress, the restart waits up to this many minutes for them to
+	// finish (/restart still restarts at once). 0 = restart immediately;
+	// default 120. Process-global, like the restart itself.
+	UpgradeRestartWaitMins *int `toml:"upgrade_restart_wait_mins,omitempty"`
 	// Shell overrides the default shell used for /shell commands, cron exec,
 	// hooks, and webhook exec. On Unix the default is "sh"; on Windows it is
 	// "powershell.exe". Set to an absolute path (e.g. "/bin/zsh") to use a

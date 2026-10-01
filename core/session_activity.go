@@ -133,6 +133,27 @@ func (e *Engine) workspaceInUse(dir string, cutoff time.Time) (bool, sessionWork
 	return false, workIdle
 }
 
+// WorkInProgress counts the sessions whose agent has work in progress (see
+// workLocked). A restart would cut that work off.
+func (e *Engine) WorkInProgress() int {
+	e.interactiveMu.Lock()
+	states := make([]*interactiveState, 0, len(e.interactiveStates))
+	for _, state := range e.interactiveStates {
+		if state != nil {
+			states = append(states, state)
+		}
+	}
+	e.interactiveMu.Unlock()
+
+	busy := 0
+	for _, state := range states {
+		if state.work() != workIdle {
+			busy++
+		}
+	}
+	return busy
+}
+
 func (e *Engine) cancelAllAgentSessionIdleCloses() {
 	e.interactiveMu.Lock()
 	states := make([]*interactiveState, 0, len(e.interactiveStates))

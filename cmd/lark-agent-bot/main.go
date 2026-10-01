@@ -362,6 +362,13 @@ func main() {
 
 	engines := make([]*core.Engine, 0, len(cfg.Projects))
 	effectiveWorkDirs := make([]string, 0, len(cfg.Projects))
+	// The restart after /upgrade stops every engine, so it waits for the
+	// work in progress across all of them.
+	upgradeRestartWait := core.DefaultUpgradeRestartWait
+	if cfg.UpgradeRestartWaitMins != nil {
+		upgradeRestartWait = time.Duration(max(*cfg.UpgradeRestartWaitMins, 0)) * time.Minute
+	}
+	processWork := func() int { return workInProgress(engines) }
 
 	for _, proj := range cfg.Projects {
 		// Inject project-level run_as_user / run_as_env into the agent's
@@ -667,6 +674,7 @@ func main() {
 		if cfg.RetryNoticeAttempts != nil {
 			engine.SetRetryNoticeAttempts(max(*cfg.RetryNoticeAttempts, 0))
 		}
+		engine.SetUpgradeRestartWait(upgradeRestartWait, processWork)
 
 		// Wire busy-lock stale-break threshold (#1829)
 		if cfg.BusyTimeoutMins != nil {
@@ -1312,6 +1320,9 @@ func main() {
 	case req := <-core.RestartCh:
 		restartReq = &req
 		slog.Info("restart requested via /restart command", "session", req.SessionKey, "platform", req.Platform)
+	}
+	if restartReq != nil && restartReq.WaitIdle {
+		restartReq = awaitIdleForRestart(*restartReq, processWork, core.RestartCh, sigCh, restartIdlePollInterval)
 	}
 
 	slog.Info("shutting down...")

@@ -567,6 +567,9 @@ const (
 	// MsgUpgradeAlreadyInstalled: the binary on disk is already the new
 	// version (another bot sharing it upgraded), so only a restart is needed.
 	MsgUpgradeAlreadyInstalled MsgKey = "upgrade_already_installed"
+	// MsgUpgradeRestartWaiting: the update is installed, and the restart
+	// waits for the tasks in progress to finish.
+	MsgUpgradeRestartWaiting MsgKey = "upgrade_restart_waiting"
 	// MsgUpgradeConfirmButton labels the upgrade card button that runs
 	// /upgrade confirm.
 	MsgUpgradeConfirmButton MsgKey = "upgrade_confirm_button"
@@ -3554,18 +3557,25 @@ var messages = map[MsgKey]map[Language]string{
 		LangSpanish:            "⬇️ Descargando %s ...",
 	},
 	MsgUpgradeSuccess: {
-		LangEnglish:            "✅ Updated to **%s** successfully! Restarting...",
-		LangChinese:            "✅ 已成功更新到 **%s**！正在重启...",
-		LangTraditionalChinese: "✅ 已成功更新到 **%s**！正在重啟...",
-		LangJapanese:           "✅ **%s** に更新しました！再起動中...",
-		LangSpanish:            "✅ ¡Actualizado a **%s** con éxito! Reiniciando...",
+		LangEnglish:            "✅ Updated to **%s** successfully!",
+		LangChinese:            "✅ 已成功更新到 **%s**！",
+		LangTraditionalChinese: "✅ 已成功更新到 **%s**！",
+		LangJapanese:           "✅ **%s** に更新しました！",
+		LangSpanish:            "✅ ¡Actualizado a **%s** con éxito!",
 	},
 	MsgUpgradeAlreadyInstalled: {
-		LangEnglish:            "✅ The program on disk is already **%s** (updated by another bot sharing it). Restarting to load it...",
-		LangChinese:            "✅ 磁盘上的程序已经是 **%s**（共用该程序的其他机器人已完成更新），正在重启以加载新版本...",
-		LangTraditionalChinese: "✅ 磁碟上的程式已經是 **%s**（共用該程式的其他機器人已完成更新），正在重啟以載入新版本...",
-		LangJapanese:           "✅ ディスク上のプログラムは既に **%s** です（共有している別のボットが更新済み）。読み込むため再起動中...",
-		LangSpanish:            "✅ El programa en disco ya es **%s** (lo actualizó otro bot que lo comparte). Reiniciando para cargarlo...",
+		LangEnglish:            "✅ The program on disk is already **%s** (updated by another bot sharing it); a restart loads it.",
+		LangChinese:            "✅ 磁盘上的程序已经是 **%s**（共用该程序的其他机器人已完成更新），重启后加载新版本。",
+		LangTraditionalChinese: "✅ 磁碟上的程式已經是 **%s**（共用該程式的其他機器人已完成更新），重啟後載入新版本。",
+		LangJapanese:           "✅ ディスク上のプログラムは既に **%s** です（共有している別のボットが更新済み）。再起動すると読み込まれます。",
+		LangSpanish:            "✅ El programa en disco ya es **%s** (lo actualizó otro bot que lo comparte); se carga al reiniciar.",
+	},
+	MsgUpgradeRestartWaiting: {
+		LangEnglish:            "⏳ %d task(s) still in progress. The restart waits for them to finish (up to %d min). Send /restart to restart now.",
+		LangChinese:            "⏳ 还有 %d 个任务在处理，等它们做完再重启（最多等 %d 分钟）。要马上重启，发 /restart。",
+		LangTraditionalChinese: "⏳ 還有 %d 個任務在處理，等它們做完再重啟（最多等 %d 分鐘）。要馬上重啟，傳送 /restart。",
+		LangJapanese:           "⏳ 処理中のタスクが %d 件あります。完了を待ってから再起動します（最大 %d 分）。すぐに再起動するには /restart を送信してください。",
+		LangSpanish:            "⏳ Hay %d tarea(s) en curso. El reinicio espera a que terminen (hasta %d min). Envía /restart para reiniciar ahora.",
 	},
 	MsgUpgradeConfirmButton: {
 		LangEnglish:            "Upgrade now",

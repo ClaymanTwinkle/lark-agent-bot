@@ -84,6 +84,8 @@ lark-agent-bot feishu check --config config.toml --project my-claude
 
 3. 确认事件与回调中已订阅 `application.bot.menu_v6` 和 `im.message.recalled_v1`，创建版本并发布。菜单显示可能需要约 5 分钟，仅支持机器人私聊。
 
+「升级服务」装好新版本后需要重启，重启会结束所有 agent 进程。如果当时还有任务在处理，会回复“还有 N 个任务在处理，等它们做完再重启”，等任务做完再重启，最多等 `upgrade_restart_wait_mins` 分钟（默认 120，设为 0 立即重启）。要马上重启，发 `/restart`。
+
 「发送文字消息」会直接发送菜单名称，不能代替上表的事件标识。已有机器人可先运行 `feishu check` 检查新模板；如果接口未返回订阅信息，则需要在后台核对。菜单内容未被该检查核验。
 
 ---
