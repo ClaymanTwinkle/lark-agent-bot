@@ -12,6 +12,12 @@ npm install -g lark-agent-bot
 The postinstall step downloads the prebuilt binary for your platform from
 [GitHub Releases](https://github.com/ClaymanTwinkle/lark-agent-bot/releases).
 
+If `ffmpeg` is not on your `PATH`, it also downloads a static ffmpeg build
+([ffmpeg-static](https://github.com/eugeneware/ffmpeg-static), checksum-verified)
+to `~/.lark-agent-bot/bin`, outside the package so upgrades keep it; voice
+messages and video covers need it. Set `LARK_AGENT_BOT_SKIP_FFMPEG=1` to skip
+this step.
+
 ## Usage
 
 ```bash

@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -234,6 +235,10 @@ type Platform struct {
 	// When nil, defaults to fetchFreshTenantAccessToken. Indirected so unit
 	// tests can inject a stub without spinning up the full lark SDK.
 	fetchResourceToken func(ctx context.Context) (string, error)
+	// probeVideo reads the duration and cover frame of an outbound video.
+	// When nil, defaults to core.ProbeVideo. Indirected so unit tests don't
+	// need ffmpeg.
+	probeVideo func(ctx context.Context, video []byte, ext string) core.VideoMeta
 }
 
 // defaultImageBatchWindow is the quiet period after the last image in a
@@ -3441,40 +3446,91 @@ func (p *Platform) SendFile(ctx context.Context, rctx any, file core.FileAttachm
 		fileName = "attachment"
 	}
 	fileType := detectFeishuFileType(file.MimeType, fileName)
-	var uploadResp *larkim.CreateFileResp
-	if err := p.withTransientRetry(ctx, "upload file", func() error {
-		return p.withFreshTenantAccessTokenRetry(ctx, "upload file", func(client *lark.Client, options ...larkcore.RequestOptionFunc) error {
-			req := larkim.NewCreateFileReqBuilder().
-				Body(larkim.NewCreateFileReqBodyBuilder().
-					FileType(fileType).
-					FileName(fileName).
-					File(bytes.NewReader(file.Data)).
-					Build()).
-				Build()
-			var err error
-			uploadResp, err = client.Im.File.Create(ctx, req, options...)
-			if err != nil {
-				return fmt.Errorf("%s: upload file: %w", p.tag(), err)
-			}
-			if !uploadResp.Success() {
-				return fmt.Errorf("%s: upload file code=%d msg=%s", p.tag(), uploadResp.Code, uploadResp.Msg)
-			}
-			return nil
-		})
-	}); err != nil {
-		return err
+	if fileType == larkim.FileTypeMp4 {
+		return p.sendVideoMessage(ctx, rc, file.Data, fileName)
 	}
-	if uploadResp.Data == nil || uploadResp.Data.FileKey == nil {
-		return fmt.Errorf("%s: upload file: no file_key returned", p.tag())
+	fileKey, err := p.uploadFileKey(ctx, "upload file", file.Data, fileType, fileName, 0)
+	if err != nil {
+		return err
 	}
 
 	msgType := detectFeishuFileMessageType(fileType)
-	fileContent, err := buildFeishuFileMessageContent(msgType, *uploadResp.Data.FileKey)
+	fileContent, err := buildFeishuFileMessageContent(msgType, fileKey)
 	if err != nil {
 		return fmt.Errorf("%s: build file message: %w", p.tag(), err)
 	}
 
 	return p.sendMediaMessage(ctx, rc, msgType, fileContent)
+}
+
+// uploadFileKey uploads data through the IM file API and returns its
+// file_key. durationMs is sent only when positive; Feishu needs it to show
+// the length of audio / video messages.
+func (p *Platform) uploadFileKey(ctx context.Context, op string, data []byte, fileType, fileName string, durationMs int) (string, error) {
+	var uploadResp *larkim.CreateFileResp
+	if err := p.withTransientRetry(ctx, op, func() error {
+		return p.withFreshTenantAccessTokenRetry(ctx, op, func(client *lark.Client, options ...larkcore.RequestOptionFunc) error {
+			body := larkim.NewCreateFileReqBodyBuilder().
+				FileType(fileType).
+				FileName(fileName).
+				File(bytes.NewReader(data))
+			if durationMs > 0 {
+				body = body.Duration(durationMs)
+			}
+			req := larkim.NewCreateFileReqBuilder().Body(body.Build()).Build()
+			var err error
+			uploadResp, err = client.Im.File.Create(ctx, req, options...)
+			if err != nil {
+				return fmt.Errorf("%s: %s: %w", p.tag(), op, err)
+			}
+			if !uploadResp.Success() {
+				return fmt.Errorf("%s: %s code=%d msg=%s", p.tag(), op, uploadResp.Code, uploadResp.Msg)
+			}
+			return nil
+		})
+	}); err != nil {
+		return "", err
+	}
+	if uploadResp.Data == nil || uploadResp.Data.FileKey == nil {
+		return "", fmt.Errorf("%s: %s: no file_key returned", p.tag(), op)
+	}
+	return *uploadResp.Data.FileKey, nil
+}
+
+// sendVideoMessage uploads a clip and sends it as a native video
+// (MsgTypeMedia) message. Without a duration Feishu labels the bubble 00:00,
+// and without image_key it has no cover, so both are probed first; a clip
+// whose metadata can't be read is still sent, just without them.
+func (p *Platform) sendVideoMessage(ctx context.Context, rc replyContext, video []byte, fileName string) error {
+	probe := p.probeVideo
+	if probe == nil {
+		probe = core.ProbeVideo
+	}
+	meta := probe(ctx, video, filepath.Ext(fileName))
+
+	// Feishu's file API only has "mp4" as the video type.
+	fileKey, err := p.uploadFileKey(ctx, "upload video", video, larkim.FileTypeMp4, fileName, meta.DurationMs)
+	if err != nil {
+		return err
+	}
+
+	mediaMsg := larkim.MessageMedia{FileKey: fileKey}
+	if len(meta.Cover) > 0 {
+		imageKey, err := p.uploadImageKey(ctx, meta.Cover)
+		if err != nil {
+			slog.Warn(p.tag()+": upload video cover failed, sending without cover", "error", err)
+		} else {
+			mediaMsg.ImageKey = imageKey
+		}
+	}
+	slog.Debug(p.tag()+": video uploaded", "file_key", fileKey, "image_key", mediaMsg.ImageKey,
+		"duration_ms", meta.DurationMs, "size", len(video))
+
+	mediaContent, err := mediaMsg.String()
+	if err != nil {
+		return fmt.Errorf("%s: build video message: %w", p.tag(), err)
+	}
+	return p.sendMediaMessage(ctx, rc, larkim.MsgTypeMedia, mediaContent)
 }
 
 func (p *Platform) sendMediaMessage(ctx context.Context, rc replyContext, msgType, content string) error {
@@ -5689,44 +5745,7 @@ func (p *Platform) SendVideo(ctx context.Context, rctx any, video []byte, format
 			fileName = "video.mp4"
 		}
 	}
-
-	var uploadResp *larkim.CreateFileResp
-	if err := p.withTransientRetry(ctx, "upload video", func() error {
-		return p.withFreshTenantAccessTokenRetry(ctx, "upload video", func(client *lark.Client, options ...larkcore.RequestOptionFunc) error {
-			req := larkim.NewCreateFileReqBuilder().
-				Body(larkim.NewCreateFileReqBodyBuilder().
-					FileType(larkim.FileTypeMp4).
-					FileName(fileName).
-					File(bytes.NewReader(video)).
-					Build()).
-				Build()
-			var err error
-			uploadResp, err = client.Im.File.Create(ctx, req, options...)
-			if err != nil {
-				return fmt.Errorf("%s: upload video: %w", p.tag(), err)
-			}
-			if !uploadResp.Success() {
-				return fmt.Errorf("%s: upload video code=%d msg=%s", p.tag(), uploadResp.Code, uploadResp.Msg)
-			}
-			return nil
-		})
-	}); err != nil {
-		return err
-	}
-	if uploadResp.Data == nil || uploadResp.Data.FileKey == nil {
-		return fmt.Errorf("%s: upload video: no file_key returned", p.tag())
-	}
-	fileKey := *uploadResp.Data.FileKey
-
-	slog.Debug(p.tag()+": video uploaded", "file_key", fileKey, "format", format, "size", len(video))
-
-	mediaMsg := larkim.MessageMedia{FileKey: fileKey}
-	mediaContent, err := mediaMsg.String()
-	if err != nil {
-		return fmt.Errorf("%s: build video message: %w", p.tag(), err)
-	}
-
-	return p.sendMediaMessage(ctx, rc, larkim.MsgTypeMedia, mediaContent)
+	return p.sendVideoMessage(ctx, rc, video, fileName)
 }
 
 type postElement struct {

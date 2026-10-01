@@ -579,12 +579,17 @@ api_key = "sk-xxx"
 
 ### 安装 ffmpeg
 
+用 `npm install -g lark-agent-bot` 安装时，如果 `PATH` 里没有 ffmpeg，会自动下载一份放到 `~/.lark-agent-bot/bin`，升级时不会被删除（设置 `LARK_AGENT_BOT_SKIP_FFMPEG=1` 可跳过）。其他安装方式请自行安装，或把 `ffmpeg` 可执行文件放到 `~/.lark-agent-bot/bin` 或 `lark-agent-bot` 旁边。发送视频时的封面也靠它截取。
+
 ```bash
 # Ubuntu/Debian
 sudo apt install ffmpeg
 
 # macOS
 brew install ffmpeg
+
+# Windows
+winget install Gyan.FFmpeg
 ```
 
 ---

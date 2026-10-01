@@ -11,7 +11,9 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -301,7 +303,7 @@ func (g *GeminiSTT) Transcribe(ctx context.Context, audio []byte, format string,
 // The ctx is honored: cancellation kills the ffmpeg subprocess, matching the
 // behavior of the other Convert* helpers in this file.
 func ConvertAudioToMP3(ctx context.Context, audio []byte, srcFormat string) ([]byte, error) {
-	ffmpegPath, err := exec.LookPath("ffmpeg")
+	ffmpegPath, err := lookFFmpeg()
 	if err != nil {
 		return nil, fmt.Errorf("ffmpeg not found in PATH: install ffmpeg to enable voice message support")
 	}
@@ -342,7 +344,7 @@ func ConvertAudioToMP3(ctx context.Context, audio []byte, srcFormat string) ([]b
 // ConvertAudioToOpus uses ffmpeg to convert audio to opus format (ogg container).
 // Returns the opus bytes. If ffmpeg is not installed, returns an error.
 func ConvertAudioToOpus(ctx context.Context, audio []byte, srcFormat string) ([]byte, error) {
-	ffmpegPath, err := exec.LookPath("ffmpeg")
+	ffmpegPath, err := lookFFmpeg()
 	if err != nil {
 		return nil, fmt.Errorf("ffmpeg not found in PATH: install ffmpeg to enable audio conversion")
 	}
@@ -367,7 +369,7 @@ func ConvertAudioToOpus(ctx context.Context, audio []byte, srcFormat string) ([]
 // AMR is a common voice codec for mobile messaging platforms.
 // Returns the AMR bytes. If ffmpeg is not installed, returns an error.
 func ConvertAudioToAMR(ctx context.Context, audio []byte, srcFormat string) ([]byte, error) {
-	ffmpegPath, err := exec.LookPath("ffmpeg")
+	ffmpegPath, err := lookFFmpeg()
 	if err != nil {
 		return nil, fmt.Errorf("ffmpeg not found in PATH: install ffmpeg to enable audio conversion")
 	}
@@ -400,7 +402,7 @@ func ConvertAudioToAMR(ctx context.Context, audio []byte, srcFormat string) ([]b
 // ConvertMP3ToOGG converts MP3 audio to OGG format using ffmpeg with stdin/stdout pipes.
 // Optimized for voice: Opus codec, 16kHz mono, 32kbps, voip application.
 func ConvertMP3ToOGG(ctx context.Context, mp3Data []byte) ([]byte, error) {
-	ffmpegPath, err := exec.LookPath("ffmpeg")
+	ffmpegPath, err := lookFFmpeg()
 	if err != nil {
 		return nil, fmt.Errorf("ffmpeg not found in PATH: %w", err)
 	}
@@ -431,7 +433,7 @@ func ConvertMP3ToOGG(ctx context.Context, mp3Data []byte) ([]byte, error) {
 // ConvertMP3ToAMR converts MP3 audio to AMR format using ffmpeg with stdin/stdout pipes.
 // AMR format is smaller but lower quality than OGG (AMR-NB codec, 8kHz mono, 12.2kbps).
 func ConvertMP3ToAMR(ctx context.Context, mp3Data []byte) ([]byte, error) {
-	ffmpegPath, err := exec.LookPath("ffmpeg")
+	ffmpegPath, err := lookFFmpeg()
 	if err != nil {
 		return nil, fmt.Errorf("ffmpeg not found in PATH: %w", err)
 	}
@@ -470,8 +472,52 @@ func NeedsConversion(format string) bool {
 
 // HasFFmpeg checks if ffmpeg is available.
 func HasFFmpeg() bool {
-	_, err := exec.LookPath("ffmpeg")
+	_, err := lookFFmpeg()
 	return err == nil
+}
+
+// lookFFmpeg finds ffmpeg on PATH or in lark-agent-bot's own tool
+// directories (see lookTool).
+func lookFFmpeg() (string, error) {
+	return lookTool("ffmpeg")
+}
+
+// lookTool is exec.LookPath with a fallback to toolDirs. The PATH error is
+// returned when none of them has it.
+func lookTool(name string) (string, error) {
+	path, err := exec.LookPath(name)
+	if err == nil {
+		return path, nil
+	}
+	for _, dir := range toolDirs() {
+		if path, dirErr := lookPathIn(dir, name); dirErr == nil {
+			return path, nil
+		}
+	}
+	return "", err
+}
+
+// toolDirs lists where lark-agent-bot keeps helper binaries that aren't on
+// PATH: ~/.lark-agent-bot/bin, where the npm installer puts ffmpeg so it
+// survives package upgrades, then the directory of the running binary.
+func toolDirs() []string {
+	var dirs []string
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, ".lark-agent-bot", "bin"))
+	}
+	if exe, err := os.Executable(); err == nil {
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = resolved
+		}
+		dirs = append(dirs, filepath.Dir(exe))
+	}
+	return dirs
+}
+
+// lookPathIn finds an executable named name in dir, trying PATHEXT
+// extensions on Windows.
+func lookPathIn(dir, name string) (string, error) {
+	return exec.LookPath(filepath.Join(dir, name))
 }
 
 func formatToExt(format string) string {

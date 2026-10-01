@@ -26,6 +26,8 @@ npm install -g lark-agent-bot
 
 After installation, the `lark-agent-bot` binary will be available globally.
 
+If `ffmpeg` is not on `PATH`, the npm installer also downloads a static ffmpeg build to `~/.lark-agent-bot/bin` (kept across upgrades) — voice messages and video covers need it. Set `LARK_AGENT_BOT_SKIP_FFMPEG=1` to skip this. With Option B, install ffmpeg yourself (`winget install Gyan.FFmpeg` / `brew install ffmpeg` / `sudo apt install ffmpeg`) or put the `ffmpeg` executable in `~/.lark-agent-bot/bin` or next to `lark-agent-bot`; it is optional, everything else works without it.
+
 ### Option B: Download binary from GitHub Releases
 
 Go to https://github.com/ClaymanTwinkle/lark-agent-bot/releases and download the archive for your platform. Each release provides:
@@ -618,6 +620,7 @@ The following additional features are available:
 - **iFlow CLI**: iFlow CLI integration (`iflow -i -r -o`)
 - **Voice Messages (STT)**: Speech-to-text via Whisper API (OpenAI / Groq / SiliconFlow). Requires `ffmpeg` and `[speech]` config.
 - **Voice Reply (TTS)**: Text-to-speech via Qwen / OpenAI / MiniMax / MiMo / local providers. Requires `ffmpeg` and `[tts]` config.
+- **Video Messages**: `lark-agent-bot send --video` sends a native video bubble with its duration; the cover frame requires `ffmpeg`.
 - **Image Messages**: Send images to Claude Code for multimodal analysis
 - **API Provider Management**: Runtime switching between API providers via `/provider` command or CLI
 - **CLI Send**: `lark-agent-bot send` to inject messages into active sessions from external processes

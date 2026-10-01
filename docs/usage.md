@@ -685,12 +685,17 @@ api_key = "sk-xxx"
 
 ### Install ffmpeg
 
+`npm install -g lark-agent-bot` downloads ffmpeg to `~/.lark-agent-bot/bin` when it is not already on `PATH` (skip with `LARK_AGENT_BOT_SKIP_FFMPEG=1`); upgrades keep it. Otherwise install it yourself, or put the `ffmpeg` executable in `~/.lark-agent-bot/bin` or next to `lark-agent-bot`. Outbound video covers use it too.
+
 ```bash
 # Ubuntu/Debian
 sudo apt install ffmpeg
 
 # macOS
 brew install ffmpeg
+
+# Windows
+winget install Gyan.FFmpeg
 ```
 
 ---

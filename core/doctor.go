@@ -318,12 +318,12 @@ func checkDependencies() []DoctorCheckResult {
 	}{
 		{"git", "Git", true},
 		{"sqlite3", "SQLite3", false},
-		{"ffmpeg", "FFmpeg (voice)", false},
+		{"ffmpeg", "FFmpeg (voice, video cover)", false},
 	}
 
 	var results []DoctorCheckResult
 	for _, d := range deps {
-		path, err := exec.LookPath(d.bin)
+		path, err := lookTool(d.bin)
 		if err != nil {
 			status := DoctorWarn
 			if d.required {
@@ -455,30 +455,30 @@ func checkNetwork(ctx context.Context) []DoctorCheckResult {
 
 // checkNameZh provides Chinese translations for common check names.
 var checkNameZh = map[string]string{
-	"Memory (Go runtime)": "内存 (Go runtime)",
-	"System Memory":       "系统内存",
-	"CPU":                 "CPU",
-	"CPU Load":            "CPU 负载",
-	"Disk Space":          "磁盘空间",
-	"Git":                 "Git",
-	"SQLite3":             "SQLite3",
-	"FFmpeg (voice)":      "FFmpeg (语音)",
-	"HTTPS (Anthropic)":   "HTTPS (Anthropic)",
-	"Data Directory":      "数据目录",
-	"Config File":         "配置文件",
-	"Platforms":           "平台",
+	"Memory (Go runtime)":         "内存 (Go runtime)",
+	"System Memory":               "系统内存",
+	"CPU":                         "CPU",
+	"CPU Load":                    "CPU 负载",
+	"Disk Space":                  "磁盘空间",
+	"Git":                         "Git",
+	"SQLite3":                     "SQLite3",
+	"FFmpeg (voice, video cover)": "FFmpeg (语音、视频封面)",
+	"HTTPS (Anthropic)":           "HTTPS (Anthropic)",
+	"Data Directory":              "数据目录",
+	"Config File":                 "配置文件",
+	"Platforms":                   "平台",
 }
 
 // checkNameJa provides Japanese translations for common check names.
 var checkNameJa = map[string]string{
-	"Memory (Go runtime)": "メモリ (Go runtime)",
-	"System Memory":       "システムメモリ",
-	"CPU Load":            "CPU 負荷",
-	"Disk Space":          "ディスク容量",
-	"FFmpeg (voice)":      "FFmpeg (音声)",
-	"Data Directory":      "データディレクトリ",
-	"Config File":         "設定ファイル",
-	"Platforms":           "プラットフォーム",
+	"Memory (Go runtime)":         "メモリ (Go runtime)",
+	"System Memory":               "システムメモリ",
+	"CPU Load":                    "CPU 負荷",
+	"Disk Space":                  "ディスク容量",
+	"FFmpeg (voice, video cover)": "FFmpeg (音声・動画サムネイル)",
+	"Data Directory":              "データディレクトリ",
+	"Config File":                 "設定ファイル",
+	"Platforms":                   "プラットフォーム",
 }
 
 func localizeCheckName(name string, lang Language) string {
