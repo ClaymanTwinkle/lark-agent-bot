@@ -64,6 +64,7 @@ func (s *interactiveState) work() sessionWork {
 func (s *interactiveState) beginTurn() (end func()) {
 	s.mu.Lock()
 	s.turns++
+	s.idleCloseKeptFor = workIdle
 	s.mu.Unlock()
 	var once sync.Once
 	return func() {
@@ -81,7 +82,9 @@ func (s *interactiveState) beginTurn() (end func()) {
 func (s *interactiveState) setAgentTurn(active bool) {
 	s.mu.Lock()
 	s.agentTurn = active
-	if !active {
+	if active {
+		s.idleCloseKeptFor = workIdle
+	} else {
 		s.workEndedAt = time.Now()
 	}
 	s.mu.Unlock()
@@ -101,20 +104,29 @@ func (s *interactiveState) inUseSince(cutoff time.Time) (bool, sessionWork) {
 // workspaceInUse reports whether a session working in dir is busy or worked
 // after cutoff (zero cutoff: busy only), with the busy reason.
 func (e *Engine) workspaceInUse(dir string, cutoff time.Time) (bool, sessionWork) {
-	dir = normalizeWorkspacePath(dir)
+	type candidate struct {
+		state *interactiveState
+		dir   string
+	}
 	e.interactiveMu.Lock()
-	var states []*interactiveState
+	candidates := make([]candidate, 0, len(e.interactiveStates))
 	for _, state := range e.interactiveStates {
 		state.mu.Lock()
 		wsDir := state.workspaceDir
 		state.mu.Unlock()
-		if wsDir != "" && sameWorkspacePath(normalizeWorkspacePath(wsDir), dir) {
-			states = append(states, state)
+		if wsDir != "" {
+			candidates = append(candidates, candidate{state, wsDir})
 		}
 	}
 	e.interactiveMu.Unlock()
-	for _, state := range states {
-		if inUse, why := state.inUseSince(cutoff); inUse {
+
+	// Normalizing resolves symlinks on disk: not under the engine lock.
+	dir = normalizeWorkspacePath(dir)
+	for _, c := range candidates {
+		if !sameWorkspacePath(normalizeWorkspacePath(c.dir), dir) {
+			continue
+		}
+		if inUse, why := c.state.inUseSince(cutoff); inUse {
 			return true, why
 		}
 	}

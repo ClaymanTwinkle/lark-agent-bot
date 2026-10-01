@@ -606,7 +606,8 @@ type interactiveState struct {
 	agentSessionIdleCancel context.CancelFunc
 	agentSessionIdleToken  uint64
 	// idleCloseKeptFor is why the last idle close left the session alive,
-	// so a session that stays busy for hours logs it once, not every time.
+	// so a session that stays busy for hours logs it once, not every time;
+	// the next turn starts a new busy stretch.
 	idleCloseKeptFor sessionWork
 
 	// eventsNeedResync is true when buffered events should be drained before
