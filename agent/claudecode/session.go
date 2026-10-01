@@ -113,6 +113,11 @@ type claudeSession struct {
 	quotaWindows map[int]core.UsageWindow
 	quotaStatus  string
 
+	// bgMu guards bgTasks: the background tasks still running, as last
+	// reported by a background_tasks_changed message.
+	bgMu    sync.Mutex
+	bgTasks []core.BackgroundTask
+
 	// gracefulStopTimeout is how long Close() waits for a clean exit
 	// (stdin close → Stop hooks → process exit) before escalating to
 	// SIGTERM and then SIGKILL. Default: 120s to match claude-mem's
@@ -610,6 +615,8 @@ func (cs *claudeSession) finishReadLoop(waitErrCh <-chan error, stderrBuf *bytes
 	err := <-waitErrCh
 
 	cs.alive.Store(false)
+	// The background tasks died with the process.
+	cs.setBackgroundTasks(nil)
 	if err != nil {
 		stderrMsg := ""
 		if stderrBuf != nil {
@@ -731,6 +738,11 @@ func (cs *claudeSession) handleSystem(raw map[string]any) {
 		}
 		return
 	}
+	if subtype, _ := raw["subtype"].(string); subtype == "background_tasks_changed" {
+		// Stored before the content-less event below goes out: that event is
+		// what wakes the engine to look at the list again.
+		cs.setBackgroundTasks(claudeBackgroundTasks(raw))
+	}
 	if sid, ok := raw["session_id"].(string); ok && sid != "" {
 		cs.sessionID.Store(sid)
 		evt := core.Event{Type: core.EventText, SessionID: sid}
@@ -757,6 +769,51 @@ func (cs *claudeSession) handleSystem(raw map[string]any) {
 			cs.usageMu.Unlock()
 		}
 	})
+}
+
+// claudeBackgroundTasks parses a `type:"system",
+// subtype:"background_tasks_changed"` message. Claude Code sends it whenever
+// the set of the main session's background tasks changes — a backgrounded
+// Bash command (task_type local_bash), a background subagent or one resumed
+// with SendMessage (local_agent) — and its tasks array is the full current
+// set, empty once the last one finishes. Shells a subagent runs on its own
+// are not in it.
+func claudeBackgroundTasks(raw map[string]any) []core.BackgroundTask {
+	items, _ := raw["tasks"].([]any)
+	tasks := make([]core.BackgroundTask, 0, len(items))
+	for _, item := range items {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := m["task_id"].(string)
+		if id == "" {
+			continue
+		}
+		typ, _ := m["task_type"].(string)
+		desc, _ := m["description"].(string)
+		tasks = append(tasks, core.BackgroundTask{ID: id, Type: typ, Description: desc})
+	}
+	return tasks
+}
+
+func (cs *claudeSession) setBackgroundTasks(tasks []core.BackgroundTask) {
+	cs.bgMu.Lock()
+	cs.bgTasks = tasks
+	cs.bgMu.Unlock()
+	slog.Debug("claudeSession: background tasks changed", "count", len(tasks))
+}
+
+// BackgroundTasks reports the background tasks still running in this Claude
+// Code process. They keep running after the turn that started them reports
+// its result, and each one's completion starts a follow-up turn.
+func (cs *claudeSession) BackgroundTasks() []core.BackgroundTask {
+	cs.bgMu.Lock()
+	defer cs.bgMu.Unlock()
+	if len(cs.bgTasks) == 0 {
+		return nil
+	}
+	return append([]core.BackgroundTask(nil), cs.bgTasks...)
 }
 
 // claudeRetryInfo parses a `type:"system", subtype:"api_retry"` message,

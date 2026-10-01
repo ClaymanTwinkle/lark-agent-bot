@@ -588,6 +588,11 @@ type interactiveState struct {
 	unsolicitedCancel context.CancelFunc // nil when no reader is running
 	unsolicitedDone   chan struct{}      // closed when the reader goroutine exits
 
+	// backgroundHolds are the messages kept marked in progress after their
+	// turn ended because background tasks they launched still run; see
+	// backgroundHold.
+	backgroundHolds []*backgroundHold
+
 	// agentSessionIdleCancel 取消当前会话的 idle 关闭计时器。
 	agentSessionIdleCancel context.CancelFunc
 	agentSessionIdleToken  uint64
@@ -864,6 +869,22 @@ func (e *Engine) runIdleReaper() {
 func (e *Engine) reapIdleWorkspaces() {
 	if e.workspacePool == nil {
 		return
+	}
+
+	// An agent still working in the background keeps its workspace alive:
+	// reaping would close the agent and kill that work.
+	e.interactiveMu.Lock()
+	var busy []string
+	for _, state := range e.interactiveStates {
+		if state.workspaceDir != "" && state.hasBackgroundWork() {
+			busy = append(busy, state.workspaceDir)
+		}
+	}
+	e.interactiveMu.Unlock()
+	for _, dir := range busy {
+		if ws := e.workspacePool.Get(dir); ws != nil {
+			ws.Touch()
+		}
 	}
 
 	reaped := e.workspacePool.ReapIdle()
@@ -3386,6 +3407,17 @@ func (e *Engine) maybeAutoResetSessionOnIdle(p Platform, msg *Message, sessions 
 		return nil, 0
 	}
 
+	// The user was away, but the agent was not: work it still runs in the
+	// background would die with the reset.
+	e.interactiveMu.Lock()
+	idleState := e.interactiveStates[interactiveKey]
+	e.interactiveMu.Unlock()
+	if idleState != nil && idleState.hasBackgroundWork() {
+		slog.Info("idle session not reset: agent still has background work",
+			"session_key", msg.SessionKey, "session_id", session.ID, "idle_for", time.Since(lastActive))
+		return nil, 0
+	}
+
 	slog.Info("auto-resetting idle session",
 		"session_key", msg.SessionKey,
 		"session_id", session.ID,
@@ -4570,6 +4602,7 @@ func (e *Engine) cleanupInteractiveState(sessionKey string, expected ...*interac
 		e.stopUnsolicitedReader(state)
 
 		state.markStopped()
+		e.releaseBackgroundHolds(state, sessionKey, holdAbandoned)
 
 		// Resolve any pending permission so the reader goroutine (or event
 		// loop) does not block on <-pending.Resolved forever.
@@ -4680,6 +4713,17 @@ func (e *Engine) cleanupInteractiveStateForIdleToken(sessionKey string, expected
 		e.interactiveMu.Unlock()
 		return
 	}
+	// The turn that armed the timer ended, but the agent still works in the
+	// background; closing the process would kill that work. Look again later
+	// rather than relying on the work's last turn to re-arm the timer.
+	if state.hasBackgroundWorkLocked() {
+		state.mu.Unlock()
+		e.interactiveMu.Unlock()
+		slog.Info("agent session idle timeout: background work still running, keeping session",
+			"session_key", sessionKey, "timeout", timeout)
+		e.scheduleAgentSessionIdleClose(sessionKey, state)
+		return
+	}
 	agentSession = state.agentSession
 	state.agentSession = nil
 	state.agentSessionIdleCancel = nil
@@ -4693,6 +4737,7 @@ func (e *Engine) cleanupInteractiveStateForIdleToken(sessionKey string, expected
 		"session_key", sessionKey, "timeout", timeout)
 	e.stopUnsolicitedReader(state)
 	state.markStopped()
+	e.releaseBackgroundHolds(state, sessionKey, holdAbandoned)
 
 	state.mu.Lock()
 	pending := state.pending
@@ -5019,7 +5064,12 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 
 	events := agentSession.Events()
 
-	var turnActive bool // true after first event, cleared on EventResult
+	// turnActive is true from the first sign of the agent working on a turn
+	// of its own until the turn's EventResult.
+	var turnActive bool
+	// turnBaseline is the background tasks running when that turn started;
+	// the ones it launches continue the held message's work.
+	var turnBaseline map[string]struct{}
 	defer func() {
 		if turnActive {
 			if workspaceDir != "" && e.workspacePool != nil {
@@ -5054,6 +5104,12 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 				state.mu.Lock()
 				state.eventsNeedResync = true
 				state.mu.Unlock()
+				// Shutdown and intentional closes stop this reader before the
+				// channel closes; here the agent process died on its own,
+				// taking the work a held message waits for with it.
+				if e.ctx.Err() == nil && !state.isStopped() {
+					e.abandonBackgroundWork(state, sessionKey)
+				}
 				return
 			}
 
@@ -5076,14 +5132,19 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 			default:
 			}
 
-			// Mark workspace active on first event.
-			if !turnActive {
+			// The agent started a turn on its own, typically because a
+			// background task finished. It is not idle until the turn ends,
+			// and the user's message shows it is being worked on.
+			if !turnActive && isAgentActivity(event) {
 				turnActive = true
 				if workspaceDir != "" && e.workspacePool != nil {
 					if ws := e.workspacePool.Get(workspaceDir); ws != nil {
 						ws.BeginTurn()
 					}
 				}
+				e.cancelAgentSessionIdleClose(state)
+				turnBaseline = state.pendingBackgroundTasks()
+				e.holdForFollowUpTurn(state)
 				slog.Info("unsolicited events detected, relaying to platform",
 					"session", sessionKey)
 			}
@@ -5117,13 +5178,25 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 					"status", event.ToolStatus)
 
 			case EventResult:
+				// A mid-turn compaction (Done=false) does not end the turn.
+				if !event.Done {
+					continue
+				}
 				fullResponse := event.Content
 				if fullResponse == "" && len(textParts) > 0 {
 					fullResponse = strings.Join(textParts, "")
 				}
 
-				if fullResponse != "" {
-					for _, chunk := range SplitMessageCodeFenceAware(fullResponse, maxPlatformMessageLen) {
+				// Respect NO_REPLY like a foreground turn: deliver nothing
+				// for a bare marker, strip a trailing one.
+				visible := fullResponse
+				if isSilentReply(visible) {
+					visible = ""
+				} else if stripped, ok := stripTrailingSilent(visible); ok {
+					visible = stripped
+				}
+				if strings.TrimSpace(visible) != "" {
+					for _, chunk := range SplitMessageCodeFenceAware(visible, maxPlatformMessageLen) {
 						e.send(p, replyCtx, chunk)
 					}
 				}
@@ -5138,10 +5211,21 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 				session.AddHistory("assistant", fullResponse)
 				sessions.Save()
 
+				// Tasks this turn launched continue the held message's work;
+				// held messages whose tasks are all done are done now.
+				pending := state.pendingBackgroundTasks()
+				e.adoptBackgroundTasks(state, newBackgroundTasks(pending, turnBaseline))
+				end := holdDone
+				if strings.TrimSpace(visible) == "" {
+					end = holdDoneSilent
+				}
+				e.settleBackgroundHolds(state, sessionKey, pending, end)
+
 				// Reset for potential subsequent unsolicited turn.
 				textParts = nil
 				toolsUsed = nil
 				turnActive = false
+				turnBaseline = nil
 				if workspaceDir != "" && e.workspacePool != nil {
 					if ws := e.workspacePool.Get(workspaceDir); ws != nil {
 						ws.EndTurn()
@@ -5214,6 +5298,7 @@ func (e *Engine) runUnsolicitedReader(ctx context.Context, cancel context.Cancel
 				state.mu.Lock()
 				state.eventsNeedResync = true
 				state.mu.Unlock()
+				e.releaseBackgroundHolds(state, sessionKey, holdAbandoned)
 				return
 			}
 		}
@@ -5256,6 +5341,29 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 	// doneReaction stores a function to add a "done" emoji after stopTyping.
 	// Set during EventResult handling for multi-round quiet turns.
 	var doneReaction func()
+	// bgBaseline is the background tasks already running when the current
+	// turn started; the ones running at its end that are not in it are the
+	// turn's own, and its message stays in progress until they finish.
+	bgBaseline := state.pendingBackgroundTasks()
+	// heldForBackground is set when the last turn's message is held for its
+	// background tasks; its journal entry then stays until the hold ends.
+	heldForBackground := false
+	// holdTurnForBackground settles the holds of earlier messages and, when
+	// the turn that just ended left background tasks of its own running,
+	// hands its typing indicator to a hold on its message.
+	holdTurnForBackground := func(p Platform) bool {
+		pending := state.pendingBackgroundTasks()
+		e.settleBackgroundHolds(state, sessionKey, pending, holdDone)
+		mine := newBackgroundTasks(pending, bgBaseline)
+		if len(mine) == 0 {
+			return false
+		}
+		e.holdForBackground(state, sessionKey, &backgroundHold{
+			messageID: msgID, platform: p, replyCtx: replyCtx, stopTyping: stopTyping, waitFor: mine,
+		})
+		stopTyping = nil
+		return true
+	}
 	defer func() {
 		if stopTyping != nil {
 			stopTyping()
@@ -5264,7 +5372,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			doneReaction()
 		}
 		// On shutdown the turn stays journaled so the next start reports it.
-		if e.ctx.Err() == nil {
+		if e.ctx.Err() == nil && !heldForBackground {
 			e.turnJournal.end(sessionKey)
 		}
 	}()
@@ -6470,6 +6578,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 					}
 					e.send(state.platform, state.replyCtx, compressNotice)
 
+					heldForBackground = holdTurnForBackground(p)
 					// Run compress inline while the session is still locked.
 					e.runCompress(state, session, sessions, sessionKey, state.platform, state.replyCtx, true, lockGen)
 					return
@@ -6501,7 +6610,10 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 				state.currentTurnUserMessageTimeMs = queued.userMessageTimeMs
 				state.mu.Unlock()
 
-				// Stop the previous turn's typing indicator
+				// Keep the previous message in progress if it left background
+				// tasks running; otherwise stop its typing indicator.
+				holdTurnForBackground(p)
+				bgBaseline = state.pendingBackgroundTasks()
 				if stopTyping != nil {
 					stopTyping()
 					stopTyping = nil
@@ -6629,6 +6741,13 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 				if err := <-pendingSend; err != nil {
 					slog.Debug("async send error after EventResult", "error", err)
 				}
+			}
+
+			// The agent still works on this message in the background: it
+			// stays in progress, with no done reaction yet.
+			if holdTurnForBackground(p) {
+				heldForBackground = true
+				return
 			}
 
 			// Add a "done" reaction after the final answer when supported. Skip
@@ -10865,6 +10984,9 @@ func (e *Engine) stopInteractiveSessionIfCurrent(sessionKey string, notifyQueued
 
 	// Stop unsolicited reader before touching state to avoid races.
 	e.stopUnsolicitedReader(state)
+	// The user stopped the session: no message stays in progress, even if
+	// background tasks outlive the cancelled turn.
+	e.releaseBackgroundHolds(state, sessionKey, holdAbandoned)
 
 	state.mu.Lock()
 	pending := state.pending

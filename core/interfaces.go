@@ -558,6 +558,24 @@ type AgentSessionCanceller interface {
 	CancelTurn() error
 }
 
+// BackgroundTask is agent work that keeps running after the turn that started
+// it has ended, such as a backgrounded shell command or subagent.
+type BackgroundTask struct {
+	ID          string
+	Type        string // agent-specific kind, for logs
+	Description string
+}
+
+// BackgroundTaskReporter is an optional interface for agent sessions whose
+// work can outlive a turn. Such an agent reports a turn's result as soon as
+// the model stops, while the background tasks it launched keep running; each
+// one's completion later starts a follow-up turn of its own. Until they
+// finish the engine keeps the user's message marked in progress and does not
+// close the agent process as idle.
+type BackgroundTaskReporter interface {
+	BackgroundTasks() []BackgroundTask
+}
+
 // CommandProvider is an optional interface for agents that expose custom slash
 // commands via local files (e.g. .claude/commands/*.md). The engine scans the
 // returned directories for *.md files and registers them as slash commands.

@@ -105,6 +105,21 @@ func (j *turnJournal) end(key string) {
 	j.saveLocked()
 }
 
+// endMessage ends key's entry only while it still records messageID; a newer
+// turn that has replaced it keeps its entry.
+func (j *turnJournal) endMessage(key, messageID string) {
+	if j == nil || messageID == "" {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if t, ok := j.turns[key]; !ok || t.MessageID != messageID {
+		return
+	}
+	delete(j.turns, key)
+	j.saveLocked()
+}
+
 func (j *turnJournal) saveLocked() {
 	if len(j.turns) == 0 {
 		if err := os.Remove(j.path); err != nil && !errors.Is(err, os.ErrNotExist) {
