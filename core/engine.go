@@ -514,6 +514,12 @@ type Engine struct {
 
 	// Data directory for socket path injection
 	dataDir string
+
+	// turnJournal records user turns in progress; interruptedTurns holds the
+	// ones the previous process left unfinished, reported by
+	// NotifyInterruptedTurns. Both are set by SetDataDir.
+	turnJournal      *turnJournal
+	interruptedTurns []inflightTurn
 }
 
 // workspaceInitFlow tracks a channel that is being onboarded to a workspace.
@@ -1427,6 +1433,9 @@ func (e *Engine) SetProjectStateStore(store *ProjectStateStore) {
 
 func (e *Engine) SetDataDir(dir string) {
 	e.dataDir = dir
+	if dir != "" && e.turnJournal == nil {
+		e.turnJournal, e.interruptedTurns = openTurnJournal(turnJournalPath(dir, e.name))
+	}
 }
 
 // RemoveCommand removes a custom command by name. Returns false if not found.
@@ -4080,6 +4089,7 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 		sendDone <- as.Send(promptContent, msg.MessageID, msg.Images, msg.Files)
 	}()
 
+	e.beginTurnJournal(interactiveKey, p.Name(), msg.SessionKey, msg.MessageID, msg.Content)
 	e.processInteractiveEvents(state, session, sessions, interactiveKey, msg.MessageID, turnStart, stopTyping, sendDone, msg.ReplyCtx, lockGen)
 	if elapsed := time.Since(sendStart); elapsed >= slowAgentSend {
 		slog.Warn("slow agent send", "elapsed", elapsed, "session", msg.SessionKey, "content_len", len(msg.Content))
@@ -5229,6 +5239,10 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 		}
 		if doneReaction != nil {
 			doneReaction()
+		}
+		// On shutdown the turn stays journaled so the next start reports it.
+		if e.ctx.Err() == nil {
+			e.turnJournal.end(sessionKey)
 		}
 	}()
 
@@ -6462,6 +6476,8 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 				}()
 				pendingSend = nextSend
 
+				e.beginTurnJournal(sessionKey, queued.platform.Name(), queued.msgSessionKey, queued.messageID, queued.content)
+
 				// Detect language now (deferred from queue time to avoid
 				// flipping locale while the previous turn is still running).
 				e.i18n.DetectAndSet(queued.content)
@@ -6612,19 +6628,30 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 	}
 
 channelClosed:
-	// Channel closed - process exited unexpectedly
-	slog.Warn("agent process exited", "session_key", sessionKey)
+	// Engine.Stop cancels e.ctx before closing agent sessions, so a channel
+	// closed during shutdown is not an agent crash. Return like the
+	// e.ctx.Done branch: the turn stays journaled for the next start.
+	if e.ctx.Err() != nil {
+		sp.discard()
+		return
+	}
+	// /stop and session resets mark the state stopped before closing the
+	// agent session; only an unrequested close means the agent process died.
+	crashed := !state.isStopped()
+	slog.Warn("agent process exited", "session_key", sessionKey, "unexpected", crashed)
 	state.mu.Lock()
 	state.eventsNeedResync = true
+	p := state.platform
 	state.mu.Unlock()
 	e.notifyDroppedQueuedMessages(state, fmt.Errorf("agent process exited"))
 	e.cleanupInteractiveState(sessionKey, state)
+	if crashed {
+		cp.Finalize(ProgressCardStateFailed)
+	}
 
-	if len(textParts) > 0 {
-		state.mu.Lock()
-		p := state.platform
-		state.mu.Unlock()
-
+	if len(textParts) == 0 {
+		sp.discard()
+	} else {
 		fullResponse := strings.Join(textParts, "")
 		session.AddHistory("assistant", fullResponse)
 		// Persist immediately — this path runs on abnormal channel close,
@@ -6674,6 +6701,12 @@ channelClosed:
 				}
 			}
 		}
+	}
+
+	// Sent after any partial reply so it marks that reply as incomplete;
+	// with no partial reply it is the only sign the turn ended.
+	if crashed {
+		e.send(p, replyCtx, e.i18n.T(MsgAgentExitedMidTurn))
 	}
 }
 
@@ -6813,6 +6846,7 @@ func (e *Engine) drainPendingMessages(state *interactiveState, session *Session,
 		}
 
 		slog.Info("processing queued message", "session", sessionKey)
+		e.beginTurnJournal(sessionKey, queued.platform.Name(), queued.msgSessionKey, queued.messageID, queued.content)
 		e.processInteractiveEvents(state, session, sessions, sessionKey, queued.messageID, time.Now(), stopTyping, sendDone, queued.replyCtx, lockGen)
 	}
 }

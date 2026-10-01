@@ -538,6 +538,9 @@ const (
 	MsgRestarting     MsgKey = "restarting"
 	MsgRestartSuccess MsgKey = "restart_success"
 
+	MsgAgentExitedMidTurn MsgKey = "agent_exited_mid_turn"
+	MsgTurnInterrupted    MsgKey = "turn_interrupted"
+
 	MsgUpgradeChecking    MsgKey = "upgrade_checking"
 	MsgUpgradeUpToDate    MsgKey = "upgrade_up_to_date"
 	MsgUpgradeAvailable   MsgKey = "upgrade_available"
@@ -1277,6 +1280,20 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "🔄 會話進程已退出，正在重啟...",
 		LangJapanese:           "🔄 セッションプロセスが終了しました。再起動中...",
 		LangSpanish:            "🔄 El proceso de sesión finalizó, reiniciando...",
+	},
+	MsgAgentExitedMidTurn: {
+		LangEnglish:            "⚠️ The agent process exited unexpectedly, so this reply is incomplete. Resend your message or ask it to continue.",
+		LangChinese:            "⚠️ Agent 进程意外退出，本轮回复没有完成。可以重新发送，或让它继续。",
+		LangTraditionalChinese: "⚠️ Agent 進程意外退出，本輪回覆沒有完成。可以重新傳送，或讓它繼續。",
+		LangJapanese:           "⚠️ エージェントのプロセスが予期せず終了したため、この返信は完了していません。再送するか、続きを依頼してください。",
+		LangSpanish:            "⚠️ El proceso del agente terminó inesperadamente, así que esta respuesta está incompleta. Reenvía tu mensaje o pide que continúe.",
+	},
+	MsgTurnInterrupted: {
+		LangEnglish:            "⚠️ The service stopped (restart or crash) before finishing the reply to the message received at %s. Resend it or ask it to continue.",
+		LangChinese:            "⚠️ %s 收到的消息还没回复完，服务就中断了（重启或异常退出）。可以重新发送，或让它继续。",
+		LangTraditionalChinese: "⚠️ %s 收到的訊息還沒回覆完，服務就中斷了（重啟或異常退出）。可以重新傳送，或讓它繼續。",
+		LangJapanese:           "⚠️ %s に受信したメッセージへの返信が終わる前に、サービスが停止しました（再起動または異常終了）。再送するか、続きを依頼してください。",
+		LangSpanish:            "⚠️ El servicio se detuvo (reinicio o fallo) antes de terminar la respuesta al mensaje recibido a las %s. Reenvíalo o pide que continúe.",
 	},
 	MsgSessionNotStarted: {
 		LangEnglish:            "(new — not yet started)",

@@ -1289,6 +1289,10 @@ func main() {
 			e.SetPendingRestartNotify(notify)
 		}
 	}
+	// Tell chats whose reply was cut off when the previous process exited.
+	for _, e := range engines {
+		e.NotifyInterruptedTurns()
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
