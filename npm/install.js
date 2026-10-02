@@ -9,13 +9,27 @@ const os = require("os");
 const path = require("path");
 const https = require("https");
 const http = require("http");
+const net = require("net");
+const tls = require("tls");
 const zlib = require("zlib");
 
 const PACKAGE = require("./package.json");
 const VERSION = `v${PACKAGE.version}`;
 const NAME = "lark-agent-bot";
+const USER_AGENT = "lark-agent-bot-npm";
 
 const GITHUB_REPO = "ClaymanTwinkle/lark-agent-bot";
+// LARK_AGENT_BOT_DOWNLOAD_BASE replaces this prefix, so users who can't
+// reach GitHub can point at a mirror.
+const RELEASES_BASE = `https://github.com/${GITHUB_REPO}/releases/download`;
+
+// A source that sends nothing for this long is given up on, and so is a
+// download (redirects included) that takes longer than the deadline.
+// LARK_AGENT_BOT_DOWNLOAD_TIMEOUT and LARK_AGENT_BOT_DOWNLOAD_DEADLINE
+// override them, in seconds.
+const DEFAULT_IDLE_TIMEOUT_S = 30;
+const DEFAULT_DEADLINE_S = 600;
+const MAX_REDIRECTS = 5;
 
 // Voice messages and video covers need ffmpeg. When it isn't on PATH, a
 // static build from ffmpeg-static goes to ~/.lark-agent-bot/bin, where
@@ -24,6 +38,8 @@ const GITHUB_REPO = "ClaymanTwinkle/lark-agent-bot";
 // LARK_AGENT_BOT_SKIP_FFMPEG=1 to skip.
 const FFMPEG_REPO = "eugeneware/ffmpeg-static";
 const FFMPEG_RELEASE = "b6.1.1";
+// LARK_AGENT_BOT_FFMPEG_DOWNLOAD_BASE replaces this prefix.
+const FFMPEG_BASE = `https://github.com/${FFMPEG_REPO}/releases/download`;
 // SHA-256 of each ffmpeg-<platform>-<arch>.gz asset in FFMPEG_RELEASE.
 const FFMPEG_SHA256 = {
   "darwin-arm64": "8923876afa8db5585022d7860ec7e589af192f441c56793971276d450ed3bbfa",
@@ -58,49 +74,377 @@ function getPlatformInfo() {
   return { platform, arch, ext, filename };
 }
 
-function getDownloadURLs(filename) {
-  return [
-    `https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/${filename}`,
-  ];
+// setting reads LARK_AGENT_BOT_<NAME>, or else the npm config key of the
+// same name: npm hands `--lark-agent-bot-<name>=...` and .npmrc entries to
+// install scripts as npm_config_lark_agent_bot_<name>.
+function setting(env, name) {
+  const key = `lark_agent_bot_${name.toLowerCase()}`;
+  return (
+    env[`LARK_AGENT_BOT_${name}`] ||
+    env[`npm_config_${key}`] ||
+    env[`npm_config_${key.replace(/_/g, "-")}`] ||
+    ""
+  ).trim();
 }
 
-function fetch(url, redirects = 5) {
-  return new Promise((resolve, reject) => {
-    if (redirects <= 0) return reject(new Error("Too many redirects"));
-    const mod = url.startsWith("https") ? https : http;
-    mod
-      .get(url, { headers: { "User-Agent": "lark-agent-bot-npm" } }, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          return resolve(fetch(res.headers.location, redirects - 1));
-        }
-        if (res.statusCode !== 200) {
-          res.resume();
-          return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
-        }
-        const chunks = [];
-        res.on("data", (c) => chunks.push(c));
-        res.on("end", () => resolve(Buffer.concat(chunks)));
-        res.on("error", reject);
-      })
-      .on("error", reject);
+// downloadBases puts the custom base, when there is one, before the default.
+function downloadBases(custom, fallback) {
+  const base = custom.replace(/\/+$/, "");
+  return base && base !== fallback ? [base, fallback] : [fallback];
+}
+
+// getDownloadURLs lists the URLs of release asset filename in the order to
+// try them.
+function getDownloadURLs(filename, env = process.env) {
+  return downloadBases(setting(env, "DOWNLOAD_BASE"), RELEASES_BASE).map(
+    (base) => `${base}/${VERSION}/${filename}`
+  );
+}
+
+// getFFmpegURLs lists the URLs of the ffmpeg build for key
+// ("<platform>-<arch>") in the order to try them.
+function getFFmpegURLs(key, env = process.env) {
+  return downloadBases(setting(env, "FFMPEG_DOWNLOAD_BASE"), FFMPEG_BASE).map(
+    (base) => `${base}/${FFMPEG_RELEASE}/ffmpeg-${key}.gz`
+  );
+}
+
+// getTimeouts returns the idle timeout and the deadline of one download, in
+// milliseconds.
+function getTimeouts(env = process.env) {
+  const ms = (name, fallback) => {
+    const seconds = Number(setting(env, name));
+    return (Number.isFinite(seconds) && seconds > 0 ? seconds : fallback) * 1000;
+  };
+  return {
+    idle: ms("DOWNLOAD_TIMEOUT", DEFAULT_IDLE_TIMEOUT_S),
+    deadline: ms("DOWNLOAD_DEADLINE", DEFAULT_DEADLINE_S),
+  };
+}
+
+function firstSet(env, keys) {
+  for (const key of keys) {
+    const value = (env[key] || "").trim();
+    if (value && value !== "null" && value !== "false") return value;
+  }
+  return "";
+}
+
+// getProxyForURL returns the proxy to fetch url through, or null. Like npm,
+// it takes npm's https-proxy / proxy config first, then HTTPS_PROXY and
+// HTTP_PROXY, and skips the hosts that NO_PROXY (or npm's noproxy) lists.
+function getProxyForURL(url, env = process.env) {
+  const keys =
+    new URL(url).protocol === "https:"
+      ? ["npm_config_https_proxy", "npm_config_proxy", "https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY"]
+      : ["npm_config_proxy", "http_proxy", "HTTP_PROXY"];
+  const proxy = firstSet(env, keys);
+  const noProxy = firstSet(env, ["npm_config_noproxy", "no_proxy", "NO_PROXY"]);
+  if (!proxy || shouldBypassProxy(url, noProxy)) return null;
+  return proxy;
+}
+
+// shouldBypassProxy reports whether noProxy, a NO_PROXY list (hosts,
+// domains as "example.com", ".example.com" or "*.example.com", each with an
+// optional ":port", or "*"), covers url's host.
+function shouldBypassProxy(url, noProxy) {
+  if (!noProxy) return false;
+  const u = new URL(url);
+  const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  const port = u.port || (u.protocol === "https:" ? "443" : "80");
+  return noProxy.split(/[\s,]+/).some((raw) => {
+    const entry = raw.toLowerCase();
+    if (!entry) return false;
+    if (entry === "*") return true;
+    let entryHost = entry;
+    let entryPort = "";
+    const m = entry.match(/^\[([^\]]+)\](?::(\d+))?$/) || (!net.isIP(entry) && entry.match(/^([^:]+):(\d+)$/));
+    if (m) {
+      entryHost = m[1];
+      entryPort = m[2] || "";
+    }
+    if (entryPort && entryPort !== port) return false;
+    entryHost = entryHost.replace(/^\*?\./, "");
+    return host === entryHost || (!net.isIP(host) && host.endsWith(`.${entryHost}`));
   });
 }
 
-async function download(urls) {
+// parseProxy turns a proxy setting ("http://user:pass@host:port", or just
+// "host:port") into what a request to it needs.
+function parseProxy(value) {
+  const u = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `http://${value}`);
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    throw new Error(`proxy ${u.protocol}//${u.host} is not supported, use an http:// or https:// proxy`);
+  }
+  const headers = {};
+  if (u.username || u.password) {
+    const auth = `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}`;
+    headers["Proxy-Authorization"] = `Basic ${Buffer.from(auth).toString("base64")}`;
+  }
+  return {
+    mod: u.protocol === "https:" ? https : http,
+    host: u.hostname.replace(/^\[|\]$/g, ""),
+    port: Number(u.port) || (u.protocol === "https:" ? 443 : 80),
+    headers,
+    label: `${u.protocol}//${u.host}`, // without the credentials, for messages
+  };
+}
+
+// watchIdle calls onIdle once socket has been idle, connecting included, for
+// ms, and returns a function that stops watching.
+function watchIdle(socket, ms, onIdle) {
+  const fire = () => onIdle(new Error(`timed out: no data for ${ms / 1000}s`));
+  socket.setTimeout(ms);
+  socket.once("timeout", fire);
+  return () => {
+    socket.setTimeout(0);
+    socket.removeListener("timeout", fire);
+  };
+}
+
+// sendGet sends a GET for target, directly or through the proxy env sets for
+// it, and calls onResponse with the response or onError on failure. It
+// passes every request, response and socket it opens to track.
+function sendGet(target, { env, idle, track, onResponse, onError }) {
+  const u = new URL(target);
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    throw new Error(`only http and https URLs can be downloaded, not ${target}`);
+  }
+  const hostname = u.hostname.replace(/^\[|\]$/g, "");
+  const headers = { "User-Agent": USER_AGENT, Host: u.host };
+  const send = (mod, options) => {
+    const req = track(mod.request(options, onResponse));
+    req.on("socket", (socket) =>
+      watchIdle(socket, idle, (err) => {
+        onError(err);
+        req.destroy();
+      })
+    );
+    req.on("error", onError);
+    req.end();
+  };
+
+  const proxyURL = getProxyForURL(target, env);
+  if (!proxyURL) {
+    return send(u.protocol === "https:" ? https : http, {
+      host: hostname,
+      port: Number(u.port) || (u.protocol === "https:" ? 443 : 80),
+      path: u.pathname + u.search,
+      headers,
+      agent: false,
+    });
+  }
+
+  const proxy = parseProxy(proxyURL);
+  const proxyError = (err) => onError(new Error(`proxy ${proxy.label}: ${err.message}`));
+  if (u.protocol === "http:") {
+    // Plain HTTP goes to the proxy as a request for the absolute URL.
+    return send(proxy.mod, {
+      host: proxy.host,
+      port: proxy.port,
+      path: u.href,
+      headers: { ...headers, ...proxy.headers },
+      agent: false,
+    });
+  }
+
+  // HTTPS goes through a CONNECT tunnel, with TLS to the target inside it.
+  const port = Number(u.port) || 443;
+  const authority = `${u.hostname}:${port}`;
+  const connectReq = track(
+    proxy.mod.request({
+      host: proxy.host,
+      port: proxy.port,
+      method: "CONNECT",
+      path: authority,
+      headers: { Host: authority, "User-Agent": USER_AGENT, ...proxy.headers },
+      agent: false,
+    })
+  );
+  let unwatch = () => {};
+  connectReq.on("socket", (socket) => {
+    unwatch = watchIdle(socket, idle, (err) => {
+      proxyError(err);
+      connectReq.destroy();
+    });
+  });
+  connectReq.on("error", proxyError);
+  connectReq.on("connect", (res, socket) => {
+    // From here on the TLS socket inside the tunnel is watched instead.
+    unwatch();
+    track(socket);
+    socket.on("error", onError);
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      socket.destroy();
+      return proxyError(new Error(`CONNECT ${authority} answered HTTP ${res.statusCode}`));
+    }
+    // Without an agent, https.request uses createConnection's socket.
+    send(https, {
+      host: hostname,
+      port,
+      path: u.pathname + u.search,
+      headers,
+      createConnection: () =>
+        tls.connect({ socket, host: hostname, servername: net.isIP(hostname) ? undefined : hostname }),
+    });
+  });
+  connectReq.end();
+}
+
+// fetchBuffer downloads url into a Buffer, following redirects. Each hop
+// goes through the proxy env sets for its host. It fails once the transfer
+// has been idle for timeouts.idle ms, or when the whole download, redirects
+// included, takes longer than timeouts.deadline ms.
+function fetchBuffer(url, { env = process.env, timeouts = getTimeouts(env) } = {}) {
+  return new Promise((resolve, reject) => {
+    // Everything still open, destroyed when the download fails.
+    const open = new Set();
+    const track = (stream) => {
+      open.add(stream);
+      stream.once("close", () => open.delete(stream));
+      return stream;
+    };
+    let settled = false;
+    const finish = (err, data) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (!err) return resolve(data);
+      for (const stream of open) stream.destroy();
+      reject(err);
+    };
+    const timer = setTimeout(
+      () => finish(new Error(`timed out: not finished after ${timeouts.deadline / 1000}s`)),
+      timeouts.deadline
+    );
+
+    let hops = 0;
+    const get = (target, redirectsLeft) => {
+      const hop = ++hops;
+      // Errors from a hop already redirected away from don't matter.
+      const fail = (err) => {
+        if (hop === hops) finish(err);
+      };
+      const onResponse = (res) => {
+        track(res);
+        res.on("error", fail);
+        const { statusCode: status, headers } = res;
+        if (status >= 300 && status < 400 && headers.location) {
+          res.resume();
+          if (redirectsLeft === 0) return fail(new Error("too many redirects"));
+          let next;
+          try {
+            next = new URL(headers.location, target).href;
+          } catch {
+            return fail(new Error(`bad redirect to ${headers.location}`));
+          }
+          return get(next, redirectsLeft - 1);
+        }
+        if (status !== 200) {
+          res.resume();
+          return fail(new Error(`HTTP ${status} from ${new URL(target).host}`));
+        }
+        const chunks = [];
+        const cut = () => fail(new Error("connection closed before the download finished"));
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => (res.complete ? finish(null, Buffer.concat(chunks)) : cut()));
+        res.on("close", cut);
+      };
+      try {
+        sendGet(target, { env, idle: timeouts.idle, track, onResponse, onError: fail });
+      } catch (err) {
+        fail(err);
+      }
+    };
+    get(url, MAX_REDIRECTS);
+  });
+}
+
+function sha256Hex(data) {
+  return crypto.createHash("sha256").update(data).digest("hex");
+}
+
+// parseChecksums reads sha256sum output ("<hex>  <filename>" lines, as in a
+// release's checksums.txt) into a map from filename to lowercase hex.
+function parseChecksums(text) {
+  const sums = new Map();
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^([0-9a-f]{64})\s+\*?(\S.*?)\s*$/i);
+    if (m) sums.set(m[2], m[1].toLowerCase());
+  }
+  return sums;
+}
+
+function proxyNote(url, env) {
+  try {
+    const proxy = getProxyForURL(url, env);
+    return proxy ? ` via proxy ${parseProxy(proxy).label}` : "";
+  } catch {
+    return ""; // fetchBuffer reports the bad setting
+  }
+}
+
+// downloadFirst downloads from each of urls in turn and returns the first
+// download that check accepts; check throws to reject one. The error lists
+// why each URL failed.
+async function downloadFirst(urls, check, opts = {}) {
+  const failures = [];
   for (const url of urls) {
+    console.log(`[lark-agent-bot] Downloading ${url}${proxyNote(url, opts.env || process.env)}`);
     try {
-      console.log(`[lark-agent-bot] Downloading from ${url}`);
-      const data = await fetch(url);
+      const data = await fetchBuffer(url, opts);
       console.log(`[lark-agent-bot] Downloaded ${(data.length / 1024 / 1024).toFixed(1)} MB`);
+      await check(data, url);
       return data;
     } catch (err) {
-      console.warn(`[lark-agent-bot] Failed: ${err.message}, trying next source...`);
+      console.warn(`[lark-agent-bot] Failed: ${err.message}`);
+      failures.push(`  ${url}: ${err.message}`);
     }
   }
-  throw new Error(
-    `[lark-agent-bot] Could not download binary from any source.\n` +
-      `  Tried: ${urls.join(", ")}\n` +
-      `  You can download manually from https://github.com/${GITHUB_REPO}/releases`
+  throw new Error(failures.join("\n"));
+}
+
+// downloadRelease downloads release asset filename from the first of urls
+// that works and checks its SHA-256 against checksums.txt: the one next to
+// it, or when that one is missing or doesn't list filename, the ones next
+// to the other URLs (a mirror may not copy checksums.txt). A download that
+// doesn't match is never returned. When no checksums.txt can be had, the
+// download is returned unverified, with a warning.
+async function downloadRelease(filename, urls, opts = {}) {
+  const lists = new Map(); // checksums.txt URL -> Promise of its parsed list, or null
+  const checksums = (url) => {
+    if (!lists.has(url)) {
+      lists.set(
+        url,
+        fetchBuffer(url, opts).then(
+          (data) => parseChecksums(data.toString("utf8")),
+          (err) => {
+            console.warn(`[lark-agent-bot] Could not get ${url}: ${err.message}`);
+            return null;
+          }
+        )
+      );
+    }
+    return lists.get(url);
+  };
+  const nextTo = (url) => `${url.slice(0, url.lastIndexOf("/") + 1)}checksums.txt`;
+
+  return downloadFirst(
+    urls,
+    async (data, url) => {
+      for (const sumsURL of [url, ...urls.filter((u) => u !== url)].map(nextTo)) {
+        const want = ((await checksums(sumsURL)) || new Map()).get(filename);
+        if (!want) continue;
+        const got = sha256Hex(data);
+        if (got !== want) {
+          throw new Error(`checksum mismatch: the download's SHA-256 is ${got}, but ${sumsURL} lists ${want}`);
+        }
+        console.log(`[lark-agent-bot] SHA-256 matches ${sumsURL}`);
+        return;
+      }
+      console.warn(`[lark-agent-bot] Warning: no checksums.txt lists ${filename}, installing it unverified.`);
+    },
+    opts
   );
 }
 
@@ -215,16 +559,16 @@ async function installFFmpeg(toolDir) {
     return;
   }
 
-  const url = `https://github.com/${FFMPEG_REPO}/releases/download/${FFMPEG_RELEASE}/ffmpeg-${key}.gz`;
   const tmpPath = `${ffmpegPath}.download`;
   try {
-    console.log(`[lark-agent-bot] ffmpeg not found, downloading from ${url}`);
-    const gz = await fetch(url);
+    console.log("[lark-agent-bot] ffmpeg not found, downloading a static build.");
+    const gz = await downloadFirst(getFFmpegURLs(key), (data) => {
+      const actual = sha256Hex(data);
+      if (actual !== sha256) {
+        throw new Error(`checksum mismatch: got ${actual}, want ${sha256}`);
+      }
+    });
     fs.mkdirSync(toolDir, { recursive: true });
-    const actual = crypto.createHash("sha256").update(gz).digest("hex");
-    if (actual !== sha256) {
-      throw new Error(`checksum mismatch: got ${actual}, want ${sha256}`);
-    }
     fs.writeFileSync(tmpPath, zlib.gunzipSync(gz), { mode: 0o755 });
     fs.renameSync(tmpPath, ffmpegPath);
     if (process.platform === "darwin") {
@@ -237,7 +581,7 @@ async function installFFmpeg(toolDir) {
     console.log(`[lark-agent-bot] Installed ffmpeg to ${ffmpegPath}`);
   } catch (err) {
     try { fs.unlinkSync(tmpPath); } catch {}
-    console.warn(`[lark-agent-bot] Could not install ffmpeg: ${err.message}`);
+    console.warn(`[lark-agent-bot] Could not install ffmpeg:\n${err.message}`);
     console.warn(ffmpegHint(toolDir));
   }
 }
@@ -280,7 +624,19 @@ async function installBinary(binDir) {
   }
 
   const urls = getDownloadURLs(filename);
-  const data = await download(urls);
+  let data;
+  try {
+    data = await downloadRelease(filename, urls);
+  } catch (err) {
+    throw new Error(
+      `[lark-agent-bot] Could not download ${filename}:\n${err.message}\n` +
+        `[lark-agent-bot] Download it yourself from\n  ${urls[urls.length - 1]}\n` +
+        `  and extract ${binaryName} from it into ${binDir}\n` +
+        "  Behind a proxy? Set HTTPS_PROXY. GitHub slow or blocked? Point\n" +
+        "  LARK_AGENT_BOT_DOWNLOAD_BASE at a mirror, or raise LARK_AGENT_BOT_DOWNLOAD_TIMEOUT /\n" +
+        "  LARK_AGENT_BOT_DOWNLOAD_DEADLINE (seconds)."
+    );
+  }
 
   if (ext === ".tar.gz") {
     extractTarGz(data, binDir, binaryName);
@@ -315,4 +671,16 @@ if (require.main === module) {
   });
 }
 
-module.exports = { installFFmpeg };
+// For tests.
+module.exports = {
+  VERSION,
+  downloadRelease,
+  fetchBuffer,
+  getDownloadURLs,
+  getFFmpegURLs,
+  getProxyForURL,
+  getTimeouts,
+  installFFmpeg,
+  parseChecksums,
+  shouldBypassProxy,
+};
