@@ -66,8 +66,7 @@ type Session struct {
 // number the holder MUST pass back to Unlock/UnlockWithoutUpdate; an unlock
 // carrying a stale generation (the lock was broken and re-acquired by a newer
 // turn) is silently dropped so a late unlock can never crosstalk with the
-// next turn. A gen of 0 bypasses the check (legacy escape hatch).
-// (custom 2026-09-12: busy stale-lock self-heal)
+// next turn. (custom 2026-09-12: busy stale-lock self-heal)
 func (s *Session) TryLock() (uint64, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -99,11 +98,7 @@ func (s *Session) UnlockWithoutUpdate(gen uint64) {
 func (s *Session) unlock(update bool, gen uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// gen == 0 bypasses generation validation: a compatibility shim for tests
-	// written against the old bool Unlock() API. All production callers pass
-	// the gen they captured from TryLock. TODO: migrate the remaining
-	// Unlock(0) test call sites and drop this shim.
-	if gen != 0 && gen != s.lockGen {
+	if gen != s.lockGen {
 		// Late unlock after BreakStaleLock reassigned the lock to a newer
 		// turn: dropping it is the only safe option — applying it would clear
 		// busy underneath the new holder and let a third turn run concurrently.

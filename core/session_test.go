@@ -198,13 +198,14 @@ func TestSession_Busy(t *testing.T) {
 	if s.Busy() {
 		t.Error("fresh session should not be busy")
 	}
-	if _, ok := s.TryLock(); !ok {
+	gen, ok := s.TryLock()
+	if !ok {
 		t.Fatal("TryLock should succeed")
 	}
 	if !s.Busy() {
 		t.Error("session should be busy after TryLock")
 	}
-	s.Unlock(0)
+	s.Unlock(gen)
 	if s.Busy() {
 		t.Error("session should not be busy after Unlock")
 	}

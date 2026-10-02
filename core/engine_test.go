@@ -3367,7 +3367,11 @@ func TestHandleMessage_AutoResetOnIdle_FiresWhenHeartbeatBumpedUpdatedAt(t *test
 	// Simulate a heartbeat (or unsolicited agent response) finishing right
 	// before this test's user message: Unlock() bumps UpdatedAt to now, but
 	// LastUserActivity is intentionally NOT touched by those code paths.
-	old.Unlock(0)
+	gen, ok := old.TryLock()
+	if !ok {
+		t.Fatal("expected TryLock to succeed")
+	}
+	old.Unlock(gen)
 
 	if !old.GetUpdatedAt().After(staleAt) {
 		t.Fatalf("expected Unlock to bump UpdatedAt, got %v vs %v", old.GetUpdatedAt(), staleAt)
@@ -9941,7 +9945,8 @@ func TestCmdCompress_SessionBusy_RepliesPreviousProcessing(t *testing.T) {
 
 	// Lock the session to simulate busy.
 	session := e.sessions.GetOrCreateActive(key)
-	if _, lockedNow := session.TryLock(); !lockedNow {
+	gen, lockedNow := session.TryLock()
+	if !lockedNow {
 		t.Fatal("expected TryLock to succeed")
 	}
 
@@ -9959,7 +9964,7 @@ func TestCmdCompress_SessionBusy_RepliesPreviousProcessing(t *testing.T) {
 	if !found {
 		t.Fatalf("expected MsgPreviousProcessing reply, got %v", sent)
 	}
-	session.Unlock(0)
+	session.Unlock(gen)
 }
 
 func TestCmdCompress_Success_SendsCompressDone(t *testing.T) {
@@ -10214,10 +10219,11 @@ func TestCmdPs_BusySession_InjectsToAgent(t *testing.T) {
 
 	// Simulate a turn in flight.
 	session := e.sessions.GetOrCreateActive(key)
-	if _, lockedNow := session.TryLock(); !lockedNow {
+	gen, lockedNow := session.TryLock()
+	if !lockedNow {
 		t.Fatal("expected TryLock to succeed")
 	}
-	defer session.Unlock(0)
+	defer session.Unlock(gen)
 
 	msg := &Message{SessionKey: key, Content: "/ps add unit tests", ReplyCtx: "ctx"}
 	e.cmdPs(p, msg, []string{"add", "unit", "tests"})
@@ -10566,7 +10572,8 @@ func TestHandleMessageBusyRecalledCurrentStopsAndProcessesNewMessage(t *testing.
 	e := NewEngine("test", &resultAgent{session: newAgentSession}, []Platform{p}, "", LangEnglish)
 	key := "test:user1"
 	session := e.sessions.GetOrCreateActive(key)
-	if _, lockedNow := session.TryLock(); !lockedNow {
+	gen, lockedNow := session.TryLock()
+	if !lockedNow {
 		t.Fatal("expected to lock session for busy setup")
 	}
 
@@ -10583,7 +10590,7 @@ func TestHandleMessageBusyRecalledCurrentStopsAndProcessesNewMessage(t *testing.
 	oldStopped := oldState.stopSignal()
 	go func() {
 		<-oldStopped
-		session.Unlock(0)
+		session.Unlock(gen)
 	}()
 
 	e.ReceiveMessage(p, &Message{
