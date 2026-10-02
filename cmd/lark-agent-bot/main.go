@@ -39,21 +39,19 @@ var (
 var globalAPIServer *core.APIServer
 
 // defaultResetOnIdleMins is applied when a project does not set
-// reset_on_idle_mins. After this many minutes of user inactivity, lark-agent-bot
-// rotates to a fresh session for the next message instead of resuming the
-// previous transcript via --continue. This avoids "context drift" where stale
-// chat history (failed commands, debugging noise, abandoned tangents) is
-// repeatedly re-ingested and starts to dominate the model's attention. The
-// previous session is preserved and remains accessible via /list and /switch.
-//
-// Set reset_on_idle_mins = 0 in config.toml to opt out and restore the
-// previous behavior of always continuing the prior session.
+// reset_on_idle_mins: 0, so idle reset is off and the next message always
+// continues the previous session. A project opts in with reset_on_idle_mins =
+// N: after N minutes of user inactivity, lark-agent-bot rotates to a fresh
+// session for the next message instead of resuming the previous transcript.
+// This avoids "context drift" where stale chat history (failed commands,
+// debugging noise, abandoned tangents) is repeatedly re-ingested and starts to
+// dominate the model's attention. The previous session is preserved and
+// remains accessible via /list and /switch.
 const defaultResetOnIdleMins = 0
 
 // resolveResetOnIdle returns the configured reset-on-idle duration for a
 // project, applying defaultResetOnIdleMins when the field is unset. The second
-// return value indicates whether the default was applied, so the caller can
-// emit a one-time nudge log directing users to the docs.
+// return value reports whether the field was unset.
 func resolveResetOnIdle(configured *int) (time.Duration, bool) {
 	if configured != nil {
 		return time.Duration(*configured) * time.Minute, false
@@ -715,12 +713,8 @@ func main() {
 			}
 			engine.SetAutoCompressConfigWithSource(true, maxTokens, minGap, proj.AutoCompress.AllowHeuristic)
 		}
-		resetIdle, defaulted := resolveResetOnIdle(proj.ResetOnIdleMins)
+		resetIdle, _ := resolveResetOnIdle(proj.ResetOnIdleMins)
 		engine.SetResetOnIdle(resetIdle)
-		if defaulted {
-			slog.Info("project: reset_on_idle_mins not set, applying default — set reset_on_idle_mins = 0 to opt out, see docs/usage.md",
-				"project", proj.Name, "default_minutes", defaultResetOnIdleMins)
-		}
 		if proj.AgentSessionIdleTimeoutMins != nil {
 			mins := *proj.AgentSessionIdleTimeoutMins
 			if mins <= 0 {
@@ -1796,12 +1790,8 @@ func reloadConfig(configPath, projName string, engine *core.Engine) (*core.Confi
 	} else {
 		engine.SetAutoCompressConfig(false, 0, 0)
 	}
-	resetIdle, defaulted := resolveResetOnIdle(proj.ResetOnIdleMins)
+	resetIdle, _ := resolveResetOnIdle(proj.ResetOnIdleMins)
 	engine.SetResetOnIdle(resetIdle)
-	if defaulted {
-		slog.Info("project: reset_on_idle_mins not set, applying default — set reset_on_idle_mins = 0 to opt out, see docs/usage.md",
-			"project", proj.Name, "default_minutes", defaultResetOnIdleMins)
-	}
 	if proj.AgentSessionIdleTimeoutMins != nil {
 		mins := *proj.AgentSessionIdleTimeoutMins
 		if mins <= 0 {

@@ -49,19 +49,17 @@ Each user gets an independent session with full conversation context. Manage ses
 
 During a session, the agent may request tool permissions. Reply **allow** / **deny** / **allow all**.
 
-lark-agent-bot rotates to a fresh session automatically after long inactivity:
+A project can also start a fresh session automatically after long inactivity. This is off by default (`reset_on_idle_mins` unset or `0`: the next message always continues the previous session); turn it on per project:
 
 ```toml
 [[projects]]
 name = "demo"
-reset_on_idle_mins = 30   # default when unset; set to 0 to disable
+reset_on_idle_mins = 30   # off when unset or 0
 ```
 
 The next normal message after a long idle period starts in a fresh session automatically, without deleting the old session from `/list`.
 
-**Why this is on by default:** without idle rotation, every workspace-pool eviction (~15 min) caused the next message to resume the previous transcript via `--continue`. Over many cycles this re-ingests stale chat history (failed commands, debugging noise, abandoned tangents) and the model's attention drifts away from the original intent. Rotating after 30 minutes of user inactivity gives a clean slate when you come back to a task, while preserving the old session for `/list` and `/switch`.
-
-To restore the previous behavior of always continuing, set `reset_on_idle_mins = 0`.
+**Why turn it on:** without idle rotation, the next message after a break resumes the previous transcript. Over many cycles this re-ingests stale chat history (failed commands, debugging noise, abandoned tangents) and the model's attention drifts away from the original intent. Rotating after, say, 30 minutes of user inactivity gives a clean slate when you come back to a task, while preserving the old session for `/list` and `/switch`.
 
 ### Model switch preserves history
 
