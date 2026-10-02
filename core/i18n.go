@@ -570,6 +570,10 @@ const (
 	// MsgUpgradeRestartWaiting: the update is installed, and the restart
 	// waits for the tasks in progress to finish.
 	MsgUpgradeRestartWaiting MsgKey = "upgrade_restart_waiting"
+	// MsgPeerVersionMismatch: other lark-agent-bot processes on this machine
+	// run another version, which breaks relays between the bots. Args: this
+	// bot's version, then the other bots with their versions.
+	MsgPeerVersionMismatch MsgKey = "peer_version_mismatch"
 	// MsgUpgradeConfirmButton labels the upgrade card button that runs
 	// /upgrade confirm.
 	MsgUpgradeConfirmButton MsgKey = "upgrade_confirm_button"
@@ -3561,6 +3565,13 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "✅ 磁碟上的程式已經是 **%s**（共用該程式的其他機器人已完成更新），重啟後載入新版本。",
 		LangJapanese:           "✅ ディスク上のプログラムは既に **%s** です（共有している別のボットが更新済み）。再起動すると読み込まれます。",
 		LangSpanish:            "✅ El programa en disco ya es **%s** (lo actualizó otro bot que lo comparte); se carga al reiniciar.",
+	},
+	MsgPeerVersionMismatch: {
+		LangEnglish:            "⚠️ Other bots on this machine run a version other than %s: %s. Relays and @ handoffs between the bots can fail until they all run the same version; upgrade or restart them too.",
+		LangChinese:            "⚠️ 本机其他机器人运行的版本不是 %s：%s。版本一致之前，机器人之间的转派（relay、@ 交接）可能出错，请一并升级或重启它们。",
+		LangTraditionalChinese: "⚠️ 本機其他機器人執行的版本不是 %s：%s。版本一致之前，機器人之間的轉派（relay、@ 交接）可能出錯，請一併升級或重新啟動它們。",
+		LangJapanese:           "⚠️ このマシンの他のボットは %s 以外のバージョンで動作しています：%s。バージョンが揃うまで、ボット間のリレーや @ での引き継ぎが失敗することがあります。あわせてアップグレードまたは再起動してください。",
+		LangSpanish:            "⚠️ Otros bots de esta máquina ejecutan una versión distinta de %s: %s. Los relevos y traspasos con @ entre ellos pueden fallar hasta que todos usen la misma versión; actualízalos o reinícialos también.",
 	},
 	MsgUpgradeRestartWaiting: {
 		LangEnglish:            "⏳ %d task(s) still in progress. The restart waits for them to finish (up to %d min). Send /restart to restart now.",

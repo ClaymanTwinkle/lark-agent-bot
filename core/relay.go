@@ -99,6 +99,24 @@ func (rm *RelayManager) ClosePeers() {
 	}
 }
 
+// otherProcessPeers lists the projects that other live lark-agent-bot
+// processes on this machine serve; nil when peers are not enabled.
+func (rm *RelayManager) otherProcessPeers() []RelayPeer {
+	rm.mu.RLock()
+	reg, self := rm.peers, rm.peerSocket
+	rm.mu.RUnlock()
+	if reg == nil {
+		return nil
+	}
+	var peers []RelayPeer
+	for _, p := range reg.LivePeers() {
+		if p.Socket != self {
+			peers = append(peers, p)
+		}
+	}
+	return peers
+}
+
 // peerSocketFor returns the API socket of the other process that runs
 // project. Projects in this process never resolve to a peer.
 func (rm *RelayManager) peerSocketFor(project string) (string, bool) {

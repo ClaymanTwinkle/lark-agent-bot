@@ -301,6 +301,11 @@ func (e *Engine) dispatchRestartNotify(req *RestartRequest) error {
 	text := e.i18n.T(MsgRestartSuccess)
 	if CurrentVersion != "" {
 		text += fmt.Sprintf(" (%s)", CurrentVersion)
+		// Bots sharing the binary keep running the old image until they
+		// restart too.
+		if warn := e.peerVersionWarning(CurrentVersion, CurrentCommit); warn != "" {
+			text += "\n" + warn
+		}
 	}
 
 	backoffs := []time.Duration{0, 500 * time.Millisecond, 1500 * time.Millisecond}
@@ -15302,6 +15307,11 @@ func (e *Engine) cmdUpgradeConfirm(p Platform, msg *Message) {
 			return
 		}
 		installedText = fmt.Sprintf(e.i18n.T(MsgUpgradeSuccess), release.TagName)
+	}
+	// Bots that relay to each other must run the same version; say which
+	// ones this upgrade leaves behind.
+	if warn := e.peerVersionWarning(release.TagName, ""); warn != "" {
+		installedText += "\n" + warn
 	}
 
 	e.restartAfterUpgrade(p, msg, installedText)

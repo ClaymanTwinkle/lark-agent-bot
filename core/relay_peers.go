@@ -37,7 +37,23 @@ type relayPeerEntry struct {
 	Socket    string    `json:"socket"`
 	PID       int       `json:"pid"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Version and Commit identify the build serving the project; entries
+	// written by older builds have neither.
+	Version string `json:"version,omitempty"`
+	Commit  string `json:"commit,omitempty"`
 }
+
+// RelayPeer is a project served by a lark-agent-bot process on this machine.
+type RelayPeer struct {
+	Project string
+	Socket  string
+	Version string
+	Commit  string
+}
+
+// relayPeerDialTimeout bounds the check that a registered process still
+// answers on its socket.
+const relayPeerDialTimeout = 300 * time.Millisecond
 
 // NewRelayPeerRegistry returns a registry stored in dir.
 func NewRelayPeerRegistry(dir string) *RelayPeerRegistry {
@@ -69,6 +85,8 @@ func (r *RelayPeerRegistry) Register(project, socket string) error {
 		Socket:    socket,
 		PID:       os.Getpid(),
 		UpdatedAt: time.Now(),
+		Version:   CurrentVersion,
+		Commit:    CurrentCommit,
 	}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("relay peers: marshal %s: %w", project, err)
@@ -131,6 +149,44 @@ func (r *RelayPeerRegistry) Projects() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// LivePeers lists the registered projects whose process still accepts
+// connections on its API socket, sorted by project. A process that crashed
+// can leave its entry and socket file behind; it does not answer.
+func (r *RelayPeerRegistry) LivePeers() []RelayPeer {
+	alive := make(map[string]bool)
+	var peers []RelayPeer
+	for _, project := range r.Projects() {
+		entry, ok := r.read(project)
+		if !ok || entry.Socket == "" {
+			continue
+		}
+		live, checked := alive[entry.Socket]
+		if !checked {
+			live = socketAnswers(entry.Socket)
+			alive[entry.Socket] = live
+		}
+		if !live {
+			continue
+		}
+		peers = append(peers, RelayPeer{
+			Project: entry.Project,
+			Socket:  entry.Socket,
+			Version: entry.Version,
+			Commit:  entry.Commit,
+		})
+	}
+	return peers
+}
+
+func socketAnswers(socket string) bool {
+	conn, err := net.DialTimeout("unix", socket, relayPeerDialTimeout)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 func (r *RelayPeerRegistry) read(project string) (relayPeerEntry, bool) {
