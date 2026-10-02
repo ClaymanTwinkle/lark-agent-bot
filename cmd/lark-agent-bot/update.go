@@ -33,8 +33,11 @@ var cachedLatestVersion struct {
 	mu        sync.RWMutex
 }
 
-// versionCheckTTL 缓存有效期（1小时）
-const versionCheckTTL = time.Hour
+// versionCheckTTL is how old a known latest version may be and still be
+// shown in the update hint. An old entry is still a correct hint: the
+// release it names exists and is newer than this binary. How often GitHub
+// is asked is updateCheckInterval.
+const versionCheckTTL = 7 * 24 * time.Hour
 
 type githubRelease struct {
 	TagName    string `json:"tag_name"`
@@ -42,18 +45,27 @@ type githubRelease struct {
 	Prerelease bool   `json:"prerelease"`
 }
 
-// fetchLatestStableReleaseAsync 异步获取最新稳定版本（非pre-release）
+// fetchLatestStableReleaseAsync 异步获取最新稳定版本（非pre-release）. It asks
+// GitHub only when no lark-agent-bot process on this host has done so in the
+// last updateCheckInterval (see claimUpdateCheck).
 func fetchLatestStableReleaseAsync() {
+	path := updateCheckPath()
+	if !claimUpdateCheck(path, time.Now()) {
+		return
+	}
 	go func() {
 		release, err := fetchLatestStableRelease()
 		if err != nil || release == nil || release.TagName == "" {
+			slog.Debug("update check failed", "error", err)
 			return
 		}
+		now := time.Now()
 		// 缓存结果
 		cachedLatestVersion.mu.Lock()
 		cachedLatestVersion.version = release.TagName
-		cachedLatestVersion.timestamp = time.Now()
+		cachedLatestVersion.timestamp = now
 		cachedLatestVersion.mu.Unlock()
+		recordLatestVersion(path, release.TagName, now)
 	}()
 }
 
@@ -63,6 +75,13 @@ func checkUpdateAsync() {
 	if version == "dev" || version == "" {
 		return
 	}
+	// Only printUsage shows the update hint. Subcommands never do, and
+	// update / check-update ask GitHub themselves; agents run subcommands
+	// (send, cron, timer, ...) many times an hour.
+	if invokesSubcommand(os.Args[1:]) {
+		return
+	}
+	loadCachedLatestVersion(updateCheckPath())
 	fetchLatestStableReleaseAsync()
 }
 
@@ -190,6 +209,7 @@ func fetchLatestPreRelease() (*githubRelease, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	req, _ := http.NewRequest("GET", githubAllAPI+"?per_page=10", nil)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	core.SetGitHubAuth(req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -219,6 +239,7 @@ func fetchLatestStableRelease() (*githubRelease, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	req, _ := http.NewRequest("GET", githubAPI, nil)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	core.SetGitHubAuth(req)
 
 	resp, err := client.Do(req)
 	if err == nil {

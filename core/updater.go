@@ -44,11 +44,15 @@ func CheckForUpdate(currentVersion string) (*ReleaseInfo, error) {
 func checkForUpdateFrom(currentVersion, apiURL, latestPageURL string) (*ReleaseInfo, error) {
 	best, err := newestReleaseFrom(apiURL)
 	if err != nil {
-		// The unauthenticated API allows 60 requests/hour per IP, which a
+		// Without a token the API allows 60 requests/hour per IP, which a
 		// shared egress IP (proxy, VPN, NAT) exhausts easily and then answers
 		// 403. The release page redirect has no such quota; it only lacks the
 		// release notes and skips pre-releases.
-		slog.Warn("updater: releases API failed, falling back to release page redirect", "error", err)
+		logArgs := []any{"error", err}
+		if githubToken() == "" {
+			logArgs = append(logArgs, "hint", "set GH_TOKEN or GITHUB_TOKEN to raise the API rate limit")
+		}
+		slog.Warn("updater: releases API failed, falling back to release page redirect", logArgs...)
 		tag, pageURL, ferr := latestTagFromRedirect(latestPageURL)
 		if ferr != nil {
 			return nil, fmt.Errorf("check releases: %w (fallback: %v)", err, ferr)
@@ -131,6 +135,7 @@ func fetchReleasesFrom(apiURL string) ([]ReleaseInfo, error) {
 	}
 	req.Header.Set("User-Agent", "lark-agent-bot-updater")
 	req.Header.Set("Accept", "application/json")
+	SetGitHubAuth(req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -147,6 +152,31 @@ func fetchReleasesFrom(apiURL string) ([]ReleaseInfo, error) {
 		return nil, err
 	}
 	return releases, nil
+}
+
+// githubTokenEnvVars are read, in this order, for a token to call the GitHub
+// API with: the variables the gh CLI reads, in its order of precedence.
+var githubTokenEnvVars = []string{"GH_TOKEN", "GITHUB_TOKEN"}
+
+func githubToken() string {
+	for _, name := range githubTokenEnvVars {
+		if tok := strings.TrimSpace(os.Getenv(name)); tok != "" {
+			return tok
+		}
+	}
+	return ""
+}
+
+// SetGitHubAuth authenticates a GitHub API request with the token in
+// GH_TOKEN or GITHUB_TOKEN, if either is set. Without one, every process on
+// the host shares GitHub's quota of 60 requests per hour per IP; with one,
+// the request counts against the token's account (5000 per hour). Use it
+// only for api.github.com requests, so the token is not sent elsewhere. It
+// must never be logged.
+func SetGitHubAuth(req *http.Request) {
+	if tok := githubToken(); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
 }
 
 // SelfUpdate downloads and installs the given release version.

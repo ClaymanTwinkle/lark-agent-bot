@@ -50,6 +50,9 @@ func TestGetUpdateHintIfAvailable_NeverBlocks(t *testing.T) {
 	origVersion := version
 	defer func() { version = origVersion }()
 	version = "v1.0.0"
+	// No update check record: keeps the test off the network and out of
+	// the real ~/.lark-agent-bot.
+	useUpdateCheckPath(t, "")
 
 	// Clear cache to force cache miss
 	cachedLatestVersion.mu.Lock()
@@ -58,7 +61,7 @@ func TestGetUpdateHintIfAvailable_NeverBlocks(t *testing.T) {
 	cachedLatestVersion.mu.Unlock()
 
 	// getUpdateHintIfAvailable should return "" immediately on cache miss
-	// (async fetch is kicked off in background but does not block)
+	// (a refresh, if one is due, runs in the background)
 	start := time.Now()
 	hint := getUpdateHintIfAvailable()
 	elapsed := time.Since(start)

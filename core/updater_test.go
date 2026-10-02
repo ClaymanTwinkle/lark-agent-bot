@@ -245,6 +245,52 @@ func TestCheckForUpdate_ErrorsWhenFallbackHasNoTag(t *testing.T) {
 	}
 }
 
+// The releases API is called with GH_TOKEN or GITHUB_TOKEN when one is set,
+// so the check does not depend on the per-IP quota for unauthenticated
+// requests (#10). The release page fallback never gets the token.
+func TestCheckForUpdate_AuthenticatesAPIWithToken(t *testing.T) {
+	tests := []struct {
+		name, ghToken, githubToken, want string
+	}{
+		{name: "no token"},
+		{name: "GITHUB_TOKEN", githubToken: "github-tok", want: "Bearer github-tok"},
+		{name: "GH_TOKEN", ghToken: "gh-tok", want: "Bearer gh-tok"},
+		{name: "GH_TOKEN wins", ghToken: "gh-tok", githubToken: "github-tok", want: "Bearer gh-tok"},
+		{name: "blank token ignored", ghToken: "  ", githubToken: "github-tok", want: "Bearer github-tok"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GH_TOKEN", tt.ghToken)
+			t.Setenv("GITHUB_TOKEN", tt.githubToken)
+
+			var apiAuth, pageAuth atomic.Value
+			mux := http.NewServeMux()
+			mux.HandleFunc("/api/releases", func(w http.ResponseWriter, r *http.Request) {
+				apiAuth.Store(r.Header.Get("Authorization"))
+				// Fail like the rate limit does, so the fallback runs too.
+				w.WriteHeader(http.StatusForbidden)
+			})
+			mux.HandleFunc("/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+				pageAuth.Store(r.Header.Get("Authorization"))
+				w.Header().Set("Location", "https://github.com/ClaymanTwinkle/lark-agent-bot/releases/tag/v0.2.1")
+				w.WriteHeader(http.StatusFound)
+			})
+			srv := httptest.NewServer(mux)
+			defer srv.Close()
+
+			if _, err := checkForUpdateFrom("v0.2.0", srv.URL+"/api/releases", srv.URL+"/releases/latest"); err != nil {
+				t.Fatalf("checkForUpdateFrom: %v", err)
+			}
+			if got, _ := apiAuth.Load().(string); got != tt.want {
+				t.Errorf("API Authorization = %q, want %q", got, tt.want)
+			}
+			if got, _ := pageAuth.Load().(string); got != "" {
+				t.Errorf("release page Authorization = %q, want none", got)
+			}
+		})
+	}
+}
+
 func TestSemverCompare(t *testing.T) {
 	tests := []struct {
 		a, b string
