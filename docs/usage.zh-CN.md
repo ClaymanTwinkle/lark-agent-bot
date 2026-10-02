@@ -846,6 +846,9 @@ lark-agent-bot daemon uninstall
 `daemon install --config ~/bots/codex-bot.toml --name codex` 会安装 `lark-agent-bot-codex`。
 所有 `daemon` 命令都可以用 `--name 名称` 或 `--config 路径` 指定 bot；`daemon status` 不带参数时列出全部。
 
+Agent 更新或重新编译 lark-agent-bot 之后，用 `lark-agent-bot restart` 重启（`--all` 重启本机所有 bot，`--project 名字` 只重启一个）。
+重启会等 Agent 这一轮和其他进行中的任务结束后再进行，不会把它中途打断；`daemon restart` 会。
+
 ---
 
 ## 多工作区模式

@@ -38,6 +38,7 @@ func TestAgentSystemPromptForLang_AllToolKeysExist(t *testing.T) {
 		MsgAgentCronToolPrompt,
 		MsgAgentTimerToolPrompt,
 		MsgAgentRelayToolPrompt,
+		MsgAgentRestartToolPrompt,
 	}
 	for _, k := range keys {
 		t.Run(string(k), func(t *testing.T) {
@@ -56,7 +57,7 @@ func TestAgentSystemPromptForLang_AllToolKeysExist(t *testing.T) {
 // "cron", "timer", "send", and "relay" so it knows the bridge exposes them.
 func TestAgentSystemPromptForLang_EnglishHasAllFourTools(t *testing.T) {
 	got := AgentSystemPromptForLang(LangEnglish)
-	for _, marker := range []string{"lark-agent-bot send", "lark-agent-bot cron", "lark-agent-bot timer", "lark-agent-bot relay"} {
+	for _, marker := range []string{"lark-agent-bot send", "lark-agent-bot cron", "lark-agent-bot timer", "lark-agent-bot relay", "lark-agent-bot restart"} {
 		if !strings.Contains(got, marker) {
 			t.Errorf("English system prompt missing %q", marker)
 		}

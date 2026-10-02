@@ -793,6 +793,10 @@ const (
 	MsgAgentTimerToolPrompt MsgKey = "agent_timer_tool_prompt"
 	MsgAgentRelayToolPrompt MsgKey = "agent_relay_tool_prompt"
 	MsgAgentPeerBotPrompt   MsgKey = "agent_peer_bot_prompt"
+	// MsgAgentRestartToolPrompt tells the agent to restart lark-agent-bot with
+	// `lark-agent-bot restart`, which waits for its turn to end, instead of
+	// stopping the process it runs in.
+	MsgAgentRestartToolPrompt MsgKey = "agent_restart_tool_prompt"
 )
 
 var messages = map[MsgKey]map[Language]string{
@@ -5171,6 +5175,22 @@ Environment variables CC_PROJECT and CC_SESSION are already set, so the relay kn
 每个 bot 维护自己的 relay 会话,消息里要写清目标 bot 需要的全部上下文。
 
 环境变量 CC_PROJECT 和 CC_SESSION 已经设置好,relay 知道用哪个群聊。`,
+	},
+	MsgAgentRestartToolPrompt: {
+		LangEnglish: `### Restarting lark-agent-bot
+You run inside lark-agent-bot. After updating or rebuilding it, restart it with:
+
+  lark-agent-bot restart
+
+The restart waits until your current turn and any other work in progress have finished, then a "restart successful" notice is posted to this chat. Add --all to also restart the other lark-agent-bot processes on this machine (bots sharing one program file must all restart to run the new version), or --project <name> to restart just one of them.
+Do NOT stop the lark-agent-bot process, its scheduled task or service, or run "lark-agent-bot daemon restart" / "daemon stop" yourself: that kills your own turn halfway.`,
+		LangChinese: `### 重启 lark-agent-bot
+你运行在 lark-agent-bot 里面。更新或重新编译它之后,用下面的命令重启:
+
+  lark-agent-bot restart
+
+重启会等你这一轮和其他进行中的任务都结束后再进行,之后会在这个群里发"重启成功"的通知。加 --all 会同时重启本机其他 lark-agent-bot 进程(共用同一个程序文件的 bot 都要重启才会用上新版本),用 --project <名字> 只重启其中一个。
+不要自己停止 lark-agent-bot 进程、它的计划任务或服务,也不要执行 "lark-agent-bot daemon restart" / "daemon stop":这会把你自己这一轮中途杀掉。`,
 	},
 	MsgAgentPeerBotPrompt: {
 		LangEnglish: `### Handing work to other bots in the group

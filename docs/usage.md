@@ -953,6 +953,11 @@ Each config file is its own service, so several bots can run on one machine:
 `lark-agent-bot-codex`. Every `daemon` command takes `--name NAME` or
 `--config PATH` to pick the bot; `daemon status` without either lists them all.
 
+An agent that updated or rebuilt lark-agent-bot restarts it with
+`lark-agent-bot restart` (`--all` for every bot on the machine, `--project NAME`
+for one). The restart waits until the agent's turn and other work in progress
+finish, so the agent is not cut off; `daemon restart` would stop it mid-turn.
+
 ---
 
 ## Multi-Workspace Mode

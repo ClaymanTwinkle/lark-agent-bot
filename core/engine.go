@@ -1551,36 +1551,11 @@ func (e *Engine) ExecuteCronJob(job *CronJob) error {
 		Extra:      map[string]any{"job_id": job.ID, "job_description": job.Description},
 	})
 
-	sessionKey := job.SessionKey
-	platformName := ""
-	if idx := strings.Index(sessionKey, ":"); idx > 0 {
-		platformName = sessionKey[:idx]
-	}
-
-	var targetPlatform Platform
-	for _, p := range e.platforms {
-		if p.Name() == platformName {
-			targetPlatform = p
-			break
-		}
-	}
-	// Fallback: in multi-workspace mode the stored session key may be prefixed
-	// with the workspace path (e.g. "/home/user/project:slack:C123:U456").
-	// Search for a known platform name within the key and strip the prefix.
+	targetPlatform, sessionKey := e.platformForSessionKey(job.SessionKey)
 	if targetPlatform == nil {
-		for _, p := range e.platforms {
-			needle := ":" + p.Name() + ":"
-			if idx := strings.Index(sessionKey, needle); idx >= 0 {
-				targetPlatform = p
-				platformName = p.Name()
-				sessionKey = sessionKey[idx+1:] // strip workspace prefix
-				break
-			}
-		}
+		return fmt.Errorf("platform not found for session %q", job.SessionKey)
 	}
-	if targetPlatform == nil {
-		return fmt.Errorf("platform %q not found for session %q", platformName, sessionKey)
-	}
+	platformName := targetPlatform.Name()
 
 	rc, ok := targetPlatform.(ReplyContextReconstructor)
 	if !ok {
@@ -1740,34 +1715,11 @@ func (e *Engine) ExecuteTimerJob(job *TimerJob) error {
 		Extra:      map[string]any{"job_id": job.ID, "job_description": job.Description},
 	})
 
-	sessionKey := job.SessionKey
-	platformName := ""
-	if idx := strings.Index(sessionKey, ":"); idx > 0 {
-		platformName = sessionKey[:idx]
-	}
-
-	var targetPlatform Platform
-	for _, p := range e.platforms {
-		if p.Name() == platformName {
-			targetPlatform = p
-			break
-		}
-	}
-	// Multi-workspace fallback: strip workspace prefix from session key.
+	targetPlatform, sessionKey := e.platformForSessionKey(job.SessionKey)
 	if targetPlatform == nil {
-		for _, p := range e.platforms {
-			needle := ":" + p.Name() + ":"
-			if idx := strings.Index(sessionKey, needle); idx >= 0 {
-				targetPlatform = p
-				platformName = p.Name()
-				sessionKey = sessionKey[idx+1:]
-				break
-			}
-		}
+		return fmt.Errorf("platform not found for session %q", job.SessionKey)
 	}
-	if targetPlatform == nil {
-		return fmt.Errorf("platform %q not found for session %q", platformName, sessionKey)
-	}
+	platformName := targetPlatform.Name()
 
 	rc, ok := targetPlatform.(ReplyContextReconstructor)
 	if !ok {
@@ -15322,14 +15274,8 @@ func (e *Engine) cmdUpgradeConfirm(p Platform, msg *Message) {
 // process it waits for them to finish (up to upgradeRestartWait) instead of
 // cutting them off; /restart still restarts at once.
 func (e *Engine) restartAfterUpgrade(p Platform, msg *Message, installedText string) {
-	req := RestartRequest{SessionKey: msg.SessionKey, Platform: p.Name()}
-	busy := 0
-	if e.upgradeRestartWait > 0 {
-		busy = e.processWorkInProgress()
-	}
+	req, busy := e.newRestartRequest(msg.SessionKey, p.Name(), true)
 	if busy > 0 {
-		req.WaitIdle = true
-		req.MaxWait = e.upgradeRestartWait
 		e.reply(p, msg.ReplyCtx, installedText+"\n"+e.i18n.Tf(MsgUpgradeRestartWaiting, busy, int(e.upgradeRestartWait/time.Minute)))
 	} else {
 		e.reply(p, msg.ReplyCtx, installedText+"\n"+e.i18n.T(MsgRestarting))
@@ -15338,6 +15284,68 @@ func (e *Engine) restartAfterUpgrade(p Platform, msg *Message, installedText str
 	case RestartCh <- req:
 	default:
 	}
+}
+
+// newRestartRequest builds a restart whose success notice goes to the chat at
+// sessionKey on platform. With wait, while work is in progress anywhere in
+// the process, the restart waits for it to finish (up to upgradeRestartWait)
+// instead of cutting it off; busy is how much work it waits for.
+func (e *Engine) newRestartRequest(sessionKey, platform string, wait bool) (req RestartRequest, busy int) {
+	req = RestartRequest{SessionKey: sessionKey, Platform: platform}
+	if wait && e.upgradeRestartWait > 0 {
+		busy = e.processWorkInProgress()
+		if busy > 0 {
+			req.WaitIdle = true
+			req.MaxWait = e.upgradeRestartWait
+		}
+	}
+	return req, busy
+}
+
+// ErrRestartPending is returned when a restart is already queued.
+var ErrRestartPending = errors.New("a restart is already pending")
+
+// RequestRestart restarts the process on behalf of a session, e.g. an agent
+// that rebuilt or updated lark-agent-bot. Unless now is set, it waits like
+// the restart after /upgrade for the work in progress (including the turn
+// that asked) to finish, so the asking agent is not cut off mid-turn. The
+// success notice goes to sessionKey's chat when its platform is known.
+func (e *Engine) RequestRestart(sessionKey string, now bool) (busy int, maxWait time.Duration, err error) {
+	platform := ""
+	if p, key := e.platformForSessionKey(sessionKey); p != nil {
+		platform, sessionKey = p.Name(), key
+	}
+	req, busy := e.newRestartRequest(sessionKey, platform, !now)
+	if req.WaitIdle {
+		maxWait = req.MaxWait
+	}
+	select {
+	case RestartCh <- req:
+		return busy, maxWait, nil
+	default:
+		return 0, 0, ErrRestartPending
+	}
+}
+
+// platformForSessionKey returns the platform serving sessionKey
+// ("<platform>:<chat>:<user>") and the key itself. In multi-workspace mode a
+// stored key may carry a workspace path prefix
+// ("/home/user/project:feishu:oc_x:ou_y"); the returned key has it stripped.
+// The platform is nil when none matches.
+func (e *Engine) platformForSessionKey(sessionKey string) (Platform, string) {
+	if name, _, ok := strings.Cut(sessionKey, ":"); ok && name != "" {
+		for _, p := range e.platforms {
+			if p.Name() == name {
+				return p, sessionKey
+			}
+		}
+	}
+	for _, p := range e.platforms {
+		if idx := strings.Index(sessionKey, ":"+p.Name()+":"); idx >= 0 {
+			return p, sessionKey[idx+1:]
+		}
+	}
+	return nil, sessionKey
 }
 
 // processWorkInProgress counts the sessions with work in progress across

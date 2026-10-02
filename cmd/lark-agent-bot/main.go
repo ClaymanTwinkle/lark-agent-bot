@@ -234,6 +234,7 @@ var topLevelCommandHandlers = map[string]func([]string){
 	"sessions":  runSessions,
 	"agent-sid": runAgentSID,
 	"daemon":    runDaemon,
+	"restart":   runRestart,
 	"feishu":    runFeishu,
 	"doctor":    runDoctor,
 	"web":       runWeb,
@@ -1631,6 +1632,9 @@ Commands:
 
   send               Send a message to an active session via internal API
                      (-m <text> | --stdin, -p <project>, -s <session>)
+
+  restart            Restart the running bot once its work in progress is done
+                     (--now, --all, --project <name>)
 
   cron               Manage scheduled tasks (recurring)
     add              Create a scheduled task (-c <expr> --prompt <text>)

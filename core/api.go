@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -90,6 +91,7 @@ func NewAPIServer(dataDir string) (*APIServer, error) {
 		maxAttachmentBytes: DefaultMaxAttachmentSize,
 	}
 	s.mux.HandleFunc("/send", s.handleSend)
+	s.mux.HandleFunc("/restart", s.handleRestart)
 	s.mux.HandleFunc("/sessions", s.handleSessions)
 	s.mux.HandleFunc("/cron/add", s.handleCronAdd)
 	s.mux.HandleFunc("/cron/list", s.handleCronList)
@@ -284,6 +286,63 @@ func (s *APIServer) handleSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	apiJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// RestartAPIRequest asks the process to restart (POST /restart).
+type RestartAPIRequest struct {
+	Project    string `json:"project"`
+	SessionKey string `json:"session_key"` // chat that gets the restart notice
+	Now        bool   `json:"now"`         // do not wait for work in progress
+}
+
+// RestartAPIResponse says what the restart waits for.
+type RestartAPIResponse struct {
+	Busy        int `json:"busy"`          // sessions with work in progress
+	MaxWaitSecs int `json:"max_wait_secs"` // 0 = restarts at once
+}
+
+func (s *APIServer) handleRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req RestartAPIRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// The restart is process-wide; the engine only decides where the notice
+	// goes and how long the restart may wait.
+	s.mu.RLock()
+	engine, ok := s.engines[req.Project]
+	if req.Project == "" {
+		names := make([]string, 0, len(s.engines))
+		for name := range s.engines {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		if len(names) > 0 {
+			engine, ok = s.engines[names[0]], true
+		}
+	}
+	s.mu.RUnlock()
+	if !ok {
+		http.Error(w, fmt.Sprintf("project %q not found", req.Project), http.StatusNotFound)
+		return
+	}
+
+	busy, maxWait, err := engine.RequestRestart(req.SessionKey, req.Now)
+	if errors.Is(err, ErrRestartPending) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	slog.Info("api: restart requested", "project", req.Project, "session", req.SessionKey, "now", req.Now, "busy", busy)
+	apiJSON(w, http.StatusOK, RestartAPIResponse{Busy: busy, MaxWaitSecs: int(maxWait / time.Second)})
 }
 
 func (s *APIServer) handleSessions(w http.ResponseWriter, r *http.Request) {

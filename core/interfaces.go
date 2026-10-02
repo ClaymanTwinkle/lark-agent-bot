@@ -147,8 +147,8 @@ Use this sparingly; when in doubt, send a brief reply instead.
 `
 
 // AgentSystemPromptForLang returns the lark-agent-bot system prompt with the
-// four user-facing tool sections (send / cron / timer / relay) rendered in
-// the given language. The header, the "## Available tools" heading, and the
+// tool sections (send / cron / timer / relay / restart) rendered in the
+// given language. The header, the "## Available tools" heading, and the
 // silent-reply footer stay in English on purpose — see the comments on
 // agentSystemPromptHeader / agentSystemPromptFooter.
 //
@@ -172,6 +172,7 @@ func AgentSystemPromptForLang(lang Language) string {
 		"\n\n" + i18nT(lang, MsgAgentCronToolPrompt) +
 		"\n\n" + i18nT(lang, MsgAgentTimerToolPrompt) +
 		"\n\n" + i18nT(lang, MsgAgentRelayToolPrompt) +
+		"\n\n" + i18nT(lang, MsgAgentRestartToolPrompt) +
 		agentSystemPromptFooter
 }
 
