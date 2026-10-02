@@ -4,7 +4,7 @@ package core
 
 // runas_check.go — startup-time preflight gates for run_as_user.
 //
-// These are the hard go/no-go checks described in issue #496. They are
+// These are the hard go/no-go checks described in issue cc-connect#496. They are
 // intentionally more expensive than VerifyRunAsUserCheap (which only runs
 // the two sudo probes) because they also touch the filesystem and walk the
 // project's work_dir looking for permission problems the target user would

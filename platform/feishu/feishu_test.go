@@ -1014,8 +1014,8 @@ func TestExtractPostPlainText_CodeBlock(t *testing.T) {
 	}
 }
 
-// TestExtractPostPlainText_HrTag is a regression test for issue #508
-// (related #470/#472). Lark posts use the `hr` element to mark a
+// TestExtractPostPlainText_HrTag is a regression test for issue cc-connect#508
+// (related cc-connect#470/#472). Lark posts use the `hr` element to mark a
 // horizontal rule boundary between sections of a quoted post; the
 // extractor must surface it as a standalone `---` so the agent
 // understands the section break instead of silently dropping it.
@@ -1398,7 +1398,7 @@ func extractBasePlatform(p core.Platform) *Platform {
 }
 
 func TestNewPlatform_RequireMentionFalseAliasesGroupReplyAll(t *testing.T) {
-	// Regression test for #1141: users set require_mention = false but feishu
+	// Regression test for cc-connect#1141: users set require_mention = false but feishu
 	// reads group_reply_all. The two options must be equivalent so that
 	// group messages without @mention are NOT silently dropped.
 	p, err := newPlatform("feishu", lark.FeishuBaseUrl, map[string]any{
@@ -1689,10 +1689,10 @@ func TestNewPlatform_ImageBatchWindow(t *testing.T) {
 	}
 }
 
-// TestDispatchMessageCoalescesImageBatch covers issue #1395: when the Feishu
+// TestDispatchMessageCoalescesImageBatch covers issue cc-connect#1395: when the Feishu
 // mobile client sends N images in quick succession, each image arrives as a
 // separate message event with very close create_time values. Dispatching each
-// immediately caused core/engine's create_time watermark (PR #1168) to drop
+// immediately caused core/engine's create_time watermark (PR cc-connect#1168) to drop
 // the oldest image, so the agent only saw N-1 images. After the fix, all N
 // images within the image batch window should be coalesced into ONE dispatched
 // core.Message with N image attachments.
@@ -1823,7 +1823,7 @@ func TestDispatchMessageCoalescesImageBatch(t *testing.T) {
 }
 
 // TestDispatchMessageSingleImageRegression ensures the single-image path still
-// works after introducing the image-batch buffer (issue #1395). A single image
+// works after introducing the image-batch buffer (issue cc-connect#1395). A single image
 // must still produce one dispatched core.Message.
 func TestDispatchMessageSingleImageRegression(t *testing.T) {
 	const appID = "cli_single_img"
@@ -2097,7 +2097,7 @@ func TestFlushImageBatchesEmptySafe(t *testing.T) {
 }
 
 // TestFlushImageBatchForSession verifies the per-session flush helper added
-// for #1686 P1-B. When a non-image message (text/audio/file/post/media/...)
+// for cc-connect#1686 P1-B. When a non-image message (text/audio/file/post/media/...)
 // arrives for the same session that has a pending image batch, the batch
 // must be dispatched BEFORE the new message so core/engine's create_time
 // watermark does not drop the image as stale.

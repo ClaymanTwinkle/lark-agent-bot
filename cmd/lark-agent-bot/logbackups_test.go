@@ -102,10 +102,10 @@ func TestPreScanLogMaxBackupsFlag(t *testing.T) {
 }
 
 func TestResolveLogMaxBackups_PriorityRegressionForIssue1222(t *testing.T) {
-	// Issue #1222 follow-up: CC_LOG_MAX_BACKUPS must be honoured when
+	// Issue cc-connect#1222 follow-up: CC_LOG_MAX_BACKUPS must be honoured when
 	// set, not silently dropped. This pins the "flag > env > default"
 	// priority so future refactors of the resolver don't regress the
-	// behaviour users got from PR #1243.
+	// behaviour users got from PR cc-connect#1243.
 	t.Setenv("CC_LOG_MAX_BACKUPS", "3")
 	got, src := resolveLogMaxBackups("")
 	if src != logBackupsSourceEnv {

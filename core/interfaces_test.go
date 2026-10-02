@@ -8,7 +8,7 @@ import (
 // TestAgentSystemPrompt_EnglishDefault covers the back-compat behaviour:
 // AgentSystemPrompt() must return the same bytes as the English variant and
 // must contain the silent-reply marker so existing English-only callers keep
-// working unchanged after Issue #1655's i18n refactor.
+// working unchanged after Issue cc-connect#1655's i18n refactor.
 func TestAgentSystemPrompt_EnglishDefault(t *testing.T) {
 	got := AgentSystemPrompt()
 	if got == "" {
@@ -27,7 +27,7 @@ func TestAgentSystemPrompt_EnglishDefault(t *testing.T) {
 }
 
 // TestAgentSystemPromptForLang_AllToolKeysExist makes sure each of the four
-// Issue #1655 tool sections (send / cron / timer / relay) has at least an
+// Issue cc-connect#1655 tool sections (send / cron / timer / relay) has at least an
 // English entry. Without English entries the engine would write
 // "[agent_send_tool_prompt]" placeholders into the agent's memory file, which
 // would break every lark-agent-bot installation that didn't override its
@@ -92,7 +92,7 @@ func TestAgentSystemPromptForLang_ZhTwFallback(t *testing.T) {
 	zh := AgentSystemPromptForLang(LangChinese)
 	zhTW := AgentSystemPromptForLang(LangTraditionalChinese)
 	if zh != zhTW {
-		t.Error("zh-TW system prompt should fall back to zh for Issue #1655 tool sections")
+		t.Error("zh-TW system prompt should fall back to zh for Issue cc-connect#1655 tool sections")
 	}
 }
 

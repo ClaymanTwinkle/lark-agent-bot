@@ -14,7 +14,7 @@ import (
 )
 
 // This file implements Feishu message-resource downloads that support large
-// files (issue #1741). The larkim SDK's GetMessageResource builder does not
+// files (issue cc-connect#1741). The larkim SDK's GetMessageResource builder does not
 // expose the HTTP Range header, so a plain GET of any resource over Feishu's
 // internal ~2 MiB streaming cap returns code=234037 (download interrupted).
 // The workaround is to bypass the SDK entirely with a raw HTTP client, issue
@@ -53,7 +53,7 @@ const (
 // downloadResourceChunked downloads a Feishu message resource (file, audio,
 // etc.) into memory, bypassing the larkim SDK so we can set the HTTP Range
 // header that the SDK's GetMessageResource builder does not expose (issue
-// #1741). Returns the full payload or an error with the Feishu context
+// cc-connect#1741). Returns the full payload or an error with the Feishu context
 // prepended.
 //
 // Behaviour:
@@ -66,7 +66,7 @@ const (
 // One GET is the minimum regardless of file size: small files return 200 and
 // we are done; large files return 206 with the first chunk, then we loop.
 // This avoids the wasted HEAD round-trip and keeps the "small file" path
-// observable as exactly one outbound request, matching pre-#1741 behaviour
+// observable as exactly one outbound request, matching pre-cc-connect#1741 behaviour
 // for files under Feishu's streaming cap.
 //
 // messageID and fileKey come from the inbound message envelope; resType is
@@ -166,7 +166,7 @@ func (p *Platform) resourceFetchFirstChunk(ctx context.Context, token, messageID
 
 	case http.StatusOK:
 		// Server ignored Range and sent the full body. We deliberately
-		// honour it and skip the chunked loop — this matches pre-#1741
+		// honour it and skip the chunked loop — this matches pre-cc-connect#1741
 		// behaviour for files small enough that Feishu doesn't truncate.
 		body, err := io.ReadAll(io.LimitReader(resp.Body, p.resourceMaxBytes+1))
 		if err != nil {

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Regression tests for issue #1731.
+// Regression tests for issue cc-connect#1731.
 //
 // Background: previously, /switch <n> into a long-idle session would leave
 // the very first post-switch message routed to a brand-new session because
@@ -66,7 +66,7 @@ func TestSwitchToAgentSession_MarksExplicitlyActivated(t *testing.T) {
 }
 
 // TestMaybeAutoResetSessionOnIdle_ExplicitActivationBlocksReset reproduces
-// the exact symptom from #1731: the session's LastUserActivity is older than
+// the exact symptom from cc-connect#1731: the session's LastUserActivity is older than
 // reset_on_idle_mins, but the user has just /switch-ed into it — the reset
 // must NOT fire on the next message.
 func TestMaybeAutoResetSessionOnIdle_ExplicitActivationBlocksReset(t *testing.T) {
@@ -134,7 +134,7 @@ func TestMaybeAutoResetSessionOnIdle_ExplicitActivationExpiresAfterTTL(t *testin
 
 // TestMaybeAutoResetSessionOnIdle_NonExplicitSessionUsesLegacyPath confirms
 // that sessions which were never explicitly activated (e.g. the implicit
-// "default" session that every user starts with) keep the pre-#1731
+// "default" session that every user starts with) keep the pre-cc-connect#1731
 // behaviour: the reset fires when LastUserActivity is older than
 // reset_on_idle_mins.
 func TestMaybeAutoResetSessionOnIdle_NonExplicitSessionUsesLegacyPath(t *testing.T) {
@@ -217,7 +217,7 @@ func TestSwitchSession_PreventsFirstMessageRotation(t *testing.T) {
 }
 
 // TestExplicitActivatedAt_PersistsAcrossSessionRestore verifies that the
-// new field survives the JSON snapshot/restore path (issue #1731 would
+// new field survives the JSON snapshot/restore path (issue cc-connect#1731 would
 // regress after a process restart otherwise).
 func TestExplicitActivatedAt_PersistsAcrossSessionRestore(t *testing.T) {
 	storePath := filepath.Join(t.TempDir(), "session.json")

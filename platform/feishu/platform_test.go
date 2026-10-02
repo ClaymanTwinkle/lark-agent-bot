@@ -2058,7 +2058,7 @@ func TestCardAction_NavSlow_NilCard_NoRefresh(t *testing.T) {
 
 // TestOnMessage_OldMessageAfterRestartIsFiltered verifies that a Feishu message whose
 // create_time is before the process start time is silently dropped.  This is the
-// expected "drop replayed pre-restart messages" behaviour described in issue #972.
+// expected "drop replayed pre-restart messages" behaviour described in issue cc-connect#972.
 func TestOnMessage_OldMessageAfterRestartIsFiltered(t *testing.T) {
 	// Simulate a daemon "restart" by pinning StartTime to now.
 	restartTime := time.Now()
@@ -2117,7 +2117,7 @@ func TestOnMessage_OldMessageAfterRestartIsFiltered(t *testing.T) {
 
 // TestOnMessage_NewMessageAfterRestartIsProcessed verifies that a Feishu message whose
 // create_time is after the process start time is delivered to the handler normally.
-// Regression test for issue #972: new messages must not be mis-classified as "old".
+// Regression test for issue cc-connect#972: new messages must not be mis-classified as "old".
 func TestOnMessage_NewMessageAfterRestartIsProcessed(t *testing.T) {
 	// Simulate a daemon "restart" by pinning StartTime to 5 minutes ago.
 	restartTime := time.Now().Add(-5 * time.Minute)
@@ -2181,7 +2181,7 @@ func TestOnMessage_NewMessageAfterRestartIsProcessed(t *testing.T) {
 }
 
 // TestOnMessage_GracePeriodMessageIsProcessed verifies that a message created within
-// the 2-second grace window just before StartTime is NOT dropped (issue #972 edge case).
+// the 2-second grace window just before StartTime is NOT dropped (issue cc-connect#972 edge case).
 func TestOnMessage_GracePeriodMessageIsProcessed(t *testing.T) {
 	restartTime := time.Now()
 	orig := core.StartTime

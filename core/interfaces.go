@@ -108,7 +108,7 @@ type PlatformPromptInjector interface {
 // This is a back-compat wrapper that always returns English; the underlying
 // source of truth is AgentSystemPromptForLang, which the engine and the
 // Claude Code agent call when they know the operator's configured language
-// (Issue #1655: zh + en are the first two localized tool sections).
+// (Issue cc-connect#1655: zh + en are the first two localized tool sections).
 func AgentSystemPrompt() string {
 	return AgentSystemPromptForLang(LangEnglish)
 }
@@ -163,7 +163,7 @@ Use this sparingly; when in doubt, send a brief reply instead.
 // Pass LangEnglish for the historical English-only behaviour, which
 // AgentSystemPrompt() is a thin wrapper around.
 //
-// See Issue #1655 for the original feature request and the owner-approved
+// See Issue cc-connect#1655 for the original feature request and the owner-approved
 // scope: zh + en translations on these four tools; other languages come
 // later as follow-up PRs.
 func AgentSystemPromptForLang(lang Language) string {
@@ -186,7 +186,7 @@ type SystemPromptSupporter interface {
 // SessionIDValidator is an optional interface for agents that can validate
 // whether a stored session ID actually belongs to the current project's
 // session store. The engine uses this to prevent cross-project session
-// context leakage (issue #599): a stale ID from another project's workspace
+// context leakage (issue cc-connect#599): a stale ID from another project's workspace
 // would otherwise resume the wrong conversation history.
 //
 // Implementations should return false when:
@@ -344,7 +344,7 @@ type AgentSession interface {
 	// Send sends a user message (with optional images and files) to the running
 	// agent process. messageID is the platform message ID; agents thread it
 	// into SaveFilesToDisk so attachments from different messages land in
-	// distinct per-message subdirectories (issue #1552). It may be empty for
+	// distinct per-message subdirectories (issue cc-connect#1552). It may be empty for
 	// synthesized messages, in which case SaveFilesToDisk falls back to a
 	// best-effort atomic-write path that refuses to overwrite.
 	Send(prompt string, messageID string, images []ImageAttachment, files []FileAttachment) error
@@ -545,7 +545,7 @@ type CommandProvider interface {
 // layout is recognised: each immediate subdirectory of the returned dirs
 // that contains a SKILL.md is registered as a skill. Nested SKILL.md files
 // (e.g. inside `<name>/references/...`) are treated as skill assets and
-// ignored — they match the Claude Code CLI convention (issue #1304) and
+// ignored — they match the Claude Code CLI convention (issue cc-connect#1304) and
 // prevent phantom slash commands from leaking into platform command menus.
 // Skills are project-level and agent-specific — they are NOT shared across
 // different agent types.

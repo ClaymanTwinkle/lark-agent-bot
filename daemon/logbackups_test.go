@@ -14,7 +14,7 @@ func TestParseLogBackups(t *testing.T) {
 	}{
 		// Happy path
 		{name: "one", in: "1", want: 1},
-		{name: "three (issue #1222 default)", in: "3", want: 3},
+		{name: "three (issue cc-connect#1222 default)", in: "3", want: 3},
 		{name: "ten", in: "10", want: 10},
 		{name: "hundred", in: "100", want: 100},
 

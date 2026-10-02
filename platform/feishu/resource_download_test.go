@@ -73,7 +73,7 @@ func TestParseContentRangeTotal(t *testing.T) {
 // TestDownloadResourceChunked_SmallFileUsesSingleGet exercises the
 // small-resource fast path: the helper issues Range bytes=0-0; the server
 // ignores it (returns 200 with full body); the helper returns immediately.
-// Exactly one outbound GET, matching pre-#1741 behaviour for files that fit
+// Exactly one outbound GET, matching pre-cc-connect#1741 behaviour for files that fit
 // in Feishu's streaming cap.
 func TestDownloadResourceChunked_SmallFileUsesSingleGet(t *testing.T) {
 	payload := makeTestPayload(1024)

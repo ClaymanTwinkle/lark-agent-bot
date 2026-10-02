@@ -50,7 +50,7 @@ type AgentDoctorInfo interface {
 // PlatformHealthInfo is a per-platform health snapshot reported by
 // implementations of the optional PlatformHealth interface. Used by
 // /status, the management API, and lark-agent-bot doctor to surface
-// runtime degradation (e.g. issue #1618's "bot open_id unresolved"
+// runtime degradation (e.g. issue cc-connect#1618's "bot open_id unresolved"
 // state on Feishu/Lark).
 type PlatformHealthInfo struct {
 	Name           string
@@ -169,7 +169,7 @@ func checkPlatforms(platforms []Platform) []DoctorCheckResult {
 			Status: DoctorPass,
 			Detail: "connected",
 		}
-		// Issue #1618: platforms may implement PlatformHealth to flag
+		// Issue cc-connect#1618: platforms may implement PlatformHealth to flag
 		// degraded runtime state (e.g. Feishu/Lark bot open_id
 		// unresolved). Surface it as a Warn so operators can notice.
 		if ph, ok := p.(PlatformHealth); ok {

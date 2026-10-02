@@ -131,7 +131,7 @@ func normalizeAppServerURL(raw string) string {
 	if url == "" {
 		// Default to the stdio transport: lark-agent-bot's app_server backend
 		// speaks JSON-RPC over the stdio pipes, and on codex 0.152+ a ws://
-		// --listen value leaves stdio unresponsive (see #1781). Users who
+		// --listen value leaves stdio unresponsive (see cc-connect#1781). Users who
 		// need a WebSocket listener can still set app_server_url explicitly.
 		return "stdio://"
 	}

@@ -154,7 +154,7 @@ type Platform struct {
 	// (e.g. transient network/DNS/proxy outage). When true, group chat mention
 	// filtering fails closed (silently drops group messages without @bot) instead
 	// of failing open (accepting every group message). DM traffic is unaffected.
-	// Issue #1618: previous behavior treated botOpenID=="" as "filter off", which
+	// Issue cc-connect#1618: previous behavior treated botOpenID=="" as "filter off", which
 	// silently turned the bot into a loud responder for the rest of the process
 	// lifetime when the bot-info API failed.
 	groupFilterDegraded    bool
@@ -208,15 +208,15 @@ type Platform struct {
 	// arriving within imageBatchWindow. Without this, sending N images in rapid
 	// succession from the Feishu mobile client (which posts each as a separate
 	// message) caused the first (oldest create_time) image to be dropped by
-	// core/engine's create_time watermark (PR #1168), so only N-1 images were
-	// ever delivered to the agent (issue #1395).
+	// core/engine's create_time watermark (PR cc-connect#1168), so only N-1 images were
+	// ever delivered to the agent (issue cc-connect#1395).
 	imageBatchMu     sync.Mutex
 	imageBatch       map[string]*imageBatchEntry
 	imageBatchWindow time.Duration // quiet period before flushing a batch; 0 means use defaultImageBatchWindow
 
 	// resourceDownloadHTTP is the bare HTTP client used to download message
 	// resources directly from Feishu with HTTP Range requests. The larkim SDK's
-	// GetMessageResource does not expose a Range header (#1741), so for files
+	// GetMessageResource does not expose a Range header (cc-connect#1741), so for files
 	// larger than ~2MB the SDK issues a plain GET and Feishu rejects the
 	// response with code=234037. Bypassing the SDK with our own client and
 	// Range header is the supported workaround.
@@ -455,7 +455,7 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 	}
 
 	// resource_chunk_size_bytes: byte size for each Range request when chunked-
-	// downloading Feishu message resources (issue #1741). The larkim SDK does
+	// downloading Feishu message resources (issue cc-connect#1741). The larkim SDK does
 	// not expose Range headers, so for resources above ~2 MiB a plain GET
 	// returns code=234037. Default 8 MiB; clamped to [1 MiB, 64 MiB].
 	resourceChunkSize := int64(8 * 1024 * 1024)
@@ -596,7 +596,7 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 	if !p.shouldUseWebhookMode() {
 		openID, err := p.fetchBotOpenIDWithRetry(p.bgCtxForStartup())
 		if err != nil {
-			// Issue #1618: previous code failed open here — when bot open_id
+			// Issue cc-connect#1618: previous code failed open here — when bot open_id
 			// discovery failed, the group mention filter read botOpenID=="" as
 			// "filter off", which made the bot reply to every group message for
 			// the rest of the process lifetime. Now we fail closed: mark the
@@ -830,7 +830,7 @@ func (p *Platform) onCardAction(event *callback.CardActionTriggerEvent) (*callba
 	// command the agent. This mirrors the plain-text message handler's check so
 	// that clicking a card button (cmd:/perm:/nav:/act:/askq:) cannot bypass
 	// the per-user allowlist when the chat-level allow_chat filter admits the
-	// chat (Issue #1852).
+	// chat (Issue cc-connect#1852).
 	if userID == "" || !core.AllowList(p.allowFrom, userID) {
 		slog.Debug(p.tag()+": card action from unauthorized user", "user", userID)
 		return nil, nil
@@ -1405,7 +1405,7 @@ func (p *Platform) flushImageBatchByRef(sessionKey string, ref *imageBatchEntry)
 // already buffered for this session is sent to the engine before the new
 // message advances the user-message watermark. Without this flush, the
 // batch timer can fire AFTER the text message has set the watermark, causing
-// core/engine.go to drop the image as stale (see #1686 P1-B and #1395).
+// core/engine.go to drop the image as stale (see cc-connect#1686 P1-B and cc-connect#1395).
 //
 // Safe to call when no batch is buffered for this session — it is a no-op.
 func (p *Platform) flushImageBatchForSession(sessionKey string) {
@@ -1813,7 +1813,7 @@ func (p *Platform) onMessage(ctx context.Context, event *larkim.P2MessageReceive
 		return nil
 	}
 
-	// Issue #1618: the mention filter used to gate on `botOpenID != ""`,
+	// Issue cc-connect#1618: the mention filter used to gate on `botOpenID != ""`,
 	// which silently *disabled* filtering when bot discovery had failed
 	// at startup — the bot would answer every group message for the
 	// rest of the process lifetime. We now consult both flags: when
@@ -1960,7 +1960,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 	// Skip quote injection when thread_isolation is enabled and the message is
 	// inside an already-engaged thread — the thread provides conversational
 	// context, and long quoted prefixes can drown out the user's actual text
-	// (issue #764). The first accepted message in a pre-existing thread is the
+	// (issue cc-connect#764). The first accepted message in a pre-existing thread is the
 	// exception: earlier unmentioned messages were never dispatched to the
 	// agent, so bootstrap its context from the parent/root reply chain once.
 	var quoted quotedMessage
@@ -1986,7 +1986,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 			return
 		}
 		text := stripMentions(textBody.Text, mentions, p.getBotOpenID())
-		// On-demand quoted-file retrieval (issue #1560): the filter
+		// On-demand quoted-file retrieval (issue cc-connect#1560): the filter
 		// decides whether ANY of the quoted file candidates are eligible
 		// (gates: @bot mention AND same IM user as the trigger). Only
 		// then do we actually fetch the bytes — never eagerly. Quote
@@ -2004,7 +2004,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 		}
 		// Flush any image batch buffered earlier in this session so the image
 		// reaches the engine before the text message advances the user-message
-		// watermark (#1686 P1-B, related #1395).
+		// watermark (cc-connect#1686 P1-B, related cc-connect#1395).
 		p.flushImageBatchForSession(sessionKey)
 		dispatchCore(&core.Message{
 			SessionKey: sessionKey, Platform: p.platformName,
@@ -2034,7 +2034,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 		// single multi-image dispatch. Feishu mobile sends N batch-selected
 		// images as N separate events with very close create_time values;
 		// dispatching each immediately causes core/engine's create_time
-		// watermark (PR #1168) to drop the oldest image (issue #1395).
+		// watermark (PR cc-connect#1168) to drop the oldest image (issue cc-connect#1395).
 		// We only coalesce plain image messages (no quoted context) because
 		// quoted images are usually a single image replying to a prior text.
 		if parentID == "" {
@@ -2084,7 +2084,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 		}
 		// Flush any image batch buffered earlier in this session so the image
 		// reaches the engine before this audio message advances the user-message
-		// watermark (#1686 P1-B).
+		// watermark (cc-connect#1686 P1-B).
 		p.flushImageBatchForSession(sessionKey)
 		dispatchCore(&core.Message{
 			SessionKey: sessionKey, Platform: p.platformName,
@@ -2106,7 +2106,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 		if text == "" && historyText == "" && len(images) == 0 && quoted.text == "" && len(quoted.images) == 0 {
 			return
 		}
-		// Flush any image batch buffered earlier in this session (#1686 P1-B).
+		// Flush any image batch buffered earlier in this session (cc-connect#1686 P1-B).
 		p.flushImageBatchForSession(sessionKey)
 		dispatchCore(&core.Message{
 			SessionKey: sessionKey, Platform: p.platformName,
@@ -2137,7 +2137,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 		}
 		slog.Debug(p.tag()+": file downloaded", "file_name", fileBody.FileName, "size", len(fileData))
 		mimeType := detectMimeType(fileData)
-		// Flush any image batch buffered earlier in this session (#1686 P1-B).
+		// Flush any image batch buffered earlier in this session (cc-connect#1686 P1-B).
 		p.flushImageBatchForSession(sessionKey)
 		dispatchCore(&core.Message{
 			SessionKey: sessionKey, Platform: p.platformName,
@@ -2158,7 +2158,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 			slog.Warn(p.tag()+": merge_forward produced no content", "message_id", messageID)
 			return
 		}
-		// Flush any image batch buffered earlier in this session (#1686 P1-B).
+		// Flush any image batch buffered earlier in this session (cc-connect#1686 P1-B).
 		p.flushImageBatchForSession(sessionKey)
 		coreMsg := &core.Message{
 			SessionKey: sessionKey, Platform: p.platformName,
@@ -2184,7 +2184,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 		imgData, mimeType, err := p.downloadImage(messageID, stickerBody.FileKey)
 		if err != nil {
 			slog.Warn(p.tag()+": download sticker failed, falling back to placeholder", "error", err)
-			// Flush any image batch buffered earlier in this session (#1686 P1-B).
+			// Flush any image batch buffered earlier in this session (cc-connect#1686 P1-B).
 			p.flushImageBatchForSession(sessionKey)
 			dispatchCore(&core.Message{
 				SessionKey: sessionKey, Platform: p.platformName,
@@ -2195,7 +2195,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 			})
 			return
 		}
-		// Flush any image batch buffered earlier in this session (#1686 P1-B).
+		// Flush any image batch buffered earlier in this session (cc-connect#1686 P1-B).
 		p.flushImageBatchForSession(sessionKey)
 		dispatchCore(&core.Message{
 			SessionKey: sessionKey, Platform: p.platformName,
@@ -2234,7 +2234,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 				slog.Warn(p.tag()+": download media thumbnail failed", "error", err)
 			}
 		}
-		// Flush any image batch buffered earlier in this session (#1686 P1-B).
+		// Flush any image batch buffered earlier in this session (cc-connect#1686 P1-B).
 		p.flushImageBatchForSession(sessionKey)
 		dispatchCore(&core.Message{
 			SessionKey: sessionKey, Platform: p.platformName,
@@ -2488,7 +2488,7 @@ type chainMessage struct {
 // quotedFileMeta records one downloaded-file candidate from a quoted parent
 // message. We deliberately keep this as metadata only (no Data bytes) so
 // the file-resource API call can be deferred until the dispatcher is sure
-// the trigger actually requires it — issue #1560 acceptance rule:
+// the trigger actually requires it — issue cc-connect#1560 acceptance rule:
 // "quote without mention → no fetch" and "ordinary message → no fetch".
 // The Feishu sender id travels with each meta so the dispatcher can drop
 // entries whose sender differs from the user who triggered the @bot
@@ -2537,7 +2537,7 @@ const maxReplyChainDepth = 5
 // For multi-level reply chains, it traces parent_id links up to maxReplyChainDepth
 // levels and returns the full conversation chain.
 // Files in the chain are downloaded on-demand; the per-file sender_id is
-// kept so the dispatcher can enforce same-user privacy (issue #1560).
+// kept so the dispatcher can enforce same-user privacy (issue cc-connect#1560).
 // Returns empty content on any failure (graceful degradation — the user's own
 // message is still delivered without the quote).
 func (p *Platform) fetchQuotedMessage(ctx context.Context, parentID string) quotedMessage {
@@ -2637,7 +2637,7 @@ func (p *Platform) fetchSingleMessage(ctx context.Context, messageID string) *ch
 			}
 		}
 	case "file":
-		// Quoted file attachment (issue #1560). We do NOT download the file
+		// Quoted file attachment (issue cc-connect#1560). We do NOT download the file
 		// body here — that would defeat the "fetch only when bot is
 		// mentioned + same user" gate. Instead we capture only the
 		// metadata (file_key, file_name, message_id, sender_id); the
@@ -2865,7 +2865,7 @@ func extractPostPlainText(content string) string {
 				// so the agent (and downstream markdown renderers) can
 				// recognize the boundary. We flush any pending line text
 				// first so the rule is not glued to surrounding text
-				// (issue #508; related #470/#472).
+				// (issue cc-connect#508; related cc-connect#470/#472).
 				if len(line) > 0 {
 					parts = append(parts, strings.Join(line, ""))
 					line = line[:0]
@@ -3598,7 +3598,7 @@ func buildFeishuFileMessageContent(msgType, fileKey string) (string, error) {
 }
 
 func (p *Platform) downloadImage(messageID, imageKey string) ([]byte, string, error) {
-	// Issue #1741: large image bodies suffer the same code=234037 truncation
+	// Issue cc-connect#1741: large image bodies suffer the same code=234037 truncation
 	// as files when fetched through the larkim SDK (which cannot set Range
 	// headers). Route image downloads through the same chunked helper used
 	// for files so a 20-MiB screenshot lands whole instead of being capped
@@ -3614,11 +3614,11 @@ func (p *Platform) downloadImage(messageID, imageKey string) ([]byte, string, er
 }
 
 func (p *Platform) downloadResource(messageID, fileKey, resType string) ([]byte, error) {
-	// Issue #1741: the larkim SDK issues a plain GET that Feishu truncates
+	// Issue cc-connect#1741: the larkim SDK issues a plain GET that Feishu truncates
 	// with code=234037 for resources above ~2 MiB. downloadResourceChunked
 	// bypasses the SDK, sends Range headers, and reassembles the bytes
 	// client-side. All four existing call sites (audio body, file body,
-	// merge_forward file, #1588 quoted file) flow through here unchanged.
+	// merge_forward file, cc-connect#1588 quoted file) flow through here unchanged.
 	data, err := p.downloadResourceChunked(context.Background(), messageID, fileKey, resType)
 	if err != nil {
 		return nil, err
@@ -4023,7 +4023,7 @@ func isBotMentioned(mentions []*larkim.MentionEvent, botOpenID string) bool {
 	return false
 }
 
-// filterQuotedFilesForUser applies the two gating rules for issue #1560
+// filterQuotedFilesForUser applies the two gating rules for issue cc-connect#1560
 // without downloading anything yet:
 //  1. The triggering message must explicitly @-mention the bot. We never
 //     pull quoted files for messages that quote a file but do not address
@@ -4070,7 +4070,7 @@ func (p *Platform) filterQuotedFilesForUser(metas []quotedFileMeta, mentions []*
 // surviving quotedFileMeta entry. Each call hits Feishu's
 // /open-apis/im/v1/messages/:message_id/resources/:file_key endpoint.
 // We make one call per entry so a single failure cannot break the rest.
-// Per the issue #1560 acceptance rules this function MUST be reached only
+// Per the issue cc-connect#1560 acceptance rules this function MUST be reached only
 // after filterQuotedFilesForUser has approved each entry — otherwise the
 // on-demand fetch guarantee is violated.
 func (p *Platform) downloadQuotedFiles(ctx context.Context, metas []quotedFileMeta) []core.FileAttachment {
@@ -4427,7 +4427,7 @@ func (p *Platform) withTransientRetry(ctx context.Context, operation string, fn 
 	return fmt.Errorf("%s failed after %d retries: %w", operation, maxTransientRetries, lastErr)
 }
 
-// ── Issue #1618: fail-closed + supervised retry for bot open_id ──
+// ── Issue cc-connect#1618: fail-closed + supervised retry for bot open_id ──
 //
 // When the Feishu/Lark bot-info API call fails at startup (transient
 // proxy/VPN/DNS outage, server hiccup, etc.), the bot's open_id stays
@@ -4595,7 +4595,7 @@ func (p *Platform) stopGroupFilterSupervisor() {
 
 // PlatformHealth implements the optional core.PlatformHealth
 // interface so /status, lark-agent-bot doctor, and the management API can
-// surface degraded state to operators. Issue #1618.
+// surface degraded state to operators. Issue cc-connect#1618.
 func (p *Platform) PlatformHealth() core.PlatformHealthInfo {
 	st := p.snapshotGroupFilter()
 	info := core.PlatformHealthInfo{
@@ -5253,7 +5253,7 @@ func buildPreviewCardJSON(content string) string {
 // If step (1) fails OR we're in thread/reply mode (Reply API doesn't accept
 // card_id reference), we fall back to the inline-card-JSON path. The handle's
 // cardID stays empty in that case and the engine routes EventText through the
-// full-card Patch path (= original #657 behavior, no typewriter).
+// full-card Patch path (= original cc-connect#657 behavior, no typewriter).
 func (p *Platform) SendPreviewStart(ctx context.Context, rctx any, content string) (any, error) {
 	if !p.useInteractiveCard {
 		return nil, core.ErrNotSupported
@@ -5601,7 +5601,7 @@ func (p *Platform) updateCardEntity(ctx context.Context, h *feishuPreviewHandle,
 }
 
 func (p *Platform) Stop() error {
-	// Issue #1618: stop the background supervisor that retries the
+	// Issue cc-connect#1618: stop the background supervisor that retries the
 	// bot-info API when startup discovery fails. Without this the
 	// goroutine could outlive the platform and leak into the next
 	// start cycle.
@@ -5895,7 +5895,7 @@ func (p *Platform) onBotMenu(event *larkapplication.P2BotMenuV6) error {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Card 2.0 rich card support (based on upstream PR #309 + #306,
+// Card 2.0 rich card support (based on upstream PR cc-connect#309 + cc-connect#306,
 // extended with "agent reply elapsed time" in the footer).
 // ═══════════════════════════════════════════════════════════════
 

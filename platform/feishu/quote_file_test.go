@@ -13,7 +13,7 @@ import (
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 )
 
-// TestFilterQuotedFilesForUser covers the two gating rules for issue #1560
+// TestFilterQuotedFilesForUser covers the two gating rules for issue cc-connect#1560
 // in isolation: only @-bot-triggers forward files, and only the same IM user
 // is allowed to forward them.
 func TestFilterQuotedFilesForUser(t *testing.T) {
@@ -105,7 +105,7 @@ func TestFilterQuotedFilesForUser(t *testing.T) {
 }
 
 // TestDispatchMessageQuotedFileAcceptance verifies the three scenarios from
-// the issue #1560 acceptance criteria:
+// the issue cc-connect#1560 acceptance criteria:
 //  1. quote + @bot mention -> on-demand file fetch + attachment forward
 //  2. quote without @bot   -> no fetch (file resource endpoint not called)
 //  3. ordinary message     -> no fetch

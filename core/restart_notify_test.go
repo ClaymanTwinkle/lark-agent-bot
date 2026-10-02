@@ -96,7 +96,7 @@ func (p *restartNotifyStub) waitForSent(t *testing.T, n int, timeout time.Durati
 }
 
 // TestRestartNotify_DispatchesAfterPlatformReady covers the core
-// issue #1383 fix: the post-restart notify must wait for the
+// issue cc-connect#1383 fix: the post-restart notify must wait for the
 // platform to be ready, not fire immediately at startup.
 func TestRestartNotify_DispatchesAfterPlatformReady(t *testing.T) {
 	plat := &restartNotifyStub{name: "telegram"}
@@ -262,7 +262,7 @@ func TestRestartNotify_NilNotifyIgnored(t *testing.T) {
 
 // panickingRestartStub wraps restartNotifyStub and panics on Send. Used by
 // TestRestartNotify_PanicInSendRecovered to exercise the defer-recover added
-// to runPendingRestartNotify for #1686 P1-A.
+// to runPendingRestartNotify for cc-connect#1686 P1-A.
 type panickingRestartStub struct {
 	*restartNotifyStub
 }
@@ -281,13 +281,13 @@ func (p *panickingRestartStub) markReady(t *testing.T, e *Engine) {
 }
 
 func (p *panickingRestartStub) Send(_ context.Context, _ any, _ string) error {
-	panic("simulated platform Send panic for #1686 P1-A test")
+	panic("simulated platform Send panic for cc-connect#1686 P1-A test")
 }
 
 // TestRestartNotify_PanicInSendRecovered verifies that a panic inside
 // runPendingRestartNotify's dispatch path (e.g. a platform adapter panicking
 // in Send during ReconstructReplyCtx / Send) is caught by the new
-// defer-recover and does NOT crash the lark-agent-bot process. Before #1686 P1-A,
+// defer-recover and does NOT crash the lark-agent-bot process. Before cc-connect#1686 P1-A,
 // this kind of panic would propagate up and kill the daemon because no
 // higher-level recover() existed in the restart-notify goroutine.
 //

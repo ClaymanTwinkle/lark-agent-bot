@@ -57,7 +57,7 @@ func TestMessageDedup_NilReceiver(t *testing.T) {
 }
 
 // TestMessageDedup_ConfigurableTTL exercises the new configurable window
-// (issue #1667). A fresh cache with TTL=20ms should let an ID re-appear
+// (issue cc-connect#1667). A fresh cache with TTL=20ms should let an ID re-appear
 // after the window elapses.
 func TestMessageDedup_ConfigurableTTL(t *testing.T) {
 	d := NewMessageDedup(20 * time.Millisecond)

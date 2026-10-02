@@ -669,7 +669,7 @@ func main() {
 		}
 		engine.SetUpgradeRestartWait(upgradeRestartWait, processWork)
 
-		// Wire busy-lock stale-break threshold (#1829)
+		// Wire busy-lock stale-break threshold (cc-connect#1829)
 		if cfg.BusyTimeoutMins != nil {
 			mins := *cfg.BusyTimeoutMins
 			if mins <= 0 {
@@ -1290,7 +1290,7 @@ func main() {
 
 	// After startup, check if we were restarted and queue the success
 	// notification. The engine dispatches it once the target platform is
-	// ready, or drops it after a 10s safety timeout. See issue #1383.
+	// ready, or drops it after a 10s safety timeout. See issue cc-connect#1383.
 	if notify := core.ConsumeRestartNotify(cfg.DataDir); notify != nil {
 		slog.Info("post-restart: queuing success notification", "platform", notify.Platform, "session", notify.SessionKey)
 		for _, e := range engines {

@@ -158,7 +158,7 @@ func TestRotatingWriter_FallbackForInvalidMaxBackups(t *testing.T) {
 }
 
 // TestIssue1222_BackupRetention is the regression test pinning the
-// follow-up to issue #1222: PR #1243 added CC_LOG_MAX_SIZE but only
+// follow-up to issue cc-connect#1222: PR cc-connect#1243 added CC_LOG_MAX_SIZE but only
 // kept a single backup, which still loses any post-mortem context
 // older than one rotation. With the new env var (and its flag
 // counterpart) we retain the configured number of backups.

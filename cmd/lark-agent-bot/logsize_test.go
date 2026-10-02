@@ -87,7 +87,7 @@ func TestPreScanLogMaxSizeFlag(t *testing.T) {
 }
 
 func TestResolveLogMaxSize_PriorityRegressionForIssue1222(t *testing.T) {
-	// Issue #1222 scenario: user sets CC_LOG_MAX_SIZE=10MB but v1.3.3-beta.4
+	// Issue cc-connect#1222 scenario: user sets CC_LOG_MAX_SIZE=10MB but v1.3.3-beta.4
 	// used strconv.ParseInt which silently dropped the value, falling back
 	// to the default 10MB. The default happened to match in this case, so
 	// the symptom in the issue (logs grow to 30MB+) is presumably an

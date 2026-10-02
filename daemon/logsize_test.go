@@ -25,7 +25,7 @@ func TestParseLogSize(t *testing.T) {
 		{"512k", 512 * 1024, false},
 		{"512kb", 512 * 1024, false},
 
-		// M / MB — the user's actual use case from issue #1222
+		// M / MB — the user's actual use case from issue cc-connect#1222
 		{"1M", 1024 * 1024, false},
 		{"1MB", 1024 * 1024, false},
 		{"10M", 10 * 1024 * 1024, false},

@@ -265,7 +265,7 @@ func newAppServerSession(ctx context.Context, bin, url, workDir, model, effort, 
 // normalizeAppServerURL's EqualFold handling) must not open a listener:
 // on codex 0.152+ any --listen value switches the app-server to serve the
 // protocol over the listener only, leaving stdio unresponsive and timing
-// out every initialize (see #1781).
+// out every initialize (see cc-connect#1781).
 func appServerListenURL(url string) string {
 	listenURL := strings.TrimSpace(url)
 	if strings.EqualFold(listenURL, "stdio://") || strings.EqualFold(listenURL, "stdio") {
@@ -280,7 +280,7 @@ func (s *appServerSession) connect() error {
 	// Pass no --listen flag in that case: on codex 0.152+ a --listen value
 	// (including ws://) switches the app-server to serve the protocol over
 	// the listener only, leaving stdio unresponsive and causing every
-	// initialize request to time out (see #1781). --listen stdio:// is kept
+	// initialize request to time out (see cc-connect#1781). --listen stdio:// is kept
 	// for explicitness on older codex versions where it is a no-op, but a
 	// bare stdio transport should simply not open a listener.
 	if listenURL := appServerListenURL(s.url); listenURL != "" {

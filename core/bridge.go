@@ -1031,7 +1031,7 @@ func (a *bridgeAdapter) dispatchAsMessage(ref *bridgeEngineRef, sessionKey, repl
 // Message so the engine's handlePendingPermission can drop stale clicks
 // (e.g. user tapped an old "Allow" card after the session was reset) —
 // preventing the literal "allow"/"deny" string from reaching the agent's
-// prompt stream (issue #826).
+// prompt stream (issue cc-connect#826).
 func (a *bridgeAdapter) dispatchAsPermissionResponse(ref *bridgeEngineRef, sessionKey, replyCtx, content string) {
 	if ref.platform.handler == nil {
 		return

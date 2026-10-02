@@ -20,7 +20,7 @@ func envToMap(env []string) map[string]string {
 }
 
 // TestCodex_SessionResume_PreservesActiveProvider is a regression test for the
-// multi-provider session resume bug (PR #1356). After a lark-agent-bot process
+// multi-provider session resume bug (PR cc-connect#1356). After a lark-agent-bot process
 // restart, calling SetActiveProvider with the name persisted on the session
 // must restore providerEnv (OPENAI_BASE_URL / OPENAI_API_KEY / model) so that
 // the next --resume spawn does not silently use the wrong provider's base_url.

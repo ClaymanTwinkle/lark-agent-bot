@@ -6,7 +6,7 @@ import (
 )
 
 // validatingAgent wraps a controllableAgent and adds an opt-in
-// SessionIDValidator so we can pin the engine's behavior for issue #599:
+// SessionIDValidator so we can pin the engine's behavior for issue cc-connect#599:
 // when the stored session ID is rejected by the agent, the engine must
 // start a fresh session instead of resuming the wrong one.
 type validatingAgent struct {

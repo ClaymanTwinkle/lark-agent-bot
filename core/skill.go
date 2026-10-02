@@ -109,7 +109,7 @@ func (r *SkillRegistry) ListAll() []*Skill {
 
 // discoverSkillsInDir scans a single skill root directory for immediate
 // subdirectories that contain a SKILL.md file. Per the Claude Code CLI
-// convention (issue #1304), only depth-1 layout is recognised:
+// convention (issue cc-connect#1304), only depth-1 layout is recognised:
 //
 //	<root>/<skill-name>/SKILL.md        — registered
 //	<root>/<skill-name>/references/...  — asset, NOT registered

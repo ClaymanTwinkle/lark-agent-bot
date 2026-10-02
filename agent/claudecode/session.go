@@ -152,7 +152,7 @@ const sharedSystemPromptRelPath = "agent-prompts/lark-agent-bot-system.md"
 // ensureSharedSystemPromptFile lazily writes <ccDataDir>/agent-prompts/
 // lark-agent-bot-system.md with the lark-agent-bot default AgentSystemPrompt
 // content, returning the path. The file is the workaround for the
-// Windows 8192-byte command-line limit (issue #1376): lark-agent-bot's
+// Windows 8192-byte command-line limit (issue cc-connect#1376): lark-agent-bot's
 // built-in prompt is ~9KB on its own, so passing it inline via
 // --append-system-prompt blows past the cap regardless of whether the
 // user configured any customization.
@@ -214,7 +214,7 @@ func writeTempAppendPromptFile(ccDataDir, content string) (string, error) {
 	// os.CreateTemp defaults to mode 0600 owned by the lark-agent-bot process
 	// user (often root when launched by systemd). When the agent is spawned
 	// under run_as_user, the target user is different and gets EACCES on
-	// 0600 root-owned files (issue #1429). The shared prompt file already
+	// 0600 root-owned files (issue cc-connect#1429). The shared prompt file already
 	// uses 0o644 (see ensureSharedSystemPromptFile → writeFileAtomic);
 	// the per-spawn temp file is just a superset of the shared content
 	// and is equally non-secret, so we mirror that mode here.
@@ -300,9 +300,9 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	// We intentionally do NOT pass `--replay-user-messages`: that flag tells
 	// Claude Code to drain queued stdin messages and exit, which breaks any
 	// subsequent in-session slash command such as `/compact`, `/clear`, or
-	// `/resume` — issue #1736. Without it the CLI keeps reading stdin until
+	// `/resume` — issue cc-connect#1736. Without it the CLI keeps reading stdin until
 	// either the user closes the session or `agent_session_idle_timeout_mins`
-	// (#1338) reaps the idle process; both paths are already handled by the
+	// (cc-connect#1338) reaps the idle process; both paths are already handled by the
 	// engine and Close() below.
 	innerArgs := []string{
 		"--output-format", "stream-json",
@@ -344,7 +344,7 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	// Append the lark-agent-bot functionality prompt, platform formatting hints,
 	// and the user's custom append prompt — via Claude's
 	// --append-system-prompt-file flag (not --append-system-prompt). Writing
-	// to a file avoids the Windows 8192-byte command-line limit (#1376):
+	// to a file avoids the Windows 8192-byte command-line limit (cc-connect#1376):
 	// AgentSystemPrompt is ~9KB on its own and grew past the cap in v1.3.3,
 	// so even users with no customization need this workaround.
 	//
@@ -360,7 +360,7 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	// shared file is safe under concurrent spawns.
 	var promptFilePath string
 	var promptFileIsShared bool
-	// Issue #1655: when a.language is non-empty, this session gets the
+	// Issue cc-connect#1655: when a.language is non-empty, this session gets the
 	// localized lark-agent-bot system prompt. When empty (legacy callers),
 	// AgentSystemPromptForLang returns the English default — same bytes as
 	// the pre-PR buildAppendSystemPrompt(core.AgentSystemPrompt(), ...) call.
@@ -706,7 +706,7 @@ func (cs *claudeSession) handleReadLoopLine(line string) {
 // isCompactionResult reports whether a `type:"result"` event is actually
 // a mid-turn compaction notification. Claude Code uses the value
 // `compact` in newer CLI versions and `compaction` in older ones; we
-// accept both to be safe across CLI rollouts (issue #481).
+// accept both to be safe across CLI rollouts (issue cc-connect#481).
 func isCompactionResult(raw map[string]any) bool {
 	return resultSubtype(raw) == "compact" || resultSubtype(raw) == "compaction"
 }
@@ -1267,7 +1267,7 @@ func (cs *claudeSession) handleResult(raw map[string]any) {
 	// is mid-task and will continue streaming subsequent tool calls and
 	// assistant messages after the compaction step. Treating these as
 	// Done=true would make the engine's processInteractiveEvents return
-	// early and drop the rest of the turn (issue #481).
+	// early and drop the rest of the turn (issue cc-connect#481).
 	isCompaction := isCompactionResult(raw)
 	if isCompaction {
 		slog.Info("claudeSession: mid-turn compaction event; continuing turn", "subtype", resultSubtype(raw))

@@ -107,7 +107,7 @@ func TestHandleResultParsesUsage(t *testing.T) {
 }
 
 // TestHandleResultCompactionSubtypeIsNotTerminal is a regression test for
-// issue #481: Claude Code's mid-turn context compaction emits a
+// issue cc-connect#481: Claude Code's mid-turn context compaction emits a
 // `type:"result"` event with `subtype:"compact"` (newer CLI) or
 // `subtype:"compaction"` (older CLI). The engine must keep the turn
 // running, so the emitted EventResult must have Done=false.
@@ -568,7 +568,7 @@ func TestBuildAppendSystemPrompt(t *testing.T) {
 }
 
 // TestEnsureSharedSystemPromptFile_WritesOnceAndReuses covers the 99%
-// case for the #1376 workaround. The lark-agent-bot default
+// case for the cc-connect#1376 workaround. The lark-agent-bot default
 // AgentSystemPrompt is written once to <ccDataDir>/agent-prompts/
 // lark-agent-bot-system.md and reused across spawns — no per-spawn write,
 // no cleanup. claude only reads the file, so reuse is safe under
@@ -683,7 +683,7 @@ func TestWriteTempAppendPromptFile_UniquePerCall(t *testing.T) {
 }
 
 // TestWriteTempAppendPromptFile_ReadableByOtherUser guards the
-// run_as_user regression from issue #1429. os.CreateTemp defaults to
+// run_as_user regression from issue cc-connect#1429. os.CreateTemp defaults to
 // 0600 owned by the lark-agent-bot process user; when the agent is
 // spawned as a different OS user (via run_as_user), a 0600 root-owned
 // file is unreadable and the agent exits with EACCES before reading
@@ -709,7 +709,7 @@ func TestWriteTempAppendPromptFile_ReadableByOtherUser(t *testing.T) {
 	}
 	want := os.FileMode(0o644)
 	if runtime.GOOS != "windows" && info.Mode().Perm() != want {
-		t.Fatalf("per-spawn prompt file mode = %o, want %o — run_as_user target user would get EACCES (#1429)",
+		t.Fatalf("per-spawn prompt file mode = %o, want %o — run_as_user target user would get EACCES (cc-connect#1429)",
 			info.Mode().Perm(), want)
 	}
 
@@ -893,7 +893,7 @@ func TestHelperProcess(t *testing.T) {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		os.Exit(0)
 	case "claude-stdin-echo":
-		// Issue #1736 regression harness: act as a Claude Code stub that
+		// Issue cc-connect#1736 regression harness: act as a Claude Code stub that
 		//   1. asserts --replay-user-messages is NOT in argv (its presence
 		//      would make the CLI exit after the first message and break
 		//      `/compact`, `/clear`, `/resume`).
@@ -904,7 +904,7 @@ func TestHelperProcess(t *testing.T) {
 		//      the line's text — proving the process stayed alive across
 		//      turns instead of exiting after the first one.
 		//   4. exits cleanly only when stdin closes (which is exactly how
-		//      lark-agent-bot's Close() and the #1338 idle reaper will end
+		//      lark-agent-bot's Close() and the cc-connect#1338 idle reaper will end
 		//      the session).
 		for _, a := range os.Args {
 			if a == "--replay-user-messages" {
@@ -1004,12 +1004,12 @@ func TestHelperProcess(t *testing.T) {
 }
 
 // TestNewClaudeSession_NoReplayFlagKeepsProcessAlive is the regression
-// test for issue #1736. Before the fix, newClaudeSession passed
+// test for issue cc-connect#1736. Before the fix, newClaudeSession passed
 // --replay-user-messages to Claude Code, which drained stdin and exited
 // after each turn. That made /compact (and any other in-session slash
 // command) unreachable. The fix removes the flag; Claude Code then
 // keeps reading stdin until either Close() or agent_session_idle_timeout_mins
-// (#1338) reaps it.
+// (cc-connect#1338) reaps it.
 //
 // We verify both halves:
 //
@@ -1101,7 +1101,7 @@ func TestNewClaudeSession_NoReplayFlagKeepsProcessAlive(t *testing.T) {
 	}
 
 	// Drive 100 normal messages + the three slash commands interleaved.
-	// Issue #1736 expected behaviour: every one of these reaches the live
+	// Issue cc-connect#1736 expected behaviour: every one of these reaches the live
 	// process and the process echoes it back. With --replay-user-messages
 	// the process would have exited after the first message and the
 	// remaining sends would fail with "session process is not running".

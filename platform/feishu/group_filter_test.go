@@ -16,7 +16,7 @@ import (
 	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
-// ─── Issue #1618: fail-closed group filter + supervised retry ─────────────
+// ─── Issue cc-connect#1618: fail-closed group filter + supervised retry ─────────────
 //
 // When the bot-info API call fails at startup (transient network/proxy
 // outage), the previous code silently treated botOpenID=="" as "filter

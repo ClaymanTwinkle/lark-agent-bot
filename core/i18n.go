@@ -68,7 +68,7 @@ func DetectLanguage(text string) Language {
 // snapping to English — operators who set language = "klingon" should see
 // "auto" behaviour, not a hard English default they didn't ask for.
 //
-// Issue #1655 introduced this helper so the Claude Code agent (which
+// Issue cc-connect#1655 introduced this helper so the Claude Code agent (which
 // receives the language via opts["language"]) can decode the string
 // without duplicating the switch statement that cmd/lark-agent-bot/main.go
 // uses for engine construction.
@@ -778,7 +778,7 @@ const (
 	MsgWsWorktreeDirty           MsgKey = "ws_worktree_dirty"
 	MsgWsWorktreeRemoved         MsgKey = "ws_worktree_removed"
 
-	// Agent system-prompt tool sections (Issue #1655). These are appended
+	// Agent system-prompt tool sections (Issue cc-connect#1655). These are appended
 	// to the agent's own system prompt by core/interfaces.go AgentSystemPromptForLang
 	// so that operators running lark-agent-bot with language="zh" see the
 	// send / cron / timer / relay tool documentation in their native

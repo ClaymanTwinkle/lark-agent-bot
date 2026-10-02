@@ -156,7 +156,7 @@ func ConsumeRestartNotify(dataDir string) *RestartRequest {
 
 // SendRestartNotification sends a "restart successful" message to the
 // platform/session that initiated the restart. The call is queued and
-// dispatched once the matching platform is ready (see issue #1383).
+// dispatched once the matching platform is ready (see issue cc-connect#1383).
 func (e *Engine) SendRestartNotification(platformName, sessionKey string) {
 	req := &RestartRequest{Platform: platformName, SessionKey: sessionKey}
 	e.SetPendingRestartNotify(req)
@@ -209,7 +209,7 @@ func (e *Engine) runPendingRestartNotify(req *RestartRequest, firedCh chan struc
 
 	// Recover from any panic inside dispatch (ReconstructReplyCtx / Send) so a
 	// platform-side panic cannot take down the whole lark-agent-bot process.
-	// See #1686 P1-A. Without this defer, a panic in the restart-notify
+	// See cc-connect#1686 P1-A. Without this defer, a panic in the restart-notify
 	// goroutine kills the daemon because no higher-level recover exists.
 	defer func() {
 		if r := recover(); r != nil {
@@ -510,7 +510,7 @@ type Engine struct {
 
 	// pendingRestartNotify is queued at startup if a /restart was consumed
 	// from the run/restart_notify file. It is dispatched once the platform
-	// with the matching name is ready. See issue #1383.
+	// with the matching name is ready. See issue cc-connect#1383.
 	pendingRestartMu      sync.Mutex
 	pendingRestartNotify  *RestartRequest
 	pendingRestartFiredCh chan struct{} // closed when the notify is dispatched (success or exhausted)
@@ -582,7 +582,7 @@ type interactiveState struct {
 	agentSession AgentSession
 	// busySession is the core.Session whose busy lock guards the in-flight
 	// turn. Set by getOrCreateInteractiveStateWith so /stop can release the
-	// lock after tearing the turn down (#1830).
+	// lock after tearing the turn down (cc-connect#1830).
 	busySession              *Session
 	platform                 Platform
 	replyCtx                 any
@@ -1417,7 +1417,7 @@ func (e *Engine) SetStreamPreviewCfg(cfg StreamPreviewCfg) {
 // not reset by tool-call activity. When it fires, the session is terminated and the
 // user is notified. A value of 0 disables the limit (default).
 //
-// This is the primary mitigation for #1091: long-running bash commands that generate
+// This is the primary mitigation for cc-connect#1091: long-running bash commands that generate
 // periodic tool events keep the idle timer alive indefinitely; the turn timer caps them.
 func (e *Engine) SetMaxTurnTime(d time.Duration) {
 	e.maxTurnTime = d
@@ -2991,7 +2991,7 @@ func (e *Engine) handleMessage(p Platform, msg *Message) {
 	}
 
 	// Resolve aliases on user text BEFORE merging ExtraContent, so reply
-	// quotes and platform context survive alias resolution (PR #420 fix).
+	// quotes and platform context survive alias resolution (PR cc-connect#420 fix).
 	content = e.resolveAlias(content)
 	if msg.ExtraContent != "" {
 		if content == "" {
@@ -3219,12 +3219,12 @@ sessionLocked:
 	// Record that a real user message is being processed. This keeps
 	// LastUserActivity separate from UpdatedAt (bumped by every Unlock), so
 	// reset_on_idle_mins is not defeated by heartbeats or unsolicited agent
-	// output running between user messages (#1115).
+	// output running between user messages (cc-connect#1115).
 	session.TouchUserActivity()
 
 	// Ensure an interactiveState entry exists before launching the async
 	// processor so messages arriving during session startup can be queued
-	// instead of dropped (issue #565). This is still needed after idle auto-
+	// instead of dropped (issue cc-connect#565). This is still needed after idle auto-
 	// reset because cleanupInteractiveState may remove the early placeholder.
 	e.ensureInteractiveStateForQueueing(interactiveKey, p, msg.ReplyCtx)
 	e.noteUserMessageAccepted(interactiveKey, msg.UserMessageTimeMs)
@@ -3268,13 +3268,13 @@ func (e *Engine) maybeAutoResetSessionOnIdle(p Platform, msg *Message, sessions 
 
 	// Prefer LastUserActivity for idle tracking: it is only updated on actual
 	// user messages, so heartbeats and unsolicited agent output don't prevent
-	// idle reset from firing (#1115). Fall back to UpdatedAt for sessions
+	// idle reset from firing (cc-connect#1115). Fall back to UpdatedAt for sessions
 	// created before this field was introduced.
 	lastActive := session.GetLastUserActivity()
 	if lastActive.IsZero() {
 		lastActive = session.GetUpdatedAt()
 	}
-	// Issue #1731: when the user has explicitly chosen this session via
+	// Issue cc-connect#1731: when the user has explicitly chosen this session via
 	// /switch (or any other intentional selection), the idle baseline is the
 	// explicit-activation time, not the last message in the session — otherwise
 	// the first message after /switch into a long-idle session would be
@@ -3329,11 +3329,11 @@ func (e *Engine) maybeAutoResetSessionOnIdle(p Platform, msg *Message, sessions 
 		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgSessionClosingGraceful))
 	}
 
-	// Lock the replacement session BEFORE releasing the old one (#1847 /
-	// #1832). If the new lock fails we must return with the old session
+	// Lock the replacement session BEFORE releasing the old one (cc-connect#1847 /
+	// cc-connect#1832). If the new lock fails we must return with the old session
 	// still locked — the caller assumes the session it passed in stays
 	// locked when we return nil. Releasing first allowed concurrent turns
-	// on one session. Generation counters (#1838) are used for the unlock.
+	// on one session. Generation counters (cc-connect#1838) are used for the unlock.
 	newSession := sessions.NewSession(msg.SessionKey, "")
 	newGen, ok := newSession.TryLock()
 	if !ok {
@@ -3369,7 +3369,7 @@ func (e *Engine) queueMessageForBusySession(p Platform, msg *Message, interactiv
 	defer state.mu.Unlock()
 
 	// Allow queueing when agentSession is nil (session is starting up,
-	// issue #565). Only reject if the session was established and died.
+	// issue cc-connect#565). Only reject if the session was established and died.
 	if state.agentSession != nil && !state.agentSession.Alive() {
 		return false
 	}
@@ -3445,7 +3445,7 @@ func (e *Engine) queueMessageForBusySession(p Platform, msg *Message, interactiv
 
 // ensureInteractiveStateForQueueing creates a placeholder interactiveState
 // entry if none exists. This allows messages arriving while the agent session
-// is still starting up to be queued instead of dropped (issue #565).
+// is still starting up to be queued instead of dropped (issue cc-connect#565).
 // The placeholder has agentSession==nil; getOrCreateInteractiveStateWith will
 // replace it with a fully initialized state once the agent process is spawned.
 func (e *Engine) ensureInteractiveStateForQueueing(key string, p Platform, replyCtx any) {
@@ -3576,7 +3576,7 @@ func (e *Engine) handlePendingPermission(p Platform, msg *Message, content strin
 		// "Allow"/"Deny" button after the session was reset, the bot was
 		// restarted, or the card message ID was redelivered). Drop silently so
 		// the synthesized "allow"/"deny" payload is not forwarded to the
-		// agent as user input (issue #826). Only applies to permission
+		// agent as user input (issue cc-connect#826). Only applies to permission
 		// callbacks — plain text "allow"/"deny" from a real user falls
 		// through to the normal message handler below.
 		if msg.IsPermissionResponse {
@@ -3593,7 +3593,7 @@ found:
 		// Reject empty or whitespace-only content: some platforms echo delivery
 		// receipts or read-notifications as zero-length messages, and they must
 		// not be accepted as answers — otherwise the tool gets empty answers
-		// within ~500ms before the user has a chance to respond (#1086).
+		// within ~500ms before the user has a chance to respond (cc-connect#1086).
 		if strings.TrimSpace(content) == "" {
 			return false
 		}
@@ -4121,7 +4121,7 @@ func (e *Engine) getOrCreateWorkspaceAgent(workspace string) (Agent, *SessionMan
 	// this, per-workspace agents silently bypass the project-level
 	// run_as_user config because their opts map is freshly constructed
 	// above, not inherited from the project-level opts that main.go
-	// already decorated. See lark-agent-bot#496 and the lark-agent-bot/core/runas.go
+	// already decorated. See cc-connect#496 and the core/runas.go
 	// preamble for why run_as_user has to survive this copy.
 	if _, ok := opts["run_as_user"]; !ok {
 		if u := e.runAsUser(); u != "" {
@@ -4229,7 +4229,7 @@ func (e *Engine) getOrCreateInteractiveStateWith(sessionKey string, p Platform, 
 		// - IDs match (same Claude session), or
 		// - the process has not reported an ID yet (startup; empty want is OK).
 		// If wantID is empty (/new, cleared session) but the process already has
-		// a concrete ID, reusing would keep --resume context — recycle (#238).
+		// a concrete ID, reusing would keep --resume context — recycle (cc-connect#238).
 		needRecycle := currentID != "" && (wantID == "" || wantID != currentID)
 		if !needRecycle {
 			state.mu.Lock()
@@ -4246,7 +4246,7 @@ func (e *Engine) getOrCreateInteractiveStateWith(sessionKey string, p Platform, 
 		e.stopUnsolicitedReader(state)
 		state.markStopped()
 		// Close synchronously to prevent race condition where old agent
-		// continues outputting while new agent starts (issue #327).
+		// continues outputting while new agent starts (issue cc-connect#327).
 		e.closeAgentSessionWithTimeout(sessionKey, state.agentSession, state.platform, state.replyCtx)
 		delete(e.interactiveStates, sessionKey)
 		ok = false // prevent reading stale settings below
@@ -4316,7 +4316,7 @@ func (e *Engine) getOrCreateInteractiveStateWith(sessionKey string, p Platform, 
 	// is unbound, force a fresh start instead of attaching to whichever CLI
 	// conversation happens to be "latest" in this workspace.
 	startSessionID := session.GetAgentSessionID()
-	// Cross-project session leakage guard (issue #599): if a session ID was
+	// Cross-project session leakage guard (issue cc-connect#599): if a session ID was
 	// inherited from a different project's workspace (e.g. another
 	// lark-agent-bot project that happens to share a Session row), the agent
 	// can detect the mismatch and we should clear the ID rather than
@@ -4853,7 +4853,7 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 	}
 
 	// Max turn time: absolute wall-clock cap that does NOT reset on events.
-	// Prevents long-running tool calls from blocking the session forever (#1091).
+	// Prevents long-running tool calls from blocking the session forever (cc-connect#1091).
 	var turnDeadlineCh <-chan time.Time
 	if e.maxTurnTime > 0 {
 		turnDeadlineTimer := time.NewTimer(e.maxTurnTime)
@@ -5515,7 +5515,7 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 			// subtype:"compact"/"compaction" and Done=false) must not trigger
 			// turn-completion side effects. Skip them so the outer loop
 			// continues to read subsequent tool calls and assistant messages
-			// for the same turn. See PR #1272 / issue #481.
+			// for the same turn. See PR cc-connect#1272 / issue cc-connect#481.
 			if !event.Done {
 				slog.Debug("EventResult: non-terminal result event, continuing event loop",
 					"session", session.ID,
@@ -5583,7 +5583,7 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 			// Prefer the agent's actual API-reported input tokens when the session
 			// implements ContextUsageReporter — the text-only heuristic misses
 			// tool_use/tool_result blocks (~70-85% of context) and the fixed overhead
-			// of system prompt + tools + skills (issue #1115). The real number is the
+			// of system prompt + tools + skills (issue cc-connect#1115). The real number is the
 			// size of the last assistant event's prompt: input + cache_creation +
 			// cache_read (the three are disjoint subsets that sum to the full prompt,
 			// per Anthropic's usage semantics), which already includes everything
@@ -6354,7 +6354,7 @@ func (e *Engine) drainPendingMessages(state *interactiveState, session *Session,
 			// race in, call cancelAgentSessionIdleClose (a no-op since
 			// nothing was scheduled yet), and then a late schedule arms a
 			// timer that no subsequent cancel will catch — closing the live
-			// session mid-turn. See #1686 P1-C P1-2. The schedule's own state
+			// session mid-turn. See cc-connect#1686 P1-C P1-2. The schedule's own state
 			// checks (agentSession nil, stopped, etc.) and
 			// cleanupInteractiveStateForIdleToken's stale-token guard make it
 			// safe to leave a scheduled timer running across drain.
@@ -6376,7 +6376,7 @@ func (e *Engine) drainPendingMessages(state *interactiveState, session *Session,
 		prompt := e.buildSenderPrompt(queued.content, queued.userID, queued.userName, queued.msgPlatform, queued.msgSessionKey, queued.channelKey)
 
 		state.mu.Lock()
-		as := state.agentSession // capture under lock to avoid race with cleanup (mirrors #1436)
+		as := state.agentSession // capture under lock to avoid race with cleanup (mirrors cc-connect#1436)
 		state.mu.Unlock()
 		if as == nil || !as.Alive() {
 			e.send(queued.platform, queued.replyCtx, fmt.Sprintf(e.i18n.T(MsgError), "agent session ended"))
@@ -6549,7 +6549,7 @@ func matchSubCommand(input string, candidates []string) string {
 
 // splitCommandArgs splits a command string into tokens, respecting single- and
 // double-quoted groups so paths like "/workspace bind '/my path/foo'" work
-// correctly (#1211). Quotes are stripped from the resulting tokens.
+// correctly (cc-connect#1211). Quotes are stripped from the resulting tokens.
 func splitCommandArgs(s string) []string {
 	var tokens []string
 	var cur strings.Builder
@@ -7317,7 +7317,7 @@ func (e *Engine) buildReplyFooter(agent Agent, session AgentSession, workspaceDi
 			parts = append(parts, dir)
 		}
 	}
-	// A workdir alone is not a useful status signal (see #701), so suppress
+	// A workdir alone is not a useful status signal (see cc-connect#701), so suppress
 	// the entire footer unless at least one status segment from line 1 is
 	// present.
 	if !hasStatus {
@@ -9114,7 +9114,7 @@ func (e *Engine) renderStatusCard(sessionKey string, userID string) *Card {
 	var degraded []string
 	for i, pl := range e.platforms {
 		name := pl.Name()
-		// Issue #1618: surface per-platform degraded state (e.g. Lark
+		// Issue cc-connect#1618: surface per-platform degraded state (e.g. Lark
 		// bot open_id unresolved) inline in the platform list and as
 		// a separate warnings block below.
 		if ph, ok := pl.(PlatformHealth); ok {
@@ -9211,7 +9211,7 @@ func (e *Engine) renderStatusCard(sessionKey string, userID string) *Card {
 	title, body := splitCardTitleBody(statusText)
 
 	if len(degraded) > 0 {
-		// Issue #1618: surface per-platform degraded reasons so operators
+		// Issue cc-connect#1618: surface per-platform degraded reasons so operators
 		// see them in /status (previously hidden behind a silent fail-open).
 		body += "\n\n**⚠️ Degraded**\n" + strings.Join(degraded, "\n")
 	}
@@ -10173,7 +10173,7 @@ func (e *Engine) cmdStop(p Platform, msg *Message) {
 	// matches the card-button stop path (see executeCardAction "/stop"). The
 	// session-tracking write-back keeps AgentSessionID pointing at Claude's
 	// latest forked session, so resuming after /stop is safe and no longer
-	// triggers the recycling loop from issue #830.
+	// triggers the recycling loop from issue cc-connect#830.
 	iKey := e.interactiveKeyForSessionKey(msg.SessionKey)
 	if !e.stopInteractiveSession(iKey, p, msg.ReplyCtx) {
 		// Fallback: try suffix scan in case interactiveKeyForSessionKey
@@ -10288,7 +10288,7 @@ func (e *Engine) stopInteractiveSessionIfCurrent(sessionKey string, notifyQueued
 
 	// The stopped turn can never run its own Unlock — release its busy lock
 	// so the next message starts a fresh turn instead of queueing behind a
-	// dead one (#1830). ForceUnlock bumps the generation, so a late Unlock
+	// dead one (cc-connect#1830). ForceUnlock bumps the generation, so a late Unlock
 	// from the interrupted turn's goroutine (if it eventually unsticks) is
 	// dropped by the gen check.
 	if state.busySession != nil && state.busySession.ForceUnlock() {
@@ -11707,7 +11707,7 @@ func (e *Engine) sendAskQuestionPrompt(p Platform, replyCtx any, questions []Use
 			cb.Markdown(body)
 			cb.Note(e.i18n.T(MsgAskQuestionNoteMulti))
 		} else {
-			// Single-select path. Issue #1658: rendering each option as a
+			// Single-select path. Issue cc-connect#1658: rendering each option as a
 			// column_set row (description column + button column) looked right
 			// on Feishu desktop but the button clicks never dispatched on
 			// Feishu mobile, and even on desktop the column_set > column >
@@ -16243,7 +16243,7 @@ func (e *Engine) setupMemoryFile() (setupResult, string, error) {
 	existing, _ := os.ReadFile(filePath)
 	existingText := string(existing)
 	// Use the engine's configured language so memory-file prompts reflect the
-	// operator's locale (Issue #1655). AgentSystemPromptForLang handles
+	// operator's locale (Issue cc-connect#1655). AgentSystemPromptForLang handles
 	// fallback to English internally when a tool key is missing.
 	prompt := AgentSystemPromptForLang(e.i18n.CurrentLang())
 	block := "\n" + larkAgentBotInstructionMarker + "\n" + prompt + "\n"

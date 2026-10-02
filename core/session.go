@@ -17,7 +17,7 @@ import (
 const ContinueSession = "__continue__"
 
 // ExplicitActivationTTL is the hard ceiling for the explicit-activation
-// exemption (issue #1731). Even when a user has `/switch`-ed to a session,
+// exemption (issue cc-connect#1731). Even when a user has `/switch`-ed to a session,
 // if no real user activity has been recorded for this long, the idle reset
 // must still fire so a long-silent session cannot permanently occupy the
 // active slot.
@@ -49,7 +49,7 @@ type Session struct {
 
 	// ExplicitActivatedAt records when this session was last explicitly chosen
 	// by the user (via /switch, /new against an existing entry, or any other
-	// intentional selection). Issue #1731: an explicit choice should override
+	// intentional selection). Issue cc-connect#1731: an explicit choice should override
 	// reset_on_idle_mins, otherwise the very first message after /switch into
 	// a long-idle session is wrongly routed to a brand-new session.
 	// ExplicitActivationTTL caps how long this exemption lasts so abandoned
@@ -148,7 +148,7 @@ const busyStaleLockMaxHeld = 2 * time.Minute
 // any late Unlock from the interrupted turn is dropped. Intended for paths
 // that tear the turn's execution environment down (e.g. /stop): the lock
 // holder will never run to its own Unlock. Returns true when a held lock
-// was released (#1830).
+// was released (cc-connect#1830).
 func (s *Session) ForceUnlock() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -234,7 +234,7 @@ func (s *Session) TouchUserActivity() {
 }
 
 // MarkExplicitlyActivated records that the user explicitly chose this session
-// (issue #1731). Use this from /switch, SwitchToAgentSession, and any other
+// (issue cc-connect#1731). Use this from /switch, SwitchToAgentSession, and any other
 // path that intentionally points the dispatcher at a specific session. The
 // idle-reset decision treats ExplicitActivatedAt as the baseline for the
 // explicit-activation grace window (capped at ExplicitActivationTTL).
@@ -291,7 +291,7 @@ func (s *Session) GetActiveProvider() string {
 
 // SetAgentSessionID atomically sets the agent session ID and agent type.
 // The ContinueSession sentinel is never persisted — it is only used transiently
-// when starting an agent (see engine); storing it on disk breaks resume (#255).
+// when starting an agent (see engine); storing it on disk breaks resume (cc-connect#255).
 // When the existing ID is replaced or cleared, it is saved to PastAgentSessionIDs
 // so filterOwnedSessions continues to recognise the session.
 func (s *Session) SetAgentSessionID(id, agentType string) {
@@ -755,7 +755,7 @@ func (sm *SessionManager) saveLocked() {
 			CreatedAt:           s.CreatedAt,
 			UpdatedAt:           s.UpdatedAt,
 			LastUserActivity:    s.LastUserActivity,
-			// #1731: explicit-activation timestamp must survive a process
+			// cc-connect#1731: explicit-activation timestamp must survive a process
 			// restart; otherwise a /switch followed by a crash would lose the
 			// exemption and the next message after restart would be rotated.
 			ExplicitActivatedAt: s.ExplicitActivatedAt,

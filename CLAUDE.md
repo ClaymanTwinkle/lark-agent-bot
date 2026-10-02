@@ -4,6 +4,8 @@
 
 lark-agent-bot is a bridge that connects AI coding agents (Claude Code and Codex) with Feishu / Lark. Users interact with their coding agent through a Feishu / Lark bot. It is a Feishu-only fork of [cc-connect](https://github.com/chenhg5/cc-connect); the platform abstraction is kept so the engine stays platform-agnostic.
 
+Comments cite upstream issues and PRs as `cc-connect#N` (https://github.com/chenhg5/cc-connect/issues/N). A plain `#N` means an issue in this repo.
+
 ## Architecture
 
 ```

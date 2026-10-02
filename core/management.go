@@ -398,7 +398,7 @@ func (m *ManagementServer) handleStatus(w http.ResponseWriter, r *http.Request) 
 	for _, e := range m.engines {
 		for _, p := range e.platforms {
 			platformSet[p.Name()] = true
-			// Issue #1618: surface per-platform degraded state in the
+			// Issue cc-connect#1618: surface per-platform degraded state in the
 			// management API so external monitors can alert on it.
 			if ph, ok := p.(PlatformHealth); ok {
 				info := ph.PlatformHealth()
@@ -651,7 +651,7 @@ func (m *ManagementServer) handleProjectDetail(w http.ResponseWriter, r *http.Re
 				"type":      p.Name(),
 				"connected": true,
 			}
-			// Issue #1618: surface per-platform degraded state instead
+			// Issue cc-connect#1618: surface per-platform degraded state instead
 			// of a hardcoded "connected": true.
 			if ph, ok := p.(PlatformHealth); ok {
 				info := ph.PlatformHealth()

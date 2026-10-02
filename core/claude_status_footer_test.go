@@ -315,7 +315,7 @@ func TestBuildReplyFooter_LegacyHidesContextSegments(t *testing.T) {
 	e.i18n = NewI18n(LangEnglish)
 	agent := &stubFooterAgent{model: "gpt-5.4", effort: "xhigh", workDir: "/tmp/ws"}
 	// With model/effort/contextLeft all suppressed, only cwd would remain —
-	// and a workdir-only footer is suppressed entirely (regression #701).
+	// and a workdir-only footer is suppressed entirely (regression cc-connect#701).
 	if got := e.buildReplyFooter(agent, nil, "/tmp/ws", "100% left"); got != "" {
 		t.Errorf("legacy footer with show_context_indicator=false = %q, want empty (workdir-only suppressed)", got)
 	}

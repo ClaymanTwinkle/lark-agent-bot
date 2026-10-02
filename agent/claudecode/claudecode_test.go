@@ -464,7 +464,7 @@ func TestFindProjectDir_NotFound(t *testing.T) {
 }
 
 func TestFindProjectDir_ICloudPath(t *testing.T) {
-	// Regression for issue #500: paths containing spaces and "~" (common in macOS
+	// Regression for issue cc-connect#500: paths containing spaces and "~" (common in macOS
 	// iCloud Drive paths like "/Users/x/Library/Mobile Documents/com~apple~CloudDocs/...")
 	// must match the on-disk project key that Claude Code CLI generates, which
 	// collapses both spaces and "~" to "-".
@@ -780,9 +780,9 @@ func TestExtractStringContent(t *testing.T) {
 	}
 }
 
-// ── Issue #599 — cross-project session context leakage ────────
+// ── Issue cc-connect#599 — cross-project session context leakage ────────
 //
-// The original PR (#604) regressed when the engine loaded a stored
+// The original PR (cc-connect#604) regressed when the engine loaded a stored
 // AgentSessionID that actually belonged to a different project's
 // workspace. The fix is to ask the agent, via core.SessionIDValidator,
 // whether the ID has a session file under THIS project's per-project
@@ -848,7 +848,7 @@ func TestValidateSessionIDInProject_ProjectDirMissing(t *testing.T) {
 }
 
 // TestValidateSessionIDInProject_CrossProjectLeak is the regression for
-// issue #599: a session ID created under project A's directory must NOT
+// issue cc-connect#599: a session ID created under project A's directory must NOT
 // validate as belonging to project B, even when B is also configured. The
 // original bug let one project silently resume another project's
 // conversation history.
@@ -903,7 +903,7 @@ func TestNew_WorkDirDoesNotExist(t *testing.T) {
 }
 
 // TestParseHistoryTimestamp_ConvertsUTCToLocal is the regression test for
-// issue #1780: when reading Claude Code's JSONL transcript (which stores
+// issue cc-connect#1780: when reading Claude Code's JSONL transcript (which stores
 // timestamps as UTC with a trailing "Z"), the resulting HistoryEntry.Timestamp
 // must be in the local timezone so wall-clock display matches the host's
 // `time.Now()` (which is what AddHistory in core/session.go writes for new
@@ -993,7 +993,7 @@ func TestParseHistoryTimestamp_WallClockMatchesTimeNow(t *testing.T) {
 }
 
 // TestGetSessionHistory_TimestampsAreLocal is the end-to-end regression test
-// for issue #1780: it walks the full JSONL read path and asserts that the
+// for issue cc-connect#1780: it walks the full JSONL read path and asserts that the
 // returned HistoryEntry timestamps are in the local timezone, not UTC. It
 // uses a temp HOME so findProjectDir() resolves to a known directory and
 // stamps a session file with explicit UTC timestamps.
@@ -1053,7 +1053,7 @@ func TestGetSessionHistory_TimestampsAreLocal(t *testing.T) {
 }
 
 // helpers for the timezone-sensitive parseHistoryTimestamp / GetSessionHistory
-// regression tests for issue #1780. We can't safely mutate time.Local directly
+// regression tests for issue cc-connect#1780. We can't safely mutate time.Local directly
 // from a test (other goroutines may depend on it), so the helpers save/restore
 // it and confine the side effect to the test's lifetime via t.Cleanup.
 func lookupZoneLocation() (*time.Location, bool) {
@@ -1155,7 +1155,7 @@ func TestWorkspaceAgentOptions_PropagatesContextWindowTokens(t *testing.T) {
 }
 
 // TestClaudeContextWindow covers all four paths of the heuristic + the
-// new override-wins branch (Issue #1823). Keep this table-driven so
+// new override-wins branch (Issue cc-connect#1823). Keep this table-driven so
 // future model-id additions (e.g. 2M variants) get caught immediately.
 func TestClaudeContextWindow(t *testing.T) {
 	cases := []struct {

@@ -958,7 +958,7 @@ func TestStripAgentFooterLines(t *testing.T) {
 	}
 }
 
-// TestProcessInteractiveEvents_NonTerminalResultContinuesTurn pins issue #481:
+// TestProcessInteractiveEvents_NonTerminalResultContinuesTurn pins issue cc-connect#481:
 // when Claude Code emits a mid-turn compaction result (Done=false), the engine
 // must NOT treat it as turn completion. Subsequent EventText (analogous to a
 // post-compaction assistant chunk) must still be observed, and the final
@@ -6450,7 +6450,7 @@ func TestSendAskQuestionPrompt_CardPlatform(t *testing.T) {
 }
 
 // TestSendAskQuestionPrompt_CardPlatform_SingleSelectUsesActionRows is a
-// regression for issue #1658 (Feishu pi ask_user_question card: button clicks
+// regression for issue cc-connect#1658 (Feishu pi ask_user_question card: button clicks
 // never dispatched on mobile/desktop). The old layout rendered each option
 // as a `column_set` row with the button nested inside a column; Feishu mobile
 // clients dropped those click events, and even on desktop the layout was
@@ -6503,7 +6503,7 @@ func TestSendAskQuestionPrompt_CardPlatform_SingleSelectUsesActionRows(t *testin
 		t.Errorf("expected 3 askq buttons in action rows, got %d", askqButtons)
 	}
 	if sawCardListItem {
-		t.Errorf("CardListItem must not be used for single-select AskUserQuestion on Feishu (issue #1658)")
+		t.Errorf("CardListItem must not be used for single-select AskUserQuestion on Feishu (issue cc-connect#1658)")
 	}
 }
 
@@ -7333,7 +7333,7 @@ func TestSessionMismatch_RecyclesStaleAgent(t *testing.T) {
 	}
 }
 
-// TestSessionClearedAfterNew_RecyclesAliveAgent verifies issue #238: after /new the
+// TestSessionClearedAfterNew_RecyclesAliveAgent verifies issue cc-connect#238: after /new the
 // Session's AgentSessionID is empty but an older Claude process may still be alive;
 // it must be recycled instead of reused (which would keep prior --resume context).
 func TestSessionClearedAfterNew_RecyclesAliveAgent(t *testing.T) {
@@ -7558,7 +7558,7 @@ func TestCmdStop_PreservesAgentSessionID(t *testing.T) {
 // TestResumeFallback_ClearsStaleSessionID verifies that when agent.StartSession
 // fails with a stale session ID and falls back to a fresh session, the stale
 // AgentSessionID is cleared so CompareAndSetAgentSessionID can write the new ID
-// (issue #830, matching the relay fallback at engine.go:12640).
+// (issue cc-connect#830, matching the relay fallback at engine.go:12640).
 func TestResumeFallback_ClearsStaleSessionID(t *testing.T) {
 	freshSess := newControllableSession("fresh-id")
 	agent := &controllableAgent{
@@ -8976,7 +8976,7 @@ func TestProcessInteractiveEvents_QueuedMessageUsesItsOwnReplyCtx(t *testing.T) 
 }
 
 // TestIssue814_QueuedMessageAfterCleanEventResult_UsesOwnReplyCtx is a
-// regression test for issue #814 ("Bot replies with the previous
+// regression test for issue cc-connect#814 ("Bot replies with the previous
 // message's answer instead of the current one"). The reported symptom is
 // that when the user sends message B immediately after message A, the
 // bot's reply to B carries A's reply context (and therefore quotes
@@ -9120,7 +9120,7 @@ func TestIssue814_QueuedMessageAfterCleanEventResult_UsesOwnReplyCtx(t *testing.
 
 	// The invariant: each turn's response text must be delivered with
 	// that turn's replyCtx. If a race leaks A's replyCtx into B's reply
-	// (or vice versa) — the symptom in #814 — the assertions below
+	// (or vice versa) — the symptom in cc-connect#814 — the assertions below
 	// fire.
 	for _, ev := range p.recordedEvents() {
 		switch ev.content {
@@ -9130,7 +9130,7 @@ func TestIssue814_QueuedMessageAfterCleanEventResult_UsesOwnReplyCtx(t *testing.
 			}
 		case "response-B":
 			if ev.replyCtx != "ctx-B" {
-				t.Errorf("turn-B reply used replyCtx=%v, want ctx-B (regression for #814: msg-B's reply quoted msg-A)", ev.replyCtx)
+				t.Errorf("turn-B reply used replyCtx=%v, want ctx-B (regression for cc-connect#814: msg-B's reply quoted msg-A)", ev.replyCtx)
 			}
 		}
 	}
@@ -9487,7 +9487,7 @@ func TestQueueMessage_DeadSession_ReturnsFalse(t *testing.T) {
 
 // TestQueueMessage_NilAgentSession_DuringStartup verifies that messages can be
 // queued when the interactiveState exists but agentSession is nil (session is
-// still starting up). This is the fix for issue #565.
+// still starting up). This is the fix for issue cc-connect#565.
 func TestQueueMessage_NilAgentSession_DuringStartup(t *testing.T) {
 	p := &stubPlatformEngine{n: "test"}
 	e := newTestEngine()
@@ -9520,7 +9520,7 @@ func TestQueueMessage_NilAgentSession_DuringStartup(t *testing.T) {
 }
 
 // TestProcessInteractiveMessageWith_NilAgentSession_NoPanic is a regression
-// test for issue #1181. When a long-running agent turn is force-killed
+// test for issue cc-connect#1181. When a long-running agent turn is force-killed
 // (e.g. by max_turn_time_mins) the cleanup path may leave an interactive
 // state in the map with agentSession==nil. A subsequent message routed to
 // that state must NOT panic with a nil-pointer deref at the old engine.go
@@ -15246,7 +15246,7 @@ func TestBtwAlias_ResolvesToPs(t *testing.T) {
 }
 
 func TestHandlePendingPermission_AskQuestion_EmptyContentRejected(t *testing.T) {
-	// Regression test for #1086: empty or whitespace-only messages must NOT
+	// Regression test for cc-connect#1086: empty or whitespace-only messages must NOT
 	// be accepted as AskUserQuestion answers. Some platforms deliver read-receipts
 	// or delivery notifications as empty messages within ~500ms; before this fix,
 	// they resolved the question with empty answers immediately.
@@ -15295,7 +15295,7 @@ func TestHandlePendingPermission_AskQuestion_EmptyContentRejected(t *testing.T) 
 }
 
 func TestMaybeAutoResetSessionOnIdle_UsesLastUserActivity(t *testing.T) {
-	// Regression test for #1115 Bug 2: maybeAutoResetSessionOnIdle must use
+	// Regression test for cc-connect#1115 Bug 2: maybeAutoResetSessionOnIdle must use
 	// LastUserActivity (only updated on real user messages) rather than
 	// UpdatedAt (bumped by every session.Unlock including heartbeats).
 	// Without the fix, automated activity (heartbeats, unsolicited agent output)
@@ -15361,7 +15361,7 @@ func TestMaybeAutoResetSessionOnIdle_NotFiredWhenUserActivityRecent(t *testing.T
 // literal "allow" / "deny" string reach the agent's prompt stream. Plain
 // text "allow" / "deny" from a real user must continue to fall through
 // (return false) so the caller can route them through the normal message
-// handler. Regression test for #826.
+// handler. Regression test for cc-connect#826.
 func TestHandlePendingPermission_StalePermissionCallback_Dropped(t *testing.T) {
 	e := newTestEngine()
 	p := &stubPlatformEngine{n: "test"}
@@ -15674,7 +15674,7 @@ func TestHandlePendingPermission_ApproveAllWithMention(t *testing.T) {
 
 // ─── Audio / Video routing (t-20260615-cqjbk1) ────────────────────────
 // `lark-agent-bot send --audio` / `--video` must reach AudioSender /
-// VideoSender — NOT SendFile. PR #1202 made the CLI flags exist but
+// VideoSender — NOT SendFile. PR cc-connect#1202 made the CLI flags exist but
 // silently routed clips through SendFile, defeating the
 // transcoding-and-render-as-native-bubble pipeline.
 

@@ -92,7 +92,7 @@ type FileAttachment struct {
 //	messageID == "": <workDir>/.lark-agent-bot/attachments/<sanitized_name>
 //	messageID != "": <workDir>/.lark-agent-bot/attachments/<messageID>/<sanitized_name>
 //
-// Scoping files to a per-message subdirectory (issue #1552) prevents the
+// Scoping files to a per-message subdirectory (issue cc-connect#1552) prevents the
 // silent-overwrite data loss that occurred when two different messages
 // happened to carry attachments with the same filename: under the old flat
 // layout, the second os.WriteFile truncated the first file while the
@@ -136,7 +136,7 @@ func SaveFilesToDisk(workDir, messageID string, files []FileAttachment) []string
 		return nil
 	}
 	// Absolutize workDir so the returned paths are usable no matter where the
-	// process is invoked from. See issue #1459: when workDir is relative
+	// process is invoked from. See issue cc-connect#1459: when workDir is relative
 	// (e.g. ".lark-agent-bot" or "project/sub"), the agent's prompt referenced
 	// ".lark-agent-bot/attachments/<file>" while the file actually landed at
 	// workDir/.lark-agent-bot/attachments/<file> — a path mismatch that lost
@@ -291,7 +291,7 @@ func sanitizeAttachmentFileName(name string) string {
 //
 // File paths are defensively absolutized so the prompt handed to the agent
 // always points at a real on-disk location, even when a caller passed a
-// relative path by mistake. This guards against the issue #1459 class of
+// relative path by mistake. This guards against the issue cc-connect#1459 class of
 // bugs where the prompt referenced ".lark-agent-bot/attachments/<file>" while
 // the file actually landed at the absolute version of workDir. Absolute
 // inputs are passed through unchanged. An unresolvable relative path falls

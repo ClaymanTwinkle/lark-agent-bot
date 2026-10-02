@@ -958,7 +958,7 @@ func TestPruneDuplicateSessions_Persistence(t *testing.T) {
 // TestSwitchToAgentSession_PreservesOldSession locks down that switching the
 // active session to a different agent_session_id keeps the previous ID in
 // KnownAgentSessionIDs so it stays visible to /list, /switch, and
-// filterOwnedSessions. Regression test for #603 / issue #600.
+// filterOwnedSessions. Regression test for cc-connect#603 / issue cc-connect#600.
 func TestSwitchToAgentSession_PreservesOldSession(t *testing.T) {
 	dir := t.TempDir()
 	sm := NewSessionManager(dir + "/sessions.json")
@@ -1175,7 +1175,7 @@ func TestKnownAgentSessionIDs_ResetAllSessionsBug(t *testing.T) {
 	}
 }
 
-// TestSession_ForceUnlock covers the /stop path release (#1830): a held lock
+// TestSession_ForceUnlock covers the /stop path release (cc-connect#1830): a held lock
 // is released unconditionally, the generation is bumped so the interrupted
 // turn's late Unlock is dropped, and ForceUnlock on an unlocked session is a
 // no-op.

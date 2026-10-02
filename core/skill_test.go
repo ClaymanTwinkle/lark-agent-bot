@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// Per the Claude Code CLI convention (issue #1304), only the depth-1 layout
+// Per the Claude Code CLI convention (issue cc-connect#1304), only the depth-1 layout
 // `skills/<name>/SKILL.md` is registered. Nested SKILL.md files are assets,
 // not installable skills.
 
@@ -41,7 +41,7 @@ func TestSkillRegistryListAll_IgnoresNestedSkillFiles(t *testing.T) {
 	// Depth-1 skill — should be registered.
 	writeSkillFile(t, filepath.Join(root, "frontend-design", "SKILL.md"), "Frontend design skill")
 	// Nested SKILL.md files inside the skill — should NOT be registered.
-	// This is the exact layout from issue #1304 that leaked 101 phantom
+	// This is the exact layout from issue cc-connect#1304 that leaked 101 phantom
 	// slash commands into Discord's command menu.
 	writeSkillFile(t, filepath.Join(root, "frontend-design", "references", "finance-report", "SKILL.md"), "Finance report template")
 	writeSkillFile(t, filepath.Join(root, "frontend-design", "references", "html-ppt-knowledge-arch-blueprint", "SKILL.md"), "PPT knowledge template")

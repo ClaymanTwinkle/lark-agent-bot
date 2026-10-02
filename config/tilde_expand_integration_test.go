@@ -7,7 +7,7 @@ import (
 )
 
 // TestExpandHomeInConfig_LoadsAndExpandsWorkDir is a regression test for
-// issue #1782: a config with work_dir = "~/.codex/workspace" must load with
+// issue cc-connect#1782: a config with work_dir = "~/.codex/workspace" must load with
 // the tilde expanded, not passed literally to exec.Cmd.Dir.
 func TestExpandHomeInConfig_LoadsAndExpandsWorkDir(t *testing.T) {
 	dir := t.TempDir()

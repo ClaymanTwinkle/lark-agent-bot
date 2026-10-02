@@ -16,7 +16,7 @@ import (
 //
 // maxBackups must be >= 1; passing a smaller value silently falls back
 // to DefaultLogMaxBackups in NewRotatingWriter. A value of 1 reproduces
-// the legacy "one backup" behaviour from before #1222.
+// the legacy "one backup" behaviour from before cc-connect#1222.
 type RotatingWriter struct {
 	mu         sync.Mutex
 	file       *os.File

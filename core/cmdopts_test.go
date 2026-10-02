@@ -83,7 +83,7 @@ func TestParseCmdOpts_CmdField(t *testing.T) {
 			wantCmd:    "gemini",
 			wantArgs:   []string{"--model", "pro"},
 		},
-		// Array form (issue #1670 regression: qoder agent must accept the
+		// Array form (issue cc-connect#1670 regression: qoder agent must accept the
 		// unified cmd array shape so users can pass
 		// --permission-mode bypass_permissions without a wrapper script).
 		{

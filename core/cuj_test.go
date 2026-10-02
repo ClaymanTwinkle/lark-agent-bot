@@ -1692,9 +1692,9 @@ func TestCUJ_E4_TimerFiresAndDeliversToAgentAndUser(t *testing.T) {
 	// Flaky: the timer fires at 200ms and the test waits 3s for the store
 	// to be marked Fired, but the scheduler tick + JSON store write +
 	// cleanup loses that race both locally and on CI (observed in PR
-	// #1348 CI: "timer was not marked as Fired after execution" after
+	// cc-connect#1348 CI: "timer was not marked as Fired after execution" after
 	// only 0.21s). Skip unconditionally until the race is fixed at the
-	// scheduler layer — TODO(#1348-followup): make ExecuteTimerJob mark
+	// scheduler layer — TODO(cc-connect#1348-followup): make ExecuteTimerJob mark
 	// Fired synchronously before returning.
 	t.Skip("CUJ-E4: flaky timer scheduler race; tracking for follow-up")
 	// Use cujReplyCtxPlatform because ExecuteTimerJob requires the platform

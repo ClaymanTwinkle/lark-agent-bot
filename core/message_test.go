@@ -109,7 +109,7 @@ func TestSaveFilesToDisk_RejectsPathTraversal(t *testing.T) {
 }
 
 // TestSaveFilesToDisk_RelativeWorkDirReturnsAbsolutePaths guards the
-// regression from issue #1459: when workDir is relative (e.g. ".lark-agent-bot"
+// regression from issue cc-connect#1459: when workDir is relative (e.g. ".lark-agent-bot"
 // or "project/sub"), SaveFilesToDisk used to return relative paths that did
 // not match where the file actually landed once the agent process started
 // from a different cwd. The fix absolutizes workDir before joining, so the
@@ -144,7 +144,7 @@ func TestSaveFilesToDisk_RelativeWorkDirReturnsAbsolutePaths(t *testing.T) {
 		t.Fatalf("SaveFilesToDisk(relative workDir) returned %d paths, want 1", len(gotRel))
 	}
 	if !filepath.IsAbs(gotRel[0]) {
-		t.Errorf("SaveFilesToDisk(relative workDir) returned non-absolute path %q — agent could not open it (issue #1459)", gotRel[0])
+		t.Errorf("SaveFilesToDisk(relative workDir) returned non-absolute path %q — agent could not open it (issue cc-connect#1459)", gotRel[0])
 	}
 	// The absolute path must resolve to a real file on disk.
 	if _, err := os.Stat(gotRel[0]); err != nil {
