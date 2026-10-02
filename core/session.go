@@ -866,7 +866,7 @@ func (sm *SessionManager) load() {
 
 // InvalidateForAgent clears AgentSessionID on all sessions whose AgentType
 // does not match the current agent. This handles the case where the user
-// switches agent types (e.g. opencode → pi) and stale session IDs from the
+// switches agent types (e.g. claudecode → codex) and stale session IDs from the
 // old agent would cause errors.
 func (sm *SessionManager) InvalidateForAgent(agentType string) {
 	sm.mu.Lock()

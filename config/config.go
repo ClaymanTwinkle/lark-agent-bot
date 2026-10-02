@@ -2450,15 +2450,9 @@ func pickAgentTemplateForNewProject(cfg *Config, opts EnsureProjectWithFeishuOpt
 		}
 	}
 	if agentType := strings.TrimSpace(opts.AgentType); agentType != "" {
-		realType, preset, _ := strings.Cut(agentType, ":")
-		agentOpts := map[string]any{}
-		if realType == "acp" && preset != "" {
-			agentOpts["command"] = preset
-			agentOpts["display_name"] = preset
-		}
 		return AgentConfig{
-			Type:    realType,
-			Options: agentOpts,
+			Type:    agentType,
+			Options: map[string]any{},
 		}
 	}
 	if len(cfg.Projects) > 0 {

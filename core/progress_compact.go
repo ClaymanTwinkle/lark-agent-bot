@@ -338,18 +338,6 @@ func normalizeProgressAgentLabel(name string) string {
 		return "Codex"
 	case "claudecode", "claude-code", "cc":
 		return "CC"
-	case "gemini":
-		return "Gemini"
-	case "cursor":
-		return "Cursor"
-	case "qoder":
-		return "Qoder"
-	case "iflow":
-		return "iFlow"
-	case "opencode":
-		return "OpenCode"
-	case "pi":
-		return "PI"
 	default:
 		n := strings.TrimSpace(name)
 		if n == "" {

@@ -4163,8 +4163,8 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 	state.mu.Unlock()
 
 	// Run Send concurrently with processInteractiveEvents. Some agents block inside
-	// Send until the prompt turn finishes (e.g. ACP session/prompt); they may emit
-	// EventPermissionRequest while blocked — the event loop must run in parallel.
+	// Send until the prompt turn finishes and may emit EventPermissionRequest
+	// while blocked — the event loop must run in parallel.
 	state.noteTurnStart()
 	sendDone := make(chan error, 1)
 	go func() {
@@ -4212,7 +4212,7 @@ func (e *Engine) getOrCreateWorkspaceAgent(workspace string) (Agent, *SessionMan
 
 	// Create a new agent instance with this workspace's work_dir
 	opts := make(map[string]any)
-	// Let the agent seed its own base options (e.g. tmux session name)
+	// Let the agent seed its own base options
 	if snapshotter, ok := e.agent.(WorkspaceAgentOptionSnapshotter); ok {
 		for k, v := range snapshotter.WorkspaceAgentOptions() {
 			opts[k] = v
@@ -5651,18 +5651,7 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 			}
 
 		case EventPermissionRequest:
-			// extension_select is a Pi extension UI request routed via the
-			// AskUserQuestion rich-card path. The pi session adapter populates
-			// event.Questions so it renders as a button card (same UX as Claude
-			// Code's AskUserQuestion).
-			//
-			// extension_confirm is intentionally NOT in this list: extensions
-			// use ctx.ui.confirm() to ask the user for permission on a tool
-			// call (e.g. permission-gate on Bash), and the engine must render
-			// it as a regular permission request (Allow/Deny) so the UX
-			// matches other agents. See forwardConfirm in agent/pi/session.go.
-			isAskQuestion := (event.ToolName == "AskUserQuestion" ||
-				event.ToolName == "extension_select") && len(event.Questions) > 0
+			isAskQuestion := event.ToolName == "AskUserQuestion" && len(event.Questions) > 0
 
 			state.mu.Lock()
 			autoApprove := state.approveAll
@@ -8064,7 +8053,7 @@ func (e *Engine) buildClaudeStatusLineFooter(agent Agent, session AgentSession, 
 		return ""
 	}
 	// Only emit the CCD-style footer when we have the cache-token signals
-	// that CCD's statusline consumes. Other agents (codex, gemini) fall
+	// that CCD's statusline consumes. Other agents (codex) fall
 	// through to the default footer.
 	if usage.CachedInputTokens == 0 && usage.CacheCreationInputTokens == 0 {
 		return ""
@@ -10656,54 +10645,6 @@ func (e *Engine) stopInteractiveSessionIfCurrent(sessionKey string, notifyQueued
 	closeReplyCtx := state.replyCtx
 	state.mu.Unlock()
 
-	// If the agent session supports graceful turn cancellation (e.g. ACP),
-	// send a cancel notification and keep the session alive for the next
-	// user message, rather than killing the process and destroying state.
-	if canceller, ok := agentSession.(AgentSessionCanceller); ok && agentSession != nil {
-		// Keep the state in the map so the next message reuses this session.
-		// Don't markStopped — the session is still usable.
-		// Don't delete from interactiveStates — keep it alive.
-		e.interactiveMu.Unlock()
-
-		if pending != nil {
-			pending.resolve()
-		}
-		if notifyQueued {
-			e.notifyDroppedQueuedMessages(state, fmt.Errorf("session cancelled"))
-		} else {
-			dropped = takePendingMessages(state)
-		}
-
-		// Mark eventsNeedResync so the next turn drains stale events from
-		// the cancelled turn before processing fresh input.
-		state.mu.Lock()
-		state.eventsNeedResync = true
-		state.mu.Unlock()
-
-		cancelErr := canceller.CancelTurn()
-		if cancelErr != nil {
-			slog.Warn("agent session CancelTurn failed, falling back to Close",
-				"session_key", sessionKey, "error", cancelErr)
-			// Fall through to normal cleanup below.
-			goto normalCleanup
-		}
-
-		if state.busySession != nil && state.busySession.ForceUnlock() {
-			slog.Info("session busy lock released after turn cancel", "session_key", sessionKey)
-		}
-
-		slog.Info("agent session turn cancelled, session kept alive",
-			"session_key", sessionKey)
-
-		e.hooks.Emit(HookEvent{
-			Event:      HookEventSessionEnded,
-			SessionKey: sessionKey,
-		})
-
-		return true, dropped
-	}
-
-normalCleanup:
 	state.markStopped()
 	delete(e.interactiveStates, sessionKey)
 	e.interactiveMu.Unlock()
@@ -10714,7 +10655,7 @@ normalCleanup:
 	if notifyQueued {
 		e.notifyDroppedQueuedMessages(state, fmt.Errorf("session reset"))
 	} else {
-		dropped = append(dropped, takePendingMessages(state)...)
+		dropped = takePendingMessages(state)
 	}
 	e.closeAgentSessionAsync(sessionKey, agentSession, closePlatform, closeReplyCtx)
 
@@ -13757,11 +13698,6 @@ func (e *Engine) currentSessionDisplayName(agent Agent, sessions *SessionManager
 				displayName = strings.Join(strings.Fields(displayName), " ")
 				break
 			}
-		}
-	}
-	if displayName == "" {
-		if tp, ok := agent.(SessionTitleProvider); ok {
-			displayName = tp.GetSessionTitle(agentID)
 		}
 	}
 	if displayName == "" {

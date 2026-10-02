@@ -374,7 +374,7 @@ type AsyncRecoverablePlatform interface {
 // MessageHandler is called by platforms when a new message arrives.
 type MessageHandler func(p Platform, msg *Message)
 
-// Agent abstracts an AI coding assistant (Claude Code, Cursor, Gemini CLI, etc.).
+// Agent abstracts an AI coding assistant (Claude Code, Codex).
 // All agents must support persistent bidirectional sessions via StartSession.
 type Agent interface {
 	Name() string
@@ -448,7 +448,7 @@ type ProviderSwitcher interface {
 }
 
 // MemoryFileProvider is an optional interface for agents that support
-// persistent instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, etc.).
+// persistent instruction files (CLAUDE.md, AGENTS.md).
 // The engine uses these paths for the /memory command.
 type MemoryFileProvider interface {
 	ProjectMemoryFile() string // project-level instruction file (e.g., <work_dir>/CLAUDE.md)
@@ -561,14 +561,6 @@ type ContextCompressor interface {
 	CompressCommand() string
 }
 
-// AgentSessionCanceller is an optional interface for agent sessions that support
-// cancelling the current turn without terminating the session or its underlying
-// process. When implemented, the engine calls CancelTurn instead of Close() for
-// /stop, allowing the session to remain alive for the next user message.
-type AgentSessionCanceller interface {
-	CancelTurn() error
-}
-
 // BackgroundTask is agent work that keeps running after the turn that started
 // it has ended, such as a backgrounded shell command or subagent.
 type BackgroundTask struct {
@@ -617,10 +609,6 @@ type SkillCatalogProvider interface {
 // SessionDeleter is an optional interface for agents that support deleting sessions.
 type SessionDeleter interface {
 	DeleteSession(ctx context.Context, sessionID string) error
-}
-
-type SessionTitleProvider interface {
-	GetSessionTitle(sessionID string) string
 }
 
 // WorkDirSwitcher is an optional interface for agents that support runtime
