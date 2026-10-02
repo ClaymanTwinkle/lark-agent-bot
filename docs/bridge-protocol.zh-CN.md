@@ -1,7 +1,7 @@
 # Bridge 平台协议规范
 
-> 版本：1.0-draft  
-> 状态：草案 — 实现前可能调整
+> 版本：1.0  
+> 状态：已实现（`core/bridge.go`），Web 管理后台的聊天功能基于它。各版本之间协议仍可能调整。
 
 ## 概述
 
@@ -241,29 +241,6 @@ token = "your-secret"     # 认证密钥，必填
 | `content` | string | 是 | 回复文本内容。 |
 | `format` | string | 否 | `"text"`（默认）或 `"markdown"`。 |
 
-#### `reply_stream`
-
-流式增量内容，用于实时打字预览。仅在适配器声明了 `"preview"` 能力时发送。
-
-```json
-{
-  "type": "reply_stream",
-  "session_key": "my-chat:user123:user123",
-  "reply_ctx": "conv-abc-123",
-  "delta": "部分内容...",
-  "full_text": "累积的完整文本...",
-  "preview_handle": "platform-msg-id-789",
-  "done": false
-}
-```
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `delta` | string | 自上次流式消息以来的新增文本。 |
-| `full_text` | string | 完整累积文本。适配器可用于"替换整条消息"的更新方式。 |
-| `preview_handle` | string | 由 `preview_ack` 返回的 handle。首条流式消息时为空。 |
-| `done` | bool | 最后一条流式消息时为 `true`。 |
-
 #### `preview_start`
 
 请求适配器创建初始预览消息（用于流式输出）。
@@ -405,6 +382,21 @@ token = "your-secret"     # 认证密钥，必填
 }
 ```
 
+#### `video`
+
+发送视频。仅在适配器声明了 `"video"` 能力时发送。
+
+```json
+{
+  "type": "video",
+  "session_key": "my-chat:user123:user123",
+  "reply_ctx": "conv-abc-123",
+  "data": "<base64 编码的视频数据>",
+  "format": "mp4",
+  "file_name": "demo.mp4"
+}
+```
+
 #### `image`
 
 发送图片给用户。仅在适配器声明了 `"image"` 能力时发送。
@@ -446,18 +438,6 @@ token = "your-secret"     # 认证密钥，必填
 }
 ```
 
-#### `error`
-
-通知适配器服务端错误。
-
-```json
-{
-  "type": "error",
-  "code": "session_not_found",
-  "message": "找不到给定 key 的活跃会话"
-}
-```
-
 ---
 
 ## 数据 Schema
@@ -470,11 +450,12 @@ token = "your-secret"     # 认证密钥，必填
 | `image` | 收发图片 | `message.images`、`image` 回复 |
 | `file` | 收发文件 | `message.files`、`file` 回复 |
 | `audio` | 收发语音消息 | `message.audio`、`audio` 回复 |
+| `video` | 发送视频 | `video` 回复 |
 | `card` | 结构化富卡片渲染 | `card` 回复 |
 | `buttons` | 可点击的内联按钮 | `buttons` 回复、`card_action` |
 | `typing` | 正在输入指示器 | `typing_start`、`typing_stop` |
 | `update_message` | 编辑已有消息 | `update_message` |
-| `preview` | 流式预览（需要 `update_message`） | `preview_start`、`reply_stream` |
+| `preview` | 流式预览（需要 `update_message`） | `preview_start` / `preview_ack`，之后每次更新发 `update_message` |
 | `delete_message` | 删除消息 | `delete_message` |
 | `reconstruct_reply` | 可从 session_key 重建回复上下文 | 启用定时任务/心跳消息 |
 
@@ -819,13 +800,9 @@ WebSocket 连接断开时，适配器应：
 enabled = true
 port = 9810
 token = "一个强随机密钥"
-
-# 可选：限制哪些适配器可以连接（按平台名称）。
-# 默认：允许所有已注册的适配器。
-# allow_platforms = ["my-chat"]
 ```
 
-不需要为每个适配器单独配置项目 — 适配器默认关联到**默认项目**，或在 `register` 消息中指定 `project` 字段绑定到特定项目。
+持有 token 的适配器都可以连接。不需要为每个适配器单独配置项目：`message` 和 `card_action` 可以带一个 `project` 字段指定目标项目。不带时，只有一个项目就发给它，否则发给已经有这个 `session_key` 会话的项目。
 
 ---
 
@@ -891,7 +868,7 @@ asyncio.run(main())
 
 ## 版本管理
 
-协议版本通过 `register` 消息的 `metadata.protocol_version` 声明。当前版本为 `1`。lark-agent-bot 会拒绝不兼容版本的连接，并在 `register_ack` 中返回错误。
+协议版本通过 `register` 消息的 `metadata.protocol_version` 声明。当前版本为 `1`。lark-agent-bot 目前不检查它，版本不一致也不会拒绝连接。
 
 ```json
 {

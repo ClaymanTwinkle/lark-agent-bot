@@ -40,8 +40,8 @@ The reviewer will use the checklist at the bottom to gate merge.
 
 ### Critical User Journeys (CUJ) impact
 
-<!-- See AGENTS.md → "Critical User Journeys (CUJ)" and the inventory in
-     projects/lark-agent-bot/agents/qa-cursor/release-gate/CUJ-INVENTORY.md.
+<!-- See AGENTS.md → "Critical User Journeys (CUJ)". The inventory is
+     core/cuj_test.go (grep -n '^func TestCUJ' core/cuj_test.go).
      Mark which CUJ groups this PR touches: -->
 
 - [ ] No CUJ touched (small refactor, doc change, etc.)

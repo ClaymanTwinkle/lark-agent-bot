@@ -104,22 +104,24 @@ If no config file exists, running `lark-agent-bot` will auto-create a starter te
 
 ```bash
 mkdir -p ~/.lark-agent-bot
-# If you cloned the repo, copy the example:
-cp config.example.toml ~/.lark-agent-bot/config.toml
+# Write the complete annotated example (it is built into the binary):
+lark-agent-bot config example > ~/.lark-agent-bot/config.toml
 # Or just run lark-agent-bot once — it will create a starter config automatically
 ```
 
 You can also use a local config in the current directory:
 
 ```bash
-cp config.example.toml config.toml
+lark-agent-bot config example > config.toml
 ```
+
+The same example is `config.example.toml` in the repository.
 
 The configuration has this structure:
 
 ```toml
 # Optional global settings
-# language = "en"  # "en", "zh", or "" (auto-detect)
+# language = "en"  # "en", "zh", "zh-TW", "ja", "es", or "" (auto-detect)
 
 [log]
 level = "info"  # debug, info, warn, error
@@ -285,15 +287,17 @@ During a session, Claude may ask for tool permissions. Reply:
 - `deny` or `拒绝` — reject this request
 - `allow all` or `允许所有` — auto-approve all remaining requests this session
 
-## Step 7: Enable Natural Language Scheduling (Codex)
+## Step 7: Natural Language Scheduling (Codex `exec` backend only)
 
-lark-agent-bot supports scheduled tasks (cron jobs). You can always create them via slash commands (`/cron add ...`) or CLI (`lark-agent-bot cron add ...`), but to let the agent **understand natural language** like "every day at 6am, summarize trending repos", the agent needs to know about lark-agent-bot's cron CLI.
+lark-agent-bot supports scheduled tasks (cron jobs). You can always create them via slash commands (`/cron add ...`) or CLI (`lark-agent-bot cron add ...`), but to let the agent **understand natural language** like "every day at 6am, summarize trending repos" (and use `lark-agent-bot send`, `timer`, `relay` and `restart`), the agent needs lark-agent-bot's tool instructions.
 
-**Claude Code** handles this automatically via `--append-system-prompt` — no extra setup needed.
+- **Claude Code** gets them through `--append-system-prompt`. No setup needed.
+- **Codex** with the default app-server backend (no `backend` set in `[projects.agent.options]`) gets them as the thread's developer instructions. No setup needed.
+- **Codex with `backend = "exec"`** cannot receive them that way. They have to be in `AGENTS.md` in the project's `work_dir`, which Codex reads by itself.
 
-**For Codex**, add the following instructions to `AGENTS.md` in your project's `work_dir`:
+Only in the last case, send `/cron setup` in the chat (`/bind setup` does the same). It appends the instructions, in the bot's language, to `<work_dir>/AGENTS.md` after a `<!-- lark-agent-bot-instructions -->` marker; run it again after an upgrade and it rewrites everything from the marker on with the current version. With Claude Code or the app-server backend it only replies that no setup is needed.
 
-**Content to add** (copy-paste into the file):
+If you prefer to write the file yourself, this is the core of what `/cron setup` adds (its version is longer and also covers timers, relay and restarts):
 
 ```markdown
 # lark-agent-bot Integration
@@ -306,7 +310,7 @@ When the user asks you to do something on a schedule (e.g. "every day at 6am",
 
   lark-agent-bot cron add --cron "<min> <hour> <day> <month> <weekday>" --prompt "<task description>" --desc "<short label>"
 
-Environment variables CC_PROJECT and CC_SESSION_KEY are already set — do NOT
+Environment variables CC_PROJECT and CC_SESSION are already set — do NOT
 specify --project or --session-key.
 
 Examples:
@@ -342,9 +346,9 @@ For short single-line messages:
   lark-agent-bot send -m "short message"
 ```
 
-After adding this file, the agent will be able to translate natural language scheduling requests into `lark-agent-bot cron add` commands automatically.
+With the instructions in `AGENTS.md`, Codex translates natural language scheduling requests into `lark-agent-bot cron add` commands.
 
-> **Tip:** You may want to add `AGENTS.md` to your `.gitignore` if you don't want lark-agent-bot instructions committed to version control.
+> **Tip:** If you don't want the lark-agent-bot instructions committed to version control, keep them out of the repository's `AGENTS.md`, for example by adding `AGENTS.md` to `.git/info/exclude` when the project has no `AGENTS.md` of its own.
 
 ## Multi-Project Setup
 
@@ -542,7 +546,7 @@ lark-agent-bot daemon uninstall
 
 The following additional features are available:
 
-- **Codex Agent**: OpenAI Codex CLI integration (`codex exec --json`)
+- **Codex Agent**: OpenAI Codex CLI integration (`codex app-server` by default, `codex exec --json` with `backend = "exec"`)
 - **Voice Messages (STT)**: Speech-to-text via Whisper API (OpenAI / Groq / SiliconFlow). Requires `ffmpeg` and `[speech]` config.
 - **Voice Reply (TTS)**: Text-to-speech via Qwen / OpenAI / MiniMax / MiMo / local providers. Requires `ffmpeg` and `[tts]` config.
 - **Video Messages**: `lark-agent-bot send --video` sends a native video bubble with its duration; the cover frame requires `ffmpeg`.

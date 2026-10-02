@@ -17,7 +17,7 @@
 
 在飞书 / Lark 里远程操控你本机的 AI 编程 Agent。
 
-> 原名 `lark-connect`，从 v0.3.0 起改名为 `lark-agent-bot`。命令、npm 包、配置目录（`~/.lark-agent-bot`）和环境变量（`LARK_AGENT_BOT_*`）都随之改名。
+> 原名 `lark-connect`，从 v0.3.0 起改名为 `lark-agent-bot`。命令、npm 包和配置目录（`~/.lark-agent-bot`）都随之改名，`LARK_CONNECT_*` 环境变量改成了 `LARK_AGENT_BOT_*`；`CC_*` 环境变量（`CC_PROJECT`、`CC_SESSION`、`CC_DATA_DIR`、`CC_LOG_FILE` 等）沿用原名。
 
 lark-agent-bot 把运行在你电脑上的 Claude Code 和 Codex 桥接到飞书 / Lark 机器人。通过 WebSocket 长连接收发消息，**无需公网 IP**。代码审查、改 bug、查资料、跑定时任务，用手机就能完成。
 
@@ -99,7 +99,7 @@ app_id = "cli_xxx"
 app_secret = "xxx"
 ```
 
-完整配置项见 [config.example.toml](config.example.toml)，飞书开放平台的权限和事件配置见 [docs/feishu.md](docs/feishu.md)。
+完整配置项见 [config.example.toml](config.example.toml)，飞书开放平台的权限和事件配置见 [docs/feishu.zh-CN.md](docs/feishu.zh-CN.md)。
 
 ### 2. 启动
 
@@ -151,7 +151,7 @@ git push origin v0.1.0
 ## 文档
 
 - [使用指南](docs/usage.zh-CN.md)
-- [飞书接入](docs/feishu.md)
+- [飞书接入](docs/feishu.zh-CN.md)
 - [安装与配置](INSTALL.md)
 - [管理 API](docs/management-api.zh-CN.md) / [Bridge 协议](docs/bridge-protocol.zh-CN.md)
 - [配置模板](config.example.toml)

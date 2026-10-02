@@ -5158,7 +5158,7 @@ Then send the task:
   lark-agent-bot relay send --to <target_project> "<message>"
 
 IMPORTANT: <target_project> must be a name printed by relay list, copied EXACTLY.
-Do NOT guess or modify the name (e.g. "gemini", not "gemini-bot").
+Do NOT guess or modify the name (e.g. "codex-bot", not "codex").
 
 This posts the request into the group chat as "@<target> <message>", waits for the target bot to finish,
 and prints its reply to stdout. The target bot may work for several minutes: run the command with a
@@ -5176,7 +5176,7 @@ Environment variables CC_PROJECT and CC_SESSION are already set, so the relay kn
   lark-agent-bot relay send --to <目标项目名> "<消息>"
 
 重要:<目标项目名> 必须是 relay list 输出里的项目名,完全照搬。
-不要猜测或修改名字(例如 "gemini" 而不是 "gemini-bot")。
+不要猜测或修改名字(例如 "codex-bot" 而不是 "codex")。
 
 这会以 "@<目标> <消息>" 的形式把请求发到群里,等目标 bot 做完,把它的回复打印到 stdout。
 目标 bot 可能要干好几分钟:执行这条命令时设置足够长的 shell 超时或放到后台运行,不要用很短的默认超时。

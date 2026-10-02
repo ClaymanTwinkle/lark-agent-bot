@@ -1,8 +1,8 @@
 # lark-agent-bot 管理 API 规范
 
-> **版本：** 1.0-draft  
-> **状态：** 草案 — 实现前可能变更  
-> **最后更新：** 2026-03-10
+> **版本：** 1.0（1.1 为会话列表 / 详情新增的字段见[英文版](management-api.md)）  
+> **状态：** 已实现（`core/management.go`），Web 管理后台基于它构建。各版本之间接口仍可能调整。  
+> **最后更新：** 2026-10-03
 
 ---
 
@@ -65,8 +65,9 @@ token = "mgmt-secret"
 | `enabled`  | boolean | `false`  | 是否启用管理 API 服务                     |
 | `port`     | integer | `9820`   | 监听 TCP 端口                             |
 | `token`    | string  | (必填)   | 认证用共享密钥                            |
+| `cors_origins` | string[] | （不设置） | 允许从浏览器跨域调用 API 的来源（见 [§8](#8-cors)） |
 
-当 `enabled` 为 `false` 时，管理 API 不会启动。令牌应为强随机字符串（建议 32 字符以上）。
+当 `enabled` 为 `false` 时，管理 API 不会启动。令牌应为强随机字符串（建议 32 字符以上）。令牌为空时服务端完全不校验请求，所以一定要设置；`/web setup` 和 `lark-agent-bot web` 会自动生成。
 
 ### 2.2 基础 URL
 
@@ -167,7 +168,7 @@ GET /api/v1/status?token=mgmt-secret
 {
   "ok": true,
   "data": {
-    "version": "v1.2.0",
+    "version": "v0.3.24",
     "uptime_seconds": 3600,
     "connected_platforms": ["feishu", "lark"],
     "projects_count": 2,
@@ -184,7 +185,7 @@ GET /api/v1/status?token=mgmt-secret
 
 | 字段                   | 类型     | 说明                                      |
 |------------------------|----------|-------------------------------------------|
-| `version`               | string   | lark-agent-bot 版本（如 `v1.2.0`）            |
+| `version`               | string   | lark-agent-bot 版本（如 `v0.3.24`）           |
 | `uptime_seconds`       | number   | 进程运行时长（秒）                        |
 | `connected_platforms`  | string[] | 当前已连接的平台类型                      |
 | `projects_count`       | number   | 已配置项目数量                            |
@@ -242,79 +243,11 @@ GET /api/v1/status?token=mgmt-secret
 
 #### GET /api/v1/config
 
-返回当前配置，敏感信息已脱敏。适用于调试和 UI 展示。
+原样返回进程启动时使用的配置文件内容。Web 管理后台的配置页面显示的就是它。
 
 **查询参数：** 无
 
-**响应：**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "data_dir": "/home/user/.lark-agent-bot",
-    "language": "en",
-    "projects": [
-      {
-        "name": "my-backend",
-        "agent": {
-          "type": "claudecode",
-          "providers": [
-            {
-              "name": "anthropic",
-              "api_key": "***",
-              "base_url": "",
-              "model": "claude-sonnet-4-20250514"
-            }
-          ]
-        },
-        "platforms": [
-          {
-            "type": "feishu",
-            "options": {
-              "app_id": "***",
-              "app_secret": "***"
-            }
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-敏感信息（如 `api_key`、`token`、`app_secret`、`client_secret`）将被替换为 `"***"`。
-
----
-
-#### GET /api/v1/logs
-
-返回近期日志条目。
-
-**查询参数：**
-
-| 参数     | 类型   | 默认值  | 说明                                          |
-|----------|--------|---------|-----------------------------------------------|
-| `level`  | string | `info`  | 最低级别：`debug`、`info`、`warn`、`error`    |
-| `limit`  | int    | `100`   | 返回条目上限（1–1000）                        |
-
-**响应：**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "entries": [
-      {
-        "time": "2026-03-10T10:30:00Z",
-        "level": "info",
-        "message": "api server started",
-        "attrs": {"socket": "/home/user/.lark-agent-bot/run/api.sock"}
-      }
-    ]
-  }
-}
-```
+**响应：** `200`，`Content-Type: text/plain; charset=utf-8`，内容是原始 TOML。不包在 JSON 信封里，**敏感信息不脱敏**：App Secret、API Key、token 等按文件里写的原样返回。不知道配置文件路径时返回 `404`。
 
 ---
 
@@ -1081,6 +1014,30 @@ GET /api/v1/status?token=mgmt-secret
 
 ---
 
+### 5.8 其他端点
+
+Web 管理后台还用到下面这些端点。认证方式和响应信封与上文相同，这里不展开请求和响应格式（见 `core/management.go` 和 `core/setup.go`）。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/v1/agents` | 已注册的 agent 和平台类型 |
+| `GET`、`PATCH` | `/api/v1/settings` | 读取 / 更新全局设置 |
+| `DELETE` | `/api/v1/projects/{name}` | 从配置中删除项目（重启后生效） |
+| `POST` | `/api/v1/projects/{name}/add-platform` | 在配置里给项目添加飞书 / Lark 机器人；项目还没运行时也能用 |
+| `GET`、`PATCH` | `/api/v1/projects/{name}/users` | 读取 / 更新项目的用户角色（`[projects.users]`） |
+| `GET`、`PUT` | `/api/v1/projects/{name}/provider-refs` | 读取 / 设置项目使用哪些全局 provider |
+| `PATCH` | `/api/v1/cron/{id}` | 更新定时任务字段：JSON 对象，字段 → 值，可用字段与 `lark-agent-bot cron edit` 相同 |
+| `POST` | `/api/v1/cron/{id}/run` | 与 `/api/v1/cron/{id}/exec` 相同 |
+| `GET`、`POST` | `/api/v1/providers` | 列出 / 添加全局 provider（`[[providers]]`） |
+| `PUT`、`PATCH`、`DELETE` | `/api/v1/providers/{name}` | 更新 / 删除全局 provider |
+| `GET` | `/api/v1/providers/presets` | Provider 预设（`provider-presets.json`） |
+| `GET`、`POST` | `/api/v1/providers/cc-switch` | 列出 / 导入本机 cc-switch 数据库里的 provider |
+| `GET` | `/api/v1/skills` | 各项目 agent 可用的 skill |
+| `GET` | `/api/v1/skills/presets` | Skill 预设（`skill-presets.json`） |
+| `POST` | `/api/v1/setup/feishu/begin`、`/poll`、`/save` | 扫码创建飞书 / Lark 机器人，与 `lark-agent-bot feishu setup` 相同 |
+
+---
+
 ## 6. 错误处理约定
 
 ### 6.1 标准错误响应
@@ -1142,7 +1099,7 @@ GET /api/v1/status?token=mgmt-secret
 
 ## 8. CORS
 
-当管理 API 被 Web 控制台调用时，CORS 头应可配置。建议的配置扩展：
+内置的 Web 管理后台和 API 使用同一个端口，不需要 CORS 头。部署在其他来源上的控制台需要，在 `cors_origins` 里列出允许调用 API 的来源：
 
 ```toml
 [management]
@@ -1152,7 +1109,10 @@ token = "mgmt-secret"
 cors_origins = ["http://localhost:3000", "https://dashboard.example.com"]
 ```
 
-若未配置，CORS 可能被禁用或使用默认值（例如仅同源时为 `*`）。
+- 不设置或为空：不发送 CORS 头，浏览器会拦截跨域调用。
+- `/web setup` 和 `lark-agent-bot web` 启用 API 时会写入 `cors_origins = ["*"]`。
+- 请求的 `Origin` 与某一项相同，或某一项为 `"*"` 时，响应带上 `Access-Control-Allow-Origin: <请求的来源>`、`Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS`、`Access-Control-Allow-Headers: Authorization, Content-Type` 和 `Access-Control-Max-Age: 86400`。
+- `OPTIONS`（预检）请求直接返回 `204 No Content`，不校验令牌。
 
 ---
 
@@ -1160,6 +1120,7 @@ cors_origins = ["http://localhost:3000", "https://dashboard.example.com"]
 
 | 版本       | 日期       | 变更                    |
 |------------|------------|-------------------------|
+| —          | 2026-10-03 | 标记为已实现；删除不存在的 `GET /api/v1/logs`；按实现改写 `GET /api/v1/config` 和 CORS；补充其他端点列表 |
 | 1.0-draft  | 2026-03-10 | 初始规范                |
 
 ---

@@ -186,11 +186,26 @@ go test -race ./...
 ### Critical User Journeys (CUJ)
 
 A CUJ test is a USER-perspective end-to-end scenario, not a developer-
-perspective unit test. The current inventory of CUJs and their coverage
-status lives in:
+perspective unit test. `core/cuj_test.go` is the inventory: every CUJ is a
+`TestCUJ_<group><id>_...` test there (list them with
+`grep -n '^func TestCUJ' core/cuj_test.go`). A test named `...LinkedTo...`
+or `...CoveredBy...` asserts nothing; it only logs which other test covers
+the journey. Several of the tests it names came from cc-connect and are not
+in this repository (the `TestCC_*` release-gate tests, `platform/wecom`), so
+treat those journeys as uncovered here.
 
-`projects/lark-agent-bot/agents/qa-cursor/release-gate/CUJ-INVENTORY.md`
-(in the spaceship agency workspace; the registered authoritative copy).
+Groups:
+
+- A — basic conversation (replies, history, images, files, voice, receipts, recall)
+- B — session lifecycle (`/new` `/switch` `/list` `/history` `/name` `/search`, idle reset, restart)
+- C — agent execution control (`/mode` `/stop` cancel, permission prompts)
+- D — security & permissions (`allow_from` `admin_from` disabled commands `banned_words` rate limits)
+- E — scheduled tasks (`/cron` `/timer`, restarts)
+- F — config switching (`/provider` `/model` `/lang`, hot reload)
+- G — error handling & robustness (LLM failure, timeout, agent crash, tool failure, network flaps)
+- H — multi-platform / multi-project isolation (platforms, projects, Feishu topics, workspaces)
+- I — UI rendering correctness (cards, display modes, streaming)
+- STREAM — streaming across permission prompts
 
 Rules for adding/updating CUJ tests in `core/cuj_test.go`:
 

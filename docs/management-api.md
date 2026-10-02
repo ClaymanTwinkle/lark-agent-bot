@@ -1,8 +1,8 @@
 # lark-agent-bot Management API Specification
 
-> **Version:** 1.1-draft  
-> **Status:** Draft — subject to change before implementation  
-> **Last Updated:** 2026-03-24
+> **Version:** 1.1  
+> **Status:** Implemented in `core/management.go`; the web admin is built on it. Endpoints may still change between releases.  
+> **Last Updated:** 2026-10-03
 
 ---
 
@@ -65,8 +65,9 @@ token = "mgmt-secret"
 | `enabled`| boolean | `false`   | Enable the Management API server                 |
 | `port`   | integer | `9820`    | TCP port to listen on                            |
 | `token`  | string  | (required)| Shared secret for authentication                 |
+| `cors_origins` | string[] | (unset) | Origins allowed to call the API from a browser (see [§8](#8-cors)) |
 
-When `enabled` is `false`, the Management API is not started. The token should be a strong, random string (e.g. 32+ characters).
+When `enabled` is `false`, the Management API is not started. The token should be a strong, random string (e.g. 32+ characters). With an empty token the server does not check requests at all, so always set one; `/web setup` and `lark-agent-bot web` generate it.
 
 ### 2.2 Base URL
 
@@ -167,7 +168,7 @@ Returns system status and summary.
 {
   "ok": true,
   "data": {
-    "version": "v1.2.0",
+    "version": "v0.3.24",
     "uptime_seconds": 3600,
     "connected_platforms": ["feishu", "lark"],
     "projects_count": 2,
@@ -184,7 +185,7 @@ Returns system status and summary.
 
 | Field                 | Type     | Description                                      |
 |-----------------------|----------|--------------------------------------------------|
-| `version`             | string   | lark-agent-bot version (e.g. `v1.2.0`)              |
+| `version`             | string   | lark-agent-bot version (e.g. `v0.3.24`)             |
 | `uptime_seconds`      | number   | Process uptime in seconds                        |
 | `connected_platforms` | string[] | Platform types currently connected               |
 | `projects_count`      | number   | Number of configured projects                    |
@@ -242,79 +243,11 @@ Reloads configuration from disk without restarting the process. New projects may
 
 #### GET /api/v1/config
 
-Returns the current configuration with secrets redacted. Useful for debugging and UI display.
+Returns the config file the process was started with, exactly as it is on disk. The web admin shows it on its config page.
 
 **Query parameters:** None
 
-**Response:**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "data_dir": "/home/user/.lark-agent-bot",
-    "language": "en",
-    "projects": [
-      {
-        "name": "my-backend",
-        "agent": {
-          "type": "claudecode",
-          "providers": [
-            {
-              "name": "anthropic",
-              "api_key": "***",
-              "base_url": "",
-              "model": "claude-sonnet-4-20250514"
-            }
-          ]
-        },
-        "platforms": [
-          {
-            "type": "feishu",
-            "options": {
-              "app_id": "***",
-              "app_secret": "***"
-            }
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-Secrets (e.g. `api_key`, `token`, `app_secret`, `client_secret`) are replaced with `"***"`.
-
----
-
-#### GET /api/v1/logs
-
-Returns recent log entries.
-
-**Query parameters:**
-
-| Param   | Type   | Default | Description                          |
-|---------|--------|---------|--------------------------------------|
-| `level` | string | `info`  | Minimum level: `debug`, `info`, `warn`, `error` |
-| `limit` | int    | `100`   | Max entries to return (1–1000)       |
-
-**Response:**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "entries": [
-      {
-        "time": "2026-03-10T10:30:00Z",
-        "level": "info",
-        "message": "api server started",
-        "attrs": {"socket": "/home/user/.lark-agent-bot/run/api.sock"}
-      }
-    ]
-  }
-}
-```
+**Response:** `200` with `Content-Type: text/plain; charset=utf-8` and the raw TOML. The body is not wrapped in the JSON envelope and **secrets are not redacted**: app secrets, API keys and tokens are returned as written in the file. `404` if the config file path is not known.
 
 ---
 
@@ -1109,6 +1042,30 @@ Lists connected bridge adapters (external platforms via WebSocket).
 
 ---
 
+### 5.8 Other endpoints
+
+The web admin also uses these endpoints. They follow the same authentication and response envelope; their request and response bodies are not specified here (see `core/management.go` and `core/setup.go`).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/agents` | Registered agent and platform types |
+| `GET`, `PATCH` | `/api/v1/settings` | Read / update global settings |
+| `DELETE` | `/api/v1/projects/{name}` | Remove the project from the config (takes effect after a restart) |
+| `POST` | `/api/v1/projects/{name}/add-platform` | Add a Feishu / Lark bot to a project in the config; works before the project runs |
+| `GET`, `PATCH` | `/api/v1/projects/{name}/users` | Read / update the project's user roles (`[projects.users]`) |
+| `GET`, `PUT` | `/api/v1/projects/{name}/provider-refs` | Read / set which global providers the project uses |
+| `PATCH` | `/api/v1/cron/{id}` | Update cron job fields: a JSON object of field → value, the fields `lark-agent-bot cron edit` accepts |
+| `POST` | `/api/v1/cron/{id}/run` | Same as `/api/v1/cron/{id}/exec` |
+| `GET`, `POST` | `/api/v1/providers` | List / add global providers (`[[providers]]`) |
+| `PUT`, `PATCH`, `DELETE` | `/api/v1/providers/{name}` | Update / remove a global provider |
+| `GET` | `/api/v1/providers/presets` | Provider presets (`provider-presets.json`) |
+| `GET`, `POST` | `/api/v1/providers/cc-switch` | List / import providers from a local cc-switch database |
+| `GET` | `/api/v1/skills` | Skills available to each project's agent |
+| `GET` | `/api/v1/skills/presets` | Skill presets (`skill-presets.json`) |
+| `POST` | `/api/v1/setup/feishu/begin`, `/poll`, `/save` | QR-code creation of a Feishu / Lark bot, like `lark-agent-bot feishu setup` |
+
+---
+
 ## 6. Error Handling Conventions
 
 ### 6.1 Standard Error Response
@@ -1170,7 +1127,7 @@ For multi-workspace mode, the format may include a workspace prefix:
 
 ## 8. CORS
 
-When the Management API is used by web dashboards, CORS headers should be configurable. A suggested config extension:
+The built-in web admin is served from the same port as the API and needs no CORS headers. A dashboard served from another origin does; list the origins allowed to call the API in `cors_origins`:
 
 ```toml
 [management]
@@ -1180,7 +1137,10 @@ token = "mgmt-secret"
 cors_origins = ["http://localhost:3000", "https://dashboard.example.com"]
 ```
 
-If not configured, CORS may be disabled or use a default (e.g. `*` for same-origin only).
+- Unset or empty: no CORS headers are sent, and browsers block cross-origin calls.
+- `/web setup` and `lark-agent-bot web` write `cors_origins = ["*"]` when they enable the API.
+- When the request's `Origin` matches an entry, or an entry is `"*"`, the response carries `Access-Control-Allow-Origin: <request origin>`, `Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS`, `Access-Control-Allow-Headers: Authorization, Content-Type` and `Access-Control-Max-Age: 86400`.
+- `OPTIONS` (preflight) requests get `204 No Content` without a token check.
 
 ---
 
@@ -1188,6 +1148,7 @@ If not configured, CORS may be disabled or use a default (e.g. `*` for same-orig
 
 | Version   | Date       | Changes                    |
 |-----------|------------|----------------------------|
+| 1.1       | 2026-10-03 | Marked as implemented; removed the nonexistent `GET /api/v1/logs`; `GET /api/v1/config` and CORS described as implemented; listed the other endpoints |
 | 1.1-draft | 2026-03-24 | Enrich session list/detail with `live`, `last_message`, `agent_type`, `user_name`, `chat_name`, `active_keys` fields |
 | 1.0-draft | 2026-03-10 | Initial specification      |
 

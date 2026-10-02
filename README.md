@@ -17,7 +17,7 @@
 
 Drive the AI coding agent on your own machine from Feishu / Lark.
 
-> Formerly `lark-connect`. Renamed to `lark-agent-bot` in v0.3.0; the command, npm package, config directory (`~/.lark-agent-bot`) and environment variables (`LARK_AGENT_BOT_*`) all changed with it.
+> Formerly `lark-connect`. Renamed to `lark-agent-bot` in v0.3.0; the command, npm package and config directory (`~/.lark-agent-bot`) changed with it, and the `LARK_CONNECT_*` environment variables became `LARK_AGENT_BOT_*`. The `CC_*` environment variables (`CC_PROJECT`, `CC_SESSION`, `CC_DATA_DIR`, `CC_LOG_FILE`, ...) kept their names.
 
 lark-agent-bot bridges locally running Claude Code and Codex to a Feishu / Lark bot. It talks to Feishu over a WebSocket long connection, so **no public IP is needed**. Review code, fix bugs, research, or run scheduled jobs from your phone.
 

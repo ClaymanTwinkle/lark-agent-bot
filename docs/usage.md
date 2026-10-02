@@ -9,6 +9,9 @@ Complete guide to using lark-agent-bot features.
 - [API Provider Management](#api-provider-management)
 - [Model Selection](#model-selection)
 - [Work Directory Switching (`/dir`, `/cd`)](#work-directory-switching-dir-cd)
+- [Local Reference Display (`[projects.references]`)](#local-reference-display-projectsreferences)
+- [Viewing References (`/show`)](#viewing-references-show)
+- [Running agents as a different Unix user (`run_as_user`)](#running-agents-as-a-different-unix-user-run_as_user)
 - [Feishu Setup CLI](#feishu-setup-cli)
 - [Claude Code Router Integration](#claude-code-router-integration)
 - [Claude Code PermissionRequest Hooks](#claude-code-permissionrequest-hooks)
@@ -287,11 +290,155 @@ Examples:
 
 ---
 
+## Local Reference Display (`[projects.references]`)
+
+Optionally normalizes and re-renders references to local files, directories and code locations in the agent's output, so they read better in the chat.
+
+This is an **opt-in** feature:
+
+- Without `[projects.references]`, nothing changes
+- It only applies when the agent matches `normalize_agents` and the platform matches `render_platforms`
+
+### Recommended configuration
+
+```toml
+[projects.references]
+normalize_agents = ["all"]
+render_platforms = ["all"]
+display_path = "relative"
+marker_style = "emoji"
+enclosure_style = "code"
+```
+
+### Fields
+
+- `normalize_agents`
+  - Which agents' output goes through reference processing
+  - Supported: `codex`, `claudecode`, `all`
+
+- `render_platforms`
+  - On which platforms the display rewrite is applied before sending
+  - Supported: `feishu`, `all`
+
+- `display_path`
+  - How much of the path is shown
+  - Values: `absolute`, `relative`, `basename`, `dirname_basename`, `smart`
+
+- `marker_style`
+  - Style of the prefix marker
+  - Values: `none`, `ascii`, `emoji`
+
+- `enclosure_style`
+  - How the path is wrapped
+  - Values: `none`, `bracket`, `angle`, `fullwidth`, `code`
+
+### Recognized references
+
+These common forms are recognized:
+
+- Absolute paths
+- Relative paths
+- File / directory references
+- `path:line`
+- `path:line:col`
+- `path:start-end`
+- `path#L42`
+- Markdown links to local files
+- Claude-style absolute paths in backticks
+
+### Behavior
+
+- Only agent output is processed:
+  - thinking
+  - final response
+  - stream preview
+  - agent text in progress messages / cards
+
+- Not processed:
+  - system messages
+  - replies to commands such as `/workspace`, `/dir`, `/status`
+  - raw tool results
+
+- Web links are left as they are; the local-reference rewrite does not touch them
+
+### About the recommended values
+
+The recommended combination is:
+
+- `display_path = "relative"`
+- `marker_style = "emoji"`
+- `enclosure_style = "code"`
+
+which usually gives:
+
+- `📄 ui/recovery_contact_form.tsx:11`
+- `📁 docs/spec.v1/`
+
+Without emoji, prefer:
+
+- `display_path = "dirname_basename"`
+- `marker_style = "ascii"`
+- `enclosure_style = "code"`
+
+---
+
+## Viewing References (`/show`)
+
+Shows the content behind a file / directory / code location reference, without writing `/shell sed ...` by hand.
+
+### Chat Commands
+
+```text
+/show <path>                  Show the first 80 lines of the file
+/show <path:line>             Show the context around that line
+/show <path:start-end>        Show that range
+/show <dir-path/>             List the directory (one level)
+```
+
+Supported input forms:
+
+- Absolute paths
+- Relative paths (relative to the agent's current work directory)
+- `path:line`
+- `path:line:col`
+- `path:start-end`
+- `path#L42`
+- Markdown links to local files, for example:
+  - `[file.ts](/abs/path/file.ts#L42)`
+
+### Behavior
+
+- File without a location:
+  - shows the first 80 lines
+- `path:line` / `path#L42`:
+  - shows the context around that location
+- `path:start-end`:
+  - shows that range
+- Directory:
+  - lists its entries (one level)
+
+Notes:
+
+- `/show` only parses plain reference text, not the decorated `📄 ...` / `[FILE] ...` forms produced by the display rewrite
+- `/show` reads the local file system like `/shell` and `/dir`, so by default it requires `admin_from`
+- Shell commands also have a `!` shortcut: `!ls -la` is the same as `/shell ls -la`, and `! --timeout 300 npm install` sets a timeout
+
+Examples:
+
+```text
+/show ui/recovery_contact_form.tsx
+/show svc/recovery_session_reconciler.go:12
+/show svc/recovery_session_reconciler_test.go:8-17
+/show docs/spec.v1/
+```
+
+---
+
 ## Running agents as a different Unix user (`run_as_user`)
 
 > **Platform support**: Linux and macOS. Not supported on Windows.
-> **Agent support**: Claude Code today. Other agents fall back to the
-> supervisor user; see the tracking issue for migration status.
+> **Agent support**: Claude Code only. Codex ignores `run_as_user` and
+> runs as the supervisor user.
 
 ### What this is
 
@@ -401,7 +548,7 @@ lark-agent-bot doctor user-isolation
 ```
 
 This runs the full preflight (the three go/no-go gates from
-[#496](https://github.com/chenhg5/cc-connect/issues/496)) and an
+[cc-connect#496](https://github.com/chenhg5/cc-connect/issues/496)) and an
 **isolation probe**: it spawns a fixed shell script as the target user
 and reports what the target can read, what it's denied, and any
 cross-user leaks. Output goes to stdout plus a JSON report in
@@ -902,7 +1049,7 @@ The shell configuration applies to all command execution in lark-agent-bot:
 
 Multi-bot communication in group chats.
 
-To just hand a task to another bot in the group without getting the result back, skip relay and let the bots @ each other natively; see "机器人之间派活" in [the Feishu guide](feishu.md). Relay is for when the caller needs the other bot's result to continue.
+To just hand a task to another bot in the group without getting the result back, skip relay and let the bots @ each other natively; see [Handing work between bots](feishu.md#handing-work-between-bots) in the Feishu guide. Relay is for when the caller needs the other bot's result to continue.
 
 ### Group Chat Binding
 
@@ -1031,7 +1178,7 @@ branches is still up to you (or the agent).
 
 ## Web Admin Dashboard (Beta)
 
-> **Status: Beta.** This feature is available since v1.2.2-beta.5. The UI and API may change in future releases.
+> **Status: Beta.** The UI and API may change in future releases.
 
 A full-featured management UI embedded in the binary — project CRUD, session management, cron job editor, global settings, chat interface, and i18n support.
 
@@ -1093,7 +1240,7 @@ Key endpoints:
 | `POST` | `/api/v1/restart` | Restart lark-agent-bot |
 | `POST` | `/api/v1/reload` | Reload configuration |
 | `GET` | `/api/v1/projects` | List projects |
-| `GET` | `/api/v1/sessions?project=<name>` | List sessions for a project |
+| `GET` | `/api/v1/projects/{name}/sessions` | List sessions for a project |
 | `GET` | `/api/v1/cron` | List cron jobs |
 | `GET` | `/api/v1/settings` | Get global settings |
 | `PATCH` | `/api/v1/settings` | Update global settings |
@@ -1104,7 +1251,7 @@ Full API reference: [management-api.md](./management-api.md)
 
 ## Bridge — External Adapter Access (Beta)
 
-> **Status: Beta.** This feature is available since v1.2.2-beta.5. The protocol may change in future releases.
+> **Status: Beta.** The protocol may change in future releases.
 
 The Bridge exposes a WebSocket + REST server so external adapters (custom UIs, bots, scripts) can interact with lark-agent-bot sessions — send messages, receive events, manage sessions.
 

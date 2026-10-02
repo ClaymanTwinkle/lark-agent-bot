@@ -1,7 +1,7 @@
 # Bridge Platform Protocol Specification
 
-> Version: 1.0-draft  
-> Status: Draft — subject to change before implementation
+> Version: 1.0  
+> Status: Implemented in `core/bridge.go`; the web admin's chat uses it. The protocol may still change between releases.
 
 ## Overview
 
@@ -241,29 +241,6 @@ A complete reply message to send to the user.
 | `content` | string | yes | Reply text content. |
 | `format` | string | no | `"text"` (default) or `"markdown"`. |
 
-#### `reply_stream`
-
-Streaming delta for real-time typing preview. Only sent if the adapter declared `"preview"` capability.
-
-```json
-{
-  "type": "reply_stream",
-  "session_key": "my-chat:user123:user123",
-  "reply_ctx": "conv-abc-123",
-  "delta": "partial content...",
-  "full_text": "accumulated full text so far...",
-  "preview_handle": "platform-msg-id-789",
-  "done": false
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `delta` | string | New text since last stream message. |
-| `full_text` | string | Full accumulated text. Adapters can use this for "replace entire message" updates. |
-| `preview_handle` | string | Handle returned by `preview_ack`. Empty on first stream message. |
-| `done` | bool | `true` on the final stream message. |
-
 #### `preview_start`
 
 Requests the adapter to create an initial preview message (for streaming).
@@ -405,6 +382,21 @@ Send a voice/audio message. Only sent if the adapter declared `"audio"` capabili
 }
 ```
 
+#### `video`
+
+Send a video. Only sent if the adapter declared `"video"` capability.
+
+```json
+{
+  "type": "video",
+  "session_key": "my-chat:user123:user123",
+  "reply_ctx": "conv-abc-123",
+  "data": "<base64-encoded-video>",
+  "format": "mp4",
+  "file_name": "demo.mp4"
+}
+```
+
 #### `image`
 
 Send an image to the user. Only sent if the adapter declared `"image"` capability.
@@ -446,18 +438,6 @@ Response to `ping`.
 }
 ```
 
-#### `error`
-
-Notify the adapter of a server-side error.
-
-```json
-{
-  "type": "error",
-  "code": "session_not_found",
-  "message": "No active session for the given key"
-}
-```
-
 ---
 
 ## Data Schemas
@@ -470,11 +450,12 @@ Notify the adapter of a server-side error.
 | `image` | Sending/receiving images | `message.images`, `image` reply |
 | `file` | Sending/receiving files | `message.files`, `file` reply |
 | `audio` | Sending/receiving voice messages | `message.audio`, `audio` reply |
+| `video` | Sending videos | `video` reply |
 | `card` | Structured rich card rendering | `card` reply |
 | `buttons` | Inline clickable buttons | `buttons` reply, `card_action` |
 | `typing` | Typing indicator | `typing_start`, `typing_stop` |
 | `update_message` | Edit existing messages | `update_message` |
-| `preview` | Streaming preview (requires `update_message`) | `preview_start`, `reply_stream` |
+| `preview` | Streaming preview (requires `update_message`) | `preview_start` / `preview_ack`, then `update_message` for each update |
 | `delete_message` | Delete messages | `delete_message` |
 | `reconstruct_reply` | Can reconstruct reply context from session_key | Enables cron/heartbeat messages |
 
@@ -819,13 +800,9 @@ Messages within a single WebSocket connection are ordered. lark-agent-bot proces
 enabled = true
 port = 9810
 token = "a-strong-random-secret"
-
-# Optional: restrict which adapters can connect (by platform name).
-# Default: allow all registered adapters.
-# allow_platforms = ["my-chat"]
 ```
 
-No per-adapter project configuration is needed — adapters are associated with the **default project** or specify a `project` field in the `register` message to bind to a specific project.
+Any adapter that has the token can connect. No per-adapter project configuration is needed: a `message` or `card_action` can carry a `project` field naming the target project. Without it, the message goes to the only project when there is one, otherwise to the project that already has sessions for its `session_key`.
 
 ---
 
@@ -891,7 +868,7 @@ asyncio.run(main())
 
 ## Versioning
 
-The protocol version is declared in the `register` message via `metadata.protocol_version`. The current version is `1`. lark-agent-bot will reject connections with incompatible versions and respond with a `register_ack` containing an error.
+The protocol version is declared in the `register` message via `metadata.protocol_version`. The current version is `1`. lark-agent-bot does not check it yet, so a mismatched version is not rejected.
 
 ```json
 {

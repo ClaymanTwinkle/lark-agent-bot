@@ -9,7 +9,9 @@ lark-agent-bot 完整功能使用指南。
 - [API Provider 管理](#api-provider-管理)
 - [模型选择](#模型选择)
 - [工作目录切换（`/dir`、`/cd`）](#工作目录切换dircd)
+- [本地引用展示配置（`[projects.references]`）](#本地引用展示配置projectsreferences)
 - [引用查看（`/show`）](#引用查看show)
+- [以其他 Unix 用户运行 Agent（`run_as_user`）](#以其他-unix-用户运行-agentrun_as_user)
 - [飞书配置 CLI](#飞书配置-cli)
 - [Claude Code Router 集成](#claude-code-router-集成)
 - [Claude Code PermissionRequest Hooks](#claude-code-permissionrequest-hooks)
@@ -428,6 +430,225 @@ enclosure_style = "code"
 
 ---
 
+## 以其他 Unix 用户运行 Agent（`run_as_user`）
+
+> **平台支持**：Linux 和 macOS，不支持 Windows。
+> **Agent 支持**：只有 Claude Code。Codex 会忽略 `run_as_user`，仍以运行
+> lark-agent-bot 的用户（下称"主用户"）身份运行。
+
+### 这是什么
+
+默认情况下，lark-agent-bot 启动的每个 agent 会话都和 `lark-agent-bot` 本身
+以同一个 Unix 用户运行。如果 agent 行为出错——读了密钥、覆盖了旁边的仓库、
+弄坏了 `~/.ssh/`——它能访问主用户能访问的所有文件。
+
+`run_as_user` 为每个项目指定一个目标 Unix 用户。设置后，lark-agent-bot 用
+下面的方式启动这个项目的 agent 命令：
+
+```
+sudo -n -iu <目标用户> -- claude ...
+```
+
+目标用户是你自己创建的真实的、无特权的 Unix 账号。agent 以这个账号的
+uid/gid 运行，使用**它自己的**主目录、shell profile、PATH 和工具凭证。
+文件系统隔离由内核保证，不靠 hook 或白名单。
+
+### 能保证什么、不能保证什么
+
+**它能把 agent 和目标用户访问不到的文件和进程隔离开。** agent 不能再读取或
+覆盖主用户的 `~/.ssh/`、另一个项目用户的 `~/.pgpass`，或者 UNIX 权限没有
+授予目标用户的仓库。
+
+**多个项目使用同一个 `run_as_user` 时，项目之间不会自动隔离。** 需要按项目
+隔离时，为每个项目各建一个 Unix 用户。
+
+**它不是 Linux namespace、seccomp 或容器那种意义上的沙箱。** 它只是按 uid
+限定文件系统访问范围。
+
+### 设置步骤
+
+#### 1. 创建目标用户并安装它的工具
+
+目标用户需要 agent 用到的所有东西的一份自己的副本，因为 `sudo -i` 加载的是
+*目标*用户的登录环境，而不是主用户的。
+
+```bash
+sudo useradd -m -s /bin/bash partseeker-coder
+sudo -iu partseeker-coder
+
+# 在目标用户的 PATH 下安装 agent CLI
+#   （Claude Code 按正常安装说明安装）
+
+# 准备目标用户的 ~/.claude/
+mkdir -p ~/.claude
+# 复制或重新创建：
+#   ~/.claude/settings.json     （MCP 服务器、hook、模型设置）
+#   ~/.claude.json              （Claude Code 登录信息）
+#   ~/.claude/plugins/          （claude-mem 等插件的状态）
+
+exit
+```
+
+#### 2. 让主用户可以免密码 sudo 到目标用户
+
+添加一条限定范围的 sudoers 规则。**不要**给主用户 `NOPASSWD: ALL`——那等于
+给了主用户 root，这里用不到，而且危险。
+
+```
+# /etc/sudoers.d/lark-agent-bot（用 `sudo visudo -f ...` 安装）
+partseeker-orchestrator ALL=(partseeker-coder) NOPASSWD: ALL
+```
+
+按你的环境改用户名。这条规则的意思是：*"主用户可以不输密码、以这个特定的
+目标用户身份运行任何命令。"*
+
+#### 3. 确认目标用户不能 sudo
+
+降到目标用户运行的意义就在于目标用户不能马上再提权回来。检查：
+
+```bash
+sudo -n -iu partseeker-coder -- sudo -n true
+# 必须失败，报 "a password is required" 之类的错误
+```
+
+如果这条命令成功了，lark-agent-bot 会拒绝启动。先删掉目标用户的所有
+`NOPASSWD` sudo 授权。
+
+#### 4. 让目标用户能访问项目的 `work_dir`
+
+目标用户需要对项目的 `work_dir` 有读**和**写权限。如果目录属于主用户，可以
+把它 `chown` 给目标用户、设置一个目标用户所在的属组，或者加 POSIX ACL：
+
+```bash
+sudo setfacl -R -m u:partseeker-coder:rwX /home/leigh/workspace/sandboxed-repo
+sudo setfacl -R -dm u:partseeker-coder:rwX /home/leigh/workspace/sandboxed-repo
+```
+
+目标用户不能读写 `work_dir` 根目录时，lark-agent-bot 拒绝启动；子路径看起来
+无法访问时只给出警告（不影响启动）。
+
+#### 5. 启动 lark-agent-bot 前审计配置
+
+```bash
+lark-agent-bot doctor user-isolation
+```
+
+它会运行完整的启动前检查（[cc-connect#496](https://github.com/chenhg5/cc-connect/issues/496)
+里的三项放行检查）和一次**隔离探测**：以目标用户身份运行一段固定的 shell
+脚本，报告目标用户能读到什么、被拒绝了什么，以及有没有跨用户泄露。结果输出到
+stdout，同时写一份 JSON 报告到
+`~/.lark-agent-bot/audits/<timestamp>-<project>.json`。
+
+退出码 0 表示没有问题，1 表示至少有一个致命问题。
+
+可以这样查看探测脚本本身：
+
+```bash
+lark-agent-bot doctor user-isolation --print-script
+```
+
+### 配置
+
+```toml
+[[projects]]
+name = "claude-sandboxed"
+run_as_user = "partseeker-coder"
+
+# 可选：扩展跨过 sudo 边界传递的环境变量白名单。默认的
+# （PATH、LANG、LC_*、TERM）总会带上。只列目标用户没法在自己的
+# shell profile 里设置的变量。密钥应放在目标用户
+# ~/.claude/settings.json 的 env 块里，不要放在这里。
+run_as_env = ["PGSSLROOTCERT", "PGSSLMODE"]
+
+[projects.agent]
+type = "claudecode"
+
+[projects.agent.options]
+mode = "default"
+model = "sonnet"
+work_dir = "/home/leigh/workspace/sandboxed-repo"
+```
+
+### 环境迁移：哪些东西要搬到目标用户的主目录
+
+这一节是出问题时排查用的。项目切换到 `run_as_user` 后，主用户的环境变量
+**不会**跨过 sudo 边界——这正是它的目的。agent 需要的一切都得放在目标用户
+的主目录里。
+
+迁移清单：
+
+- [ ] **Agent 配置**——`~/.claude/settings.json`（MCP 服务器、hook、模型设置）、
+      `~/.claude.json`（登录信息）。从主用户复制，或者重新创建。
+- [ ] **插件状态**——`~/.claude/plugins/`，包括 claude-mem 和其他 Claude Code
+      插件。
+- [ ] **MCP 服务器程序**——必须在目标用户的 `PATH` 上，只在主用户的 `PATH`
+      上不行。要么装在目标用户下，要么在 `settings.json` 里写完整路径。
+- [ ] **Postgres TLS**——`PGSSLROOTCERT`、`PGSSLCERT`、`PGSSLKEY` 放在目标用户
+      `~/.claude/settings.json` 的 `env` 块里，它们指向的证书文件必须对目标
+      用户可读。
+- [ ] **Claude OAuth 凭证**——如果通过 `claude.ai` 登录（OAuth），token 存在
+      `~/.claude/.credentials.json`。OAuth access token 几个小时后过期，由正在
+      运行的 Claude CLI 会话自动刷新。目标用户没有活动会话时，它的 token
+      **不会**被刷新——两次 lark-agent-bot 启动 agent 之间往往就是这种情况。
+      推荐的做法是把目标用户的凭证文件做成指向主用户文件的符号链接，两个用户
+      共用一个保持新鲜的 token：
+
+      ```bash
+      # 用 ACL 给目标用户读权限（对其他人仍保持 600）
+      setfacl -m u:<target-user>:rx ~/.claude/
+      setfacl -m u:<target-user>:r  ~/.claude/.credentials.json
+
+      # 把目标用户的凭证文件换成符号链接
+      sudo -iu <target-user> bash -c \
+        'rm -f ~/.claude/.credentials.json && \
+         ln -s /home/<supervisor>/.claude/.credentials.json \
+               ~/.claude/.credentials.json'
+      ```
+
+      **如果用的是 API key**（`ANTHROPIC_API_KEY`）而不是 OAuth，就没有这个
+      问题——把 key 写进目标用户 `~/.claude/settings.json` 的 `env` 块，不会
+      过期。
+- [ ] **凭证文件**——`~/.pgpass`、`~/.gitconfig`、`~/.netrc`、`~/.aws/`、
+      `~/.config/gh/`、`~/.kube/`——agent 实际用到哪些就准备哪些。每个都需要
+      一份自己的副本，或者一份属组可读的共享副本。
+- [ ] **SSH 密钥**——如果 agent 通过 SSH 执行 `git push`，需要
+      `~/.ssh/id_ed25519` 等。同样：复制或按属组共享。
+- [ ] **`~/keys/` 下的密钥材料**——主用户使用的自定义目录，需要在目标用户
+      主目录下有对应的一份，或者一份属组可读的共享副本。
+- [ ] **语言工具链**——如果 agent 用 `asdf`、`mise`、`nvm`、`rustup` 等，它们
+      装在 `~` 下。目标用户需要自己装一份，或者使用两个用户都能运行的系统级
+      安装。
+- [ ] **Shell profile**——目标用户的 `~/.profile` / `~/.bashrc` 需要设置 `PATH`
+      和 agent 依赖的工具初始化。接入 lark-agent-bot 前先用
+      `sudo -iu partseeker-coder` 试一下。
+
+迁移完成后再运行一次 `lark-agent-bot doctor user-isolation`。报告里的
+`target home` 部分列出了哪些预期路径存在、哪些缺失——缺失不一定有问题，但
+可以当作检查清单。
+
+### 关闭
+
+从项目配置里删掉 `run_as_user`，或者设为 `""`。下次重启后恢复原来的行为
+（以主用户身份启动 agent）。
+
+### 常见错误和报错信息
+
+- **"passwordless sudo to user X is not configured"**——缺少设置步骤 2，或者
+  sudoers 规则写错了主用户。修正规则，用 `visudo -c` 检查语法，然后重启
+  lark-agent-bot。
+- **"target user X can run passwordless sudo"**——步骤 3 没通过。报错里附带
+  目标用户环境下 `sudo -l` 的输出；找到有问题的规则并删掉。
+- **"target user X cannot read AND write work_dir Y"**——步骤 4 没通过。按上文
+  `chown` 目录或加 ACL。
+- 审计结果里出现 **"CROSS_LEAKED"** 或 **"SUPERVISOR_LEAKED"**——目标用户能读到
+  其他用户的密钥。收紧对应文件的权限（通常是
+  `chmod 600 file; chown user:user file`），然后重新审计。
+- **"descendant scan timed out"**——不影响启动。`work_dir` 太大，权限遍历超过了
+  时限。需要完整遍历时手动运行 `lark-agent-bot doctor user-isolation`，或者
+  缩小项目的 `work_dir`。
+
+---
+
 ## 飞书配置 CLI
 
 可以直接通过 CLI 完成飞书/Lark 机器人创建或关联，并自动写回 `config.toml`：
@@ -798,7 +1019,7 @@ Shell 配置适用于 lark-agent-bot 中所有命令执行路径：
 
 群聊多机器人协作与机器人间通信。
 
-只想在群里把活交给另一个机器人、不需要把结果拿回来时，不用 relay，直接让机器人在群里 @ 对方即可，配置见 [飞书文档「机器人之间派活」](feishu.md#机器人之间派活)。relay 适合需要把对方的结果拿回来接着处理的场景。
+只想在群里把活交给另一个机器人、不需要把结果拿回来时，不用 relay，直接让机器人在群里 @ 对方即可，配置见 [飞书接入指南「机器人之间派活」](feishu.zh-CN.md#机器人之间派活)。relay 适合需要把对方的结果拿回来接着处理的场景。
 
 ### 群聊绑定
 
@@ -916,7 +1137,7 @@ type = "claudecode"
 
 ## Web 管理后台（Beta）
 
-> **状态：Beta。** 此功能自 v1.2.2-beta.5 起可用，UI 和 API 在后续版本中可能调整。
+> **状态：Beta。** UI 和 API 在后续版本中可能调整。
 
 内嵌在二进制中的全功能管理界面，支持项目管理、会话管理、定时任务编辑、全局设置、聊天界面、多语言等。
 
@@ -978,7 +1199,7 @@ API 与 Web UI 共用同一端口。基础 URL：`http://<host>:<port>/api/v1`
 | `POST` | `/api/v1/restart` | 重启 lark-agent-bot |
 | `POST` | `/api/v1/reload` | 重新加载配置 |
 | `GET` | `/api/v1/projects` | 项目列表 |
-| `GET` | `/api/v1/sessions?project=<name>` | 查询项目的会话列表 |
+| `GET` | `/api/v1/projects/{name}/sessions` | 查询项目的会话列表 |
 | `GET` | `/api/v1/cron` | 定时任务列表 |
 | `GET` | `/api/v1/settings` | 获取全局设置 |
 | `PATCH` | `/api/v1/settings` | 更新全局设置 |
@@ -989,7 +1210,7 @@ API 与 Web UI 共用同一端口。基础 URL：`http://<host>:<port>/api/v1`
 
 ## Bridge — 外部适配器接入（Beta）
 
-> **状态：Beta。** 此功能自 v1.2.2-beta.5 起可用，协议在后续版本中可能调整。
+> **状态：Beta。** 协议在后续版本中可能调整。
 
 Bridge 提供 WebSocket + REST 服务，让外部适配器（自定义 UI、机器人、脚本等）可以接入 lark-agent-bot —— 发送消息、接收 Agent 事件、管理会话。
 

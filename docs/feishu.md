@@ -1,140 +1,140 @@
-# 飞书 (Feishu/Lark) 接入指南
+English | [中文](./feishu.zh-CN.md)
 
-本文档介绍如何将 **lark-agent-bot** 接入飞书，让你可以通过飞书机器人远程调用 Claude Code。
+# Feishu / Lark Setup Guide
 
-## 前置要求
+This guide connects **lark-agent-bot** to Feishu so you can drive Claude Code or Codex remotely through a Feishu bot. Lark (international) works the same way with `type = "lark"` and the developer console at https://open.larksuite.com.
 
-- 飞书账号（个人或企业均可）
-- 一台可运行 lark-agent-bot 的设备（无需公网 IP）
-- Claude Code 已安装并配置完成
+## Prerequisites
 
-> 💡 **优势**：使用长连接模式，无需公网 IP、无需域名、无需反向代理（ngrok/frp）
+- A Feishu account (personal or enterprise)
+- A machine that can run lark-agent-bot (no public IP needed)
+- Claude Code or Codex installed and configured
+
+> 💡 **Why long connection**: lark-agent-bot receives events over a WebSocket long connection, so you need no public IP, no domain name and no reverse proxy (ngrok/frp).
 
 ---
 
-## 快速配置（推荐）
+## Quick Setup (Recommended)
 
-如果你已经装好 `lark-agent-bot`，可以直接用内置命令完成“新建机器人/关联已有机器人”，并自动写回 `config.toml`：
+Once `lark-agent-bot` is installed, the built-in commands can create a new bot or link an existing one and write the result back to `config.toml`:
 
 ```bash
-# 推荐：统一入口
+# Recommended: unified entry
 lark-agent-bot feishu setup --project my-project
 lark-agent-bot feishu setup --project my-project --app cli_xxx:sec_xxx
 
-# 强制模式（一般不需要）
+# Force modes (usually unnecessary)
 lark-agent-bot feishu new --project my-project
 lark-agent-bot feishu bind --project my-project --app cli_xxx:sec_xxx
 ```
 
-三者区别：
+How they differ:
 
-| 命令 | 作用 | 何时用 |
-|------|------|--------|
-| `setup` | 统一入口：无凭证走 `new`，有凭证走 `bind` | **默认就用这个** |
-| `new` | 强制二维码新建（不接受 `--app`） | 明确要重走扫码新建 |
-| `bind` | 强制关联已有凭证（必须 `app_id/app_secret`） | 明确只做凭证关联 |
+| Command | What it does | When to use it |
+|---------|--------------|----------------|
+| `setup` | Unified entry: `new` without credentials, `bind` with credentials | **Use this by default** |
+| `new` | Always creates a new app by QR code (does not accept `--app`) | You explicitly want to scan and create again |
+| `bind` | Always links existing credentials (`app_id/app_secret` required) | You only want to link credentials |
 
-补充：
+Notes:
 
-- `setup --app ...` 与 `bind --app ...` 功能等价。
+- `setup --app ...` is equivalent to `bind --app ...`.
 
-- `setup/new` 会在终端打印二维码和 URL，使用飞书/Lark 手机 App 扫码完成创建。
-- `--project` 不存在时会自动创建该项目；若项目存在但没有 `feishu/lark` 平台，也会自动补一个。如果之前运行过一次 `lark-agent-bot`，会接管它生成的初始项目（改名为 `--project`，替换占位的 `app_id` / `work_dir`），不再另建一个。
-- 写回配置时仅定点更新目标字段（`app_id`、`app_secret`、`allow_from` 等），尽量保留原有注释与排版。
-- 新建默认使用内置统一模板：38 项应用权限、1 项用户权限，覆盖消息、图片/文件、表情、卡片、发送者姓名、群成员查询、群消息上下文、文档及应用管理；Claude Code 和 Codex 使用同一模板。模板包含 `im:message.group_msg`，允许接收未 @ 机器人的群消息；`group_chat_history_share` 仍默认关闭。无需这一权限时，可使用移除该项的自定义模板。
-- 同时预填 `im.message.receive_v1`（接收消息）、`im.message.recalled_v1`（撤回消息）、`application.bot.menu_v6`（菜单点击）事件，以及 `card.action.trigger` 卡片回调。扫码确认页一次确认权限与订阅。撤回排队中的原消息会移除对应提示词；已开始的任务会尝试停止，不会回滚已执行的操作，排在它后面的消息也不会执行。
-- 注册成功后先保存凭证，再检查机器人能力、权限授予状态及可读取的订阅配置。失败会保留凭证并明确报错，避免重复创建应用。
-- 通过应用详情接口获取该应用身份下的所有者 ID，初始化尚未设置的 `admin_from`；全新项目同时设置 `allow_from` 为所有者。保留已有管理员、访问范围和项目设置。
-- 全新项目默认 `quiet` 消息模式，可用 `--display full` 或 `--display compact` 更改。模型、权限模式、工作目录和 agent 类型可在创建时指定；这些参数仅影响新项目和上面说的初始项目。第一个项目不指定 `--agent` 时，装了 `claude` 用 Claude Code，否则装了 `codex` 用 Codex。
-- `new` 和无凭证的 `setup` 拒绝覆盖已绑定应用的项目；`bind` 保持凭证绑定流程。
+- `setup/new` print a QR code and a URL in the terminal; scan it with the Feishu / Lark mobile app to create the bot.
+- If `--project` does not exist, it is created; if the project exists but has no `feishu/lark` platform, one is added. If you already ran `lark-agent-bot` once, setup takes over the starter project it wrote (renamed to `--project`, placeholder `app_id` / `work_dir` replaced) instead of adding a second one.
+- Only the target fields (`app_id`, `app_secret`, `allow_from`, ...) are updated when the config is written back; existing comments and layout are kept as far as possible.
+- New apps use a built-in template shared by Claude Code and Codex: 38 app permissions and 1 user permission, covering messages, images/files, reactions, cards, sender names, group member lookup, group message context, docs and app self-management. The template includes `im:message.group_msg`, which lets the bot receive group messages that do not @ it; `group_chat_history_share` is still off by default. If you do not want this permission, use a custom template without it.
+- The template also pre-fills the `im.message.receive_v1` (receive message), `im.message.recalled_v1` (message recalled) and `application.bot.menu_v6` (menu click) events and the `card.action.trigger` card callback. The scan confirmation page grants the permissions and subscriptions in one step. Recalling a queued message removes its prompt; recalling the message of a task that has already started tries to stop it, does not roll back what was already done, and the messages queued behind it are not run either.
+- After registration the credentials are saved first; then the bot capability, granted permissions and readable subscription settings are checked. A failed check keeps the credentials and reports the error clearly, so you do not create the app twice.
+- The app owner's ID, read through the app detail API with the app's own identity, initializes `admin_from` if it is not set yet; a brand-new project also gets `allow_from` set to the owner. Existing admins, access lists and project settings are kept.
+- Brand-new projects default to the `quiet` display mode; change it with `--display full` or `--display compact`. Model, permission mode, work directory and agent type can be set at creation; these flags only affect new projects and the starter project mentioned above. Without `--agent`, the first project uses Claude Code if `claude` is installed, otherwise Codex if `codex` is.
+- `new` and `setup` without credentials refuse to overwrite a project that already has an app; `bind` keeps the credential-binding flow.
 
 ```powershell
-# 新建 Claude 机器人（Codex 将 --agent 改成 codex）
+# Create a Claude bot (for Codex, change --agent to codex)
 lark-agent-bot feishu new --config config.toml --project my-claude --agent claudecode --name "Claude Code" --work-dir "D:/Projects/my-project" --display quiet
 
-# 可选：--model <模型名> --mode <该 agent 支持的权限模式>
-# 可选：--description "描述" --avatar "https://example.com/avatar.png"
+# Optional: --model <model name> --mode <a permission mode this agent supports>
+# Optional: --description "description" --avatar "https://example.com/avatar.png"
 
-# 已保存凭证后重新核验，不创建应用、不修改配置
+# Re-check saved credentials without creating an app or changing the config
 lark-agent-bot feishu check --config config.toml --project my-claude
 ```
 
-模板源文件：[`cmd/lark-agent-bot/feishu_setup_template.json`](../cmd/lark-agent-bot/feishu_setup_template.json)。可复制修改并传入 `--template path/to/template.json`，创建和后续 `check` 请使用同一模板。自定义模板必须保留基本消息、附件、表情、应用自管理权限以及接收消息、撤回消息、菜单点击与卡片交互订阅。模板只声明用户身份权限，不代表已经取得用户 OAuth 授权。
+Template source: [`cmd/lark-agent-bot/feishu_setup_template.json`](../cmd/lark-agent-bot/feishu_setup_template.json). Copy and edit it, then pass `--template path/to/template.json`; use the same template for creation and for later `check` runs. A custom template must keep the basic message, attachment, reaction and app self-management permissions, and the receive-message, message-recalled, menu-click and card-interaction subscriptions. The template only declares user-identity permissions; it does not mean user OAuth authorization has been obtained.
 
-实现遵循[官方注册 SDK](https://github.com/larksuite/oapi-sdk-go/tree/v3_main/scene/registration)：配置作为 gzip + URL-safe base64 的 `addons` 参数附在扫码确认链接上，`preset=false` 使用明确声明的配置，`createOnly=true` 限定新建。
+The implementation follows the [official registration SDK](https://github.com/larksuite/oapi-sdk-go/tree/v3_main/scene/registration): the configuration is attached to the scan confirmation link as a gzip + URL-safe base64 `addons` parameter, `preset=false` uses the explicitly declared configuration, and `createOnly=true` restricts the flow to creating a new app.
 
-能力边界：部分个人应用的详情接口不返回事件/回调列表，命令会标明“无法核验”，不会把缺失字段当作通过；启动后仍需用消息和 `/help` 卡片按钮验证实际收发。模板不包含底部菜单内容，发布审核及可用范围由飞书/企业策略决定。本命令不会自动跳过审批或把可用范围扩展为全员。
+Limits: for some personal apps the detail API does not return the event/callback lists; the command then marks them as "cannot verify" instead of treating missing fields as passed. After starting, still verify real sending and receiving with a message and the `/help` card buttons. The template does not include the bottom menu contents, and release review and availability scope are decided by Feishu and your tenant's policy. The command never skips approval or widens the availability scope to everyone.
 
-**English:** New apps share an embedded permissions/events/callbacks template across agents. Scan once to review and authorize it. Credentials are saved before read-only verification. New projects default to quiet display and use the verified application owner for access/admin initialization; existing project settings remain intact. Override with `--template`, `--agent`, `--model`, `--mode`, `--work-dir`, and `--display`. `feishu check` rechecks saved credentials without creating or modifying an app. Missing subscription fields are reported as unverified. Menu contents, tenant approval, and visibility are outside the registration template.
+After a successful recall a separate notice is sent: for a queued task it says the original message was recalled and the queued task was cancelled; for the current task it says stopping the current task was requested. In that case the queue is cleared as well, and each queued message gets a reply saying it was not run and should be sent again if still needed (queued messages may depend on the recalled one, so they are not continued automatically). Duplicate recall events, or recalls that match no task, produce no repeated notice, and actions already performed are not rolled back.
 
-撤回成功后会发送一条独立提示：排队任务显示「原消息已撤回，对应的排队任务已取消」；当前任务显示「已发起停止当前任务」，此时队列会一并清空，每条排队消息各收到一条「未执行，需要的话请重新发送」的回复（排队消息可能依赖被撤回的那条，因此不自动续跑）。重复撤回事件或未匹配到任务的撤回不会重复提示，已执行的操作不会回滚。
+### Finish the bottom menu after creation
 
-### 创建后完成底部菜单
+The creation flow includes the menu permission and the menu-click subscription, but **does not create menu items**. The command prints the remaining steps; configure the menu in the developer console following [Feishu's official menu guide](https://open.feishu.cn/document/client-docs/bot-v3/bot-customized-menu):
 
-创建流程已包含菜单权限和菜单点击订阅，但**不会自动创建菜单项**。命令会输出以下待完成步骤；菜单仍需按[飞书官方菜单指南](https://open.feishu.cn/document/client-docs/bot-v3/bot-customized-menu)在开发者后台配置：
+1. Select the app → Bot → Bot custom menu, and turn on the "floating menu".
+2. Add these three top-level menu items, each with the action "push event".
 
-1. 选择应用 → 机器人 → 机器人自定义菜单，开启「悬浮菜单」。
-2. 添加以下三个主菜单，响应动作均为「推送事件」。
-
-| 菜单名称 | 事件唯一标识（event_key） | 对应命令 |
+| Menu name | Event key (`event_key`) | Command |
 | --- | --- | --- |
-| 查看帮助 | `help` | `/help` |
-| 当前状态 | `status` | `/status` |
-| 升级服务 | `upgrade` | `/upgrade` |
+| Help | `help` | `/help` |
+| Status | `status` | `/status` |
+| Upgrade | `upgrade` | `/upgrade` |
 
-3. 确认事件与回调中已订阅 `application.bot.menu_v6` 和 `im.message.recalled_v1`，创建版本并发布。菜单显示可能需要约 5 分钟，仅支持机器人私聊。
+3. Make sure `application.bot.menu_v6` and `im.message.recalled_v1` are subscribed under Events & Callbacks, then create and publish a version. The menu may take about 5 minutes to appear and only shows in one-on-one chats with the bot.
 
-「升级服务」装好新版本后需要重启，重启会结束所有 agent 进程。如果当时还有任务在处理，会回复“还有 N 个任务在处理，等它们做完再重启”，等任务做完再重启，最多等 `upgrade_restart_wait_mins` 分钟（默认 120，设为 0 立即重启）。要马上重启，发 `/restart`。
+After "Upgrade" installs a new version, the bot has to restart, and a restart ends every agent process. If tasks are still running, it replies that N tasks are still running and it will restart once they finish, and waits for them, at most `upgrade_restart_wait_mins` minutes (default 120; 0 restarts at once). To restart right away, send `/restart`.
 
-同一台机器上开了 relay 的多个机器人要运行同一版本，否则互相转派会出错。升级时如果本机其他机器人的版本和新版本不同，回复里会列出它们；重启成功的通知里也会列出版本不同的机器人。共用同一个程序文件的机器人也要各自重启，才会加载新版本。
+Bots on one machine that use relay with each other must run the same version, otherwise handing work between them fails. If other bots on this machine run a different version from the new one, the upgrade reply lists them, and so does the "restart successful" notice. Bots sharing one program file must each restart to load the new version.
 
-「发送文字消息」会直接发送菜单名称，不能代替上表的事件标识。已有机器人可先运行 `feishu check` 检查新模板；如果接口未返回订阅信息，则需要在后台核对。菜单内容未被该检查核验。
-
----
-
-## 第一步：创建飞书企业自建应用
-
-### 1.1 进入飞书开放平台
-
-访问 [飞书开放平台](https://open.feishu.cn/) 并登录你的飞书账号。
-
-### 1.2 创建应用
-
-1. 点击右上角「控制台」进入开发者后台
-2. 点击「创建企业自建应用」
-
-> 💡 **个人用户也可以创建**：飞书开放平台支持个人开发者创建应用，无需企业认证。
-
-### 1.3 填写应用信息
-
-| 字段 | 填写建议 |
-|------|---------|
-| 应用名称 | `lark-agent-bot` 或你喜欢的名称 |
-| 应用描述 | `Claude Code 远程助手` |
-| 应用图标 | 上传一个喜欢的图标 |
+A menu action of "send text message" sends the menu name itself and cannot replace the event keys above. For an existing bot, run `feishu check` first to check it against the new template; if the API does not return subscription information, check it in the console. The check does not verify the menu contents.
 
 ---
 
-## 第二步：获取凭证
+## Step 1: Create a Feishu custom enterprise app
 
-### 2.1 进入凭据页面
+### 1.1 Open the Feishu Open Platform
 
-在应用详情页，左侧导航栏点击 **「凭据与基础信息」**。
+Go to the [Feishu Open Platform](https://open.feishu.cn/) and sign in with your Feishu account.
 
-### 2.2 获取 App ID 和 App Secret
+### 1.2 Create the app
 
-你会看到以下信息：
+1. Click "Developer Console" in the upper right
+2. Click "Create Custom App"
+
+> 💡 **Personal users can create apps too**: the Feishu Open Platform lets individual developers create apps without enterprise verification.
+
+### 1.3 Fill in the app information
+
+| Field | Suggestion |
+|-------|------------|
+| App name | `lark-agent-bot` or any name you like |
+| App description | `Remote coding assistant` |
+| App icon | Upload any icon you like |
+
+---
+
+## Step 2: Get the credentials
+
+### 2.1 Open the credentials page
+
+On the app details page, click **"Credentials & Basic Info"** in the left sidebar.
+
+### 2.2 Get the App ID and App Secret
+
+You will see:
 
 ```
 App ID:     cli_axxxxxxxxxxxx
 App Secret: QhkMpxxxxxxxxxxxxxxxxxxxx
 ```
 
-> ⚠️ **重要**：请妥善保存这两个凭证，后续配置 lark-agent-bot 时需要用到。App Secret 只会显示一次，如果忘记了需要重置。
+> ⚠️ **Important**: keep both credentials safe; you need them to configure lark-agent-bot. The App Secret is shown only once; if you lose it you have to reset it.
 
-### 2.3 配置到 lark-agent-bot
+### 2.3 Add them to lark-agent-bot
 
-将凭证配置到 lark-agent-bot 的 `config.toml` 中：
+Put the credentials in lark-agent-bot's `config.toml`:
 
 ```toml
 [[projects]]
@@ -153,177 +153,173 @@ type = "feishu"
 [projects.platforms.options]
 app_id = "cli_axxxxxxxxxxxx"
 app_secret = "QhkMpxxxxxxxxxxxxxxxxxxxx"
-# domain = "https://open.feishu.cn" # 可选：覆盖运行时 API/WebSocket 域名
-# enable_feishu_card = true  # 可选：关闭后统一回退纯文本回复
-# thread_isolation = true    # 可选：按飞书 thread/root 隔离群聊会话
-# group_chat_history_share = false  # 可选：共享未 @ 机器人的群消息作为下一次触发的上下文；消息本身不会触发回复
-# progress_style = "legacy"  # 可选：legacy | compact | card
-# ack_emoji = "Get"           # 可选：消息被接受处理或入队时立即添加并保留的确认表情；默认禁用
-# queued_emoji = "OneSecond"   # 可选：消息排队等待时的表情（默认“稍等”），代替文字提示，开始处理时移除；设为 "none" 恢复文字提示
-# reaction_emoji = "OnIt"      # 可选：agent 处理期间的临时表情，结束后移除
-# done_emoji = "none"          # 可选：agent 完成回复后添加的表情回复（如 "DONE"）；设为 "none" 可禁用
-# image_batch_window_ms = 500  # 可选：连续多图合批窗口（默认 500ms，详见下文）
+# domain = "https://open.feishu.cn" # optional: override the runtime API/WebSocket domain
+# enable_feishu_card = true  # optional: when off, every reply falls back to plain text
+# thread_isolation = true    # optional: isolate group chat sessions per Feishu thread/root
+# group_chat_history_share = false  # optional: share group messages that do not @ the bot as context for the next trigger; the messages themselves trigger no reply
+# progress_style = "legacy"  # optional: legacy | compact | card
+# ack_emoji = "Get"           # optional: receipt reaction added as soon as a message is accepted or queued, and kept; off by default
+# queued_emoji = "OneSecond"   # optional: reaction on a message waiting in the queue (default "OneSecond"), instead of a text notice; removed when processing starts; "none" restores the text notice
+# reaction_emoji = "OnIt"      # optional: temporary reaction while the agent works, removed afterwards
+# done_emoji = "none"          # optional: reaction added when the agent finishes its reply (e.g. "DONE"); "none" disables it
+# image_batch_window_ms = 500  # optional: window for merging consecutive images (default 500ms, see below)
 ```
 
-> 如果应用没有交互卡片权限，或后台未配置卡片回调，可将 `enable_feishu_card = false`，让所有命令统一走纯文本回复，避免卡片发送失败后用户看不到内容。
-> 如果开启 `thread_isolation = true`，群聊里每个根消息 / reply thread 会对应一个独立 agent session；私聊行为保持原样。
-> `group_chat_history_share = true` 时，lark-agent-bot 只在内存中保留当前进程观察到的、允许访问的群聊 text/post 消息，并在下一次明确 @ 机器人且真正进入 agent turn 时注入；未 @ 的消息不会触发回复。`/status` 等由 lark-agent-bot 处理的命令不会消费这段待处理上下文，`/new` 会清空对应主频道或话题的上下文。
-> 在 multi-workspace 模式下，`thread_isolation = true` 也会让每个话题独立绑定 workspace；在话题内执行 `/workspace bind <name>` 不会影响同群的其他话题。已有的群级 binding 会保留为默认值，由尚未显式绑定的话题继承，因此回退到旧版本时仍可使用。
-> `progress_style = "compact"` 会把思考/工具进度合并到一条可更新消息里，减少刷屏；`legacy` 保持原有逐条发送；`card` 会使用结构化卡片（标题 + 进度块）持续更新同一条消息，观感比纯文本更清晰。
-> `domain` 只影响运行时 API / WebSocket 请求地址；CLI `setup/new/bind` 的引导域名仍然使用内置默认值。
-> `ack_emoji = "Get"` 会在消息通过校验、被引擎接受处理或成功入队后异步添加确认表情，无需等待模型启动或前一轮结束。它表示“请求已接收”，会在完成、失败或取消后保留，不表示模型已开始执行或任务已成功。现有 `reaction_emoji`（默认 `"OnIt"`）仍表示实际处理，`done_emoji` 表示完成；若 `ack_emoji` 与 `reaction_emoji` 相同，该表情由接收确认保留，不再作为临时状态移除。
-> 确认默认关闭；不配置、空值或 `"none"` 保持原有行为。权限或 @ 过滤、重复/过时消息、满队列拒绝、已处理的命令与无用户消息的定时任务不会产生确认。确认从引擎接受消息时开始；若后续消息仍在等待已有的会话启动锁，也会等待接受决定。表情 API 采用 5 秒超时的异步尽力请求，失败不影响模型处理；发送前的附件下载、消息解析以及多图合批仍需先完成，多图批次确认在最后一条（批次的主消息）上。
-> **English:** Optional `ack_emoji = "Get"` adds a persistent receipt asynchronously once the engine accepts a message for processing or queueing, before waiting for agent startup/execution. It confirms acceptance, not execution or success, and survives completion/failure/cancellation. Omitted, empty or `"none"` keeps existing behavior. Processing (`reaction_emoji`) and completion (`done_emoji`) remain independent; if receipt and processing use the same emoji, the receipt owns it and typing cleanup does not remove it. Rejected/duplicate/stale messages, handled commands and synthetic scheduled work are not acknowledged. The receipt begins at engine acceptance; subsequent messages waiting on the existing session-startup lock still wait for admission. Receipt API calls have a five-second timeout and never block processing. Parsing/media preparation and image batching precede acceptance; a merged image batch acknowledges its newest canonical message.
+> If the app has no interactive card permission, or no card callback is configured in the console, set `enable_feishu_card = false` so every command replies in plain text and users do not miss content when sending a card fails.
+> With `thread_isolation = true`, each root message / reply thread in a group chat gets its own agent session; one-on-one chats are unchanged.
+> With `group_chat_history_share = true`, lark-agent-bot keeps in memory only the permitted group text/post messages the current process has seen, and injects them the next time the bot is explicitly @-mentioned and an agent turn actually starts; messages without an @ trigger no reply. Commands handled by lark-agent-bot itself, such as `/status`, do not consume this pending context; `/new` clears the context of the corresponding main channel or topic.
+> In multi-workspace mode, `thread_isolation = true` also binds each topic to its own workspace; `/workspace bind <name>` inside a topic does not affect other topics in the same group. An existing group-level binding is kept as the default and inherited by topics that have no explicit binding, so it still works if you roll back to an older version.
+> `progress_style = "compact"` merges thinking/tool progress into one updatable message to reduce noise; `legacy` keeps sending one message per step; `card` keeps updating a single structured card (title + progress blocks), which reads more clearly than plain text.
+> `domain` only affects runtime API / WebSocket requests; the CLI `setup/new/bind` onboarding still uses the built-in default domain.
+> `ack_emoji = "Get"` adds a persistent receipt reaction asynchronously once the engine accepts a message for processing or queueing, without waiting for the agent to start or the previous turn to end. It confirms acceptance, not that the agent started or succeeded, and it survives completion, failure and cancellation. `reaction_emoji` (default `"OnIt"`) still marks actual processing and `done_emoji` completion; if `ack_emoji` equals `reaction_emoji`, the receipt owns that reaction and it is not removed as a temporary status.
+> The receipt is off by default; leaving it unset, empty or `"none"` keeps the previous behavior. Messages rejected by permission or @ filtering, duplicate or stale messages, messages refused by a full queue, handled commands and scheduled work without a user message get no receipt. The receipt starts when the engine accepts the message; later messages still waiting on an existing session-startup lock also wait for that decision. Reaction API calls are asynchronous best-effort requests with a 5-second timeout, and a failure never affects processing. Attachment download, message parsing and image batching still happen before acceptance; a merged image batch is acknowledged on its last (main) message.
 
-> `reaction_emoji` 加上后会记录在数据目录的 `run/<平台>_typing_reactions_<项目>_<app_id>.json` 中，删除成功才移除记录。删除失败会重试几次；若进程在处理中途退出或删除始终失败，下次启动时会自动删除这些残留表情。消息已撤回、会话已解散等无法再删除的情况直接放弃；超过 24 小时仍删不掉的记录也会放弃。
-> **English:** Each `reaction_emoji` reaction is recorded in `run/<platform>_typing_reactions_<project>_<app_id>.json` under the data directory until its delete succeeds. Failed deletes are retried a few times; reactions left behind by a crash or restart mid-turn, or by deletes that kept failing, are removed on the next start. Reactions that can no longer be removed (recalled message, disbanded chat) are dropped, as are entries still failing after 24 hours.
+> Each `reaction_emoji` reaction is recorded in `run/<platform>_typing_reactions_<project>_<app_id>.json` under the data directory until its delete succeeds. Failed deletes are retried a few times; reactions left behind by a crash or restart mid-turn, or by deletes that kept failing, are removed on the next start. Reactions that can no longer be removed (recalled message, disbanded chat) are dropped, as are entries still failing after 24 hours.
 
-> Claude Code 的后台任务（`run_in_background` 的命令、后台 subagent）在本轮回复发出后还会继续跑。这时 `reaction_emoji` 会留在发起这些任务的那条消息上，直到任务都结束、Claude 接着处理完结果，才换成 `done_emoji`；Claude 因任务结束自己开始的新一轮，也会在最近一条消息上显示处理中。消息只等自己这一轮发起的任务，所以一直不退出的后台命令（如开发服务器）只会让发起它的那条消息保持处理中。还有后台任务在跑时，`agent_session_idle_timeout_mins`、`workspace_idle_timeout_mins` 和 `reset_on_idle_mins` 都不会把这个会话当成空闲来关闭；`/stop` 会撤掉处理中表情。
-> **English:** Claude Code background tasks (`run_in_background` commands, background subagents) keep running after the turn's reply is sent. The `reaction_emoji` stays on the message whose turn launched them until they have all finished and Claude has handled their results; only then does `done_emoji` replace it. A turn Claude starts on its own because a task finished also shows the latest message in progress. A message waits only for the tasks its own turn launched, so a command that never exits (such as a dev server) keeps only that one message in progress. While background tasks run, `agent_session_idle_timeout_mins`, `workspace_idle_timeout_mins` and `reset_on_idle_mins` do not treat the session as idle; `/stop` clears the processing reaction.
+> Claude Code background tasks (`run_in_background` commands, background subagents) keep running after the turn's reply is sent. The `reaction_emoji` stays on the message whose turn launched them until they have all finished and Claude has handled their results; only then does `done_emoji` replace it. A turn Claude starts on its own because a task finished also shows the latest message in progress. A message waits only for the tasks its own turn launched, so a command that never exits (such as a dev server) keeps only that one message in progress. While background tasks run, `agent_session_idle_timeout_mins`, `workspace_idle_timeout_mins` and `reset_on_idle_mins` do not treat the session as idle; `/stop` clears the processing reaction.
 
-> 上一条消息还在处理时又发来新消息，新消息会排队，并加上 `queued_emoji` 表情（默认 `"OneSecond"`，即“稍等”），不再回复“消息已收到，将在当前任务完成后处理”。轮到它处理时撤掉这个表情、换上 `reaction_emoji`；因 `/stop`、`/new`、撤回、会话出错等原因被丢弃时也会撤掉。它和处理中表情一样记在上面的数据目录文件里，进程中途退出留下的会在下次启动时清掉。表情加不上（如缺少权限）时退回文字提示；队列已满的提示始终是文字。`queued_emoji` 与 `reaction_emoji` 相同时无法区分排队和处理中，会退回文字提示。设为 `"none"` 恢复文字提示。
-> **English:** A message that arrives while the previous one is still being processed is queued and gets the `queued_emoji` reaction (default `"OneSecond"`) instead of the "will process after the current task finishes" text. The reaction is removed when the message starts processing (and `reaction_emoji` takes over) or is dropped (`/stop`, `/new`, recall, session error). It is recorded in the same data-directory file as the processing reaction, so one left behind by a crash is removed on the next start. If the reaction cannot be added (for example, missing permission), the text notice is sent instead; the queue-full notice is always text. A `queued_emoji` equal to `reaction_emoji` falls back to the text notice, since queued and processing would look the same. Set `"none"` to restore the text notice.
+> A message that arrives while the previous one is still being processed is queued and gets the `queued_emoji` reaction (default `"OneSecond"`) instead of the "will process after the current task finishes" text. The reaction is removed when the message starts processing (and `reaction_emoji` takes over) or is dropped (`/stop`, `/new`, recall, session error). It is recorded in the same data-directory file as the processing reaction, so one left behind by a crash is removed on the next start. If the reaction cannot be added (for example, missing permission), the text notice is sent instead; the queue-full notice is always text. A `queued_emoji` equal to `reaction_emoji` falls back to the text notice, since queued and processing would look the same. Set `"none"` to restore the text notice.
 
-> `done_emoji` 设置后，agent 每次完成回复时会在用户消息上添加指定表情（如 `"DONE"` → ✅）。后面还有排队消息时，上一条也会在接着处理下一条之前加上完成表情。先清理临时处理表情（与接收确认相同的表情会保留），再添加 done 表情。在 quiet 模式下特别有用，因为飞书卡片原地更新不触发推送，done 表情可以通知用户 agent 已完成。设为 `"none"` 或不配置则禁用。
-> `image_batch_window_ms` 控制连续多张图片合并成一条 agent 消息的等待窗口（默认 500ms）。飞书手机端一次连发多张图时，每张图是独立事件；lark-agent-bot 会在窗口内将它们合并成一条多图消息再分发给 agent。如果你的网络/设备发送间隔超过 500ms 且仍被拆成多轮回复（每张图独立处理），可调高到 800–1200ms；如果以单图为主、希望响应更快，可适当调低。设为 `0` 时回退到默认 500ms。
+> With `done_emoji` set, the agent adds that reaction to the user's message each time it finishes a reply (for example `"DONE"` → ✅). When more messages are queued, the previous one also gets the done reaction before the next one is processed. Temporary processing reactions are removed first (a reaction equal to the receipt is kept), then the done reaction is added. This is especially useful in quiet mode, because Feishu does not push a notification when a card is updated in place; the done reaction tells the user the agent has finished. Set `"none"` or leave it unset to disable it.
+> `image_batch_window_ms` sets how long lark-agent-bot waits to merge consecutive images into one agent message (default 500ms). When the Feishu mobile app sends several images at once, each image is a separate event; lark-agent-bot merges those within the window into one multi-image message before passing it to the agent. If your network or device sends them more than 500ms apart and they still get split into several turns (each image handled on its own), raise it to 800–1200ms; if you mostly send single images and want faster responses, lower it. `0` falls back to the default 500ms.
 
 ---
 
-## 第三步：配置应用能力
+## Step 3: Configure app capabilities
 
-### 3.1 启用机器人能力
+### 3.1 Enable the bot capability
 
-1. 左侧导航栏点击 **「应用能力」** → **「机器人」**
-2. 点击「启用机器人」
+1. Click **"App Capabilities"** → **"Bot"** in the left sidebar
+2. Click "Enable Bot"
 
-### 3.2 配置机器人信息
+### 3.2 Configure the bot information
 
-| 配置项 | 建议值 |
-|-------|--------|
-| 机器人名称 | `lark-agent-bot` |
-| 机器人描述 | `Claude Code 远程助手` |
-| 机器人头像 | 与应用图标一致 |
-
----
-
-## 第四步：配置权限
-
-### 4.1 进入权限管理
-
-左侧导航栏点击 **「权限管理」**。
-
-### 4.2 申请必要权限
-
-在「权限配置」中搜索并添加以下权限。「权限标识」一列可直接粘贴到搜索框。
-
-**必需**：缺少时对应功能直接失效。
-
-| 权限名称 | 权限标识 | 用途 |
-|---------|---------|------|
-| 读取用户发给机器人的私聊消息 | `im:message.p2p_msg:readonly` | 接收私聊消息 |
-| 读取群聊中用户 @机器人的消息 | `im:message.group_at_msg:readonly` | 接收群里 @ 机器人的消息 |
-| 以机器人身份发送消息 | `im:message:send_as_bot` | 回复消息 |
-| 更新消息 | `im:message:update` | 流式输出、进度等消息的原地更新 |
-| 获取单聊、群组消息 | `im:message:readonly` | 读取被引用 / 合并转发的消息内容 |
-| 获取与上传图片或文件资源 | `im:resource` | 接收用户发来的图片 / 文件；发送图片、文件、语音、视频（包括 agent 调用 `lark-agent-bot send`） |
-| 发送、删除消息表情回复 | `im:message.reactions:write_only` | 排队表情（`queued_emoji`）、处理中表情（`reaction_emoji`）和完成表情（`done_emoji`） |
-| 创建与更新卡片 | `cardkit:card:write` | 流式卡片 |
-| 查看群信息 | `im:chat:read` | 读取群信息 |
-
-**建议**：缺少时功能降级，不影响收发。
-
-| 权限名称 | 权限标识 | 用途 |
-|---------|---------|------|
-| 获取与更新用户基本信息 | `contact:user.base:readonly` | 读取发消息人的名字，群聊中 agent 靠它区分说话人。「获取通讯录基本信息」（`contact:contact.base:readonly`）拿不到名字 |
-| 查看消息表情回复 | `im:message.reactions:read` | 读取表情回复 |
-
-**按需**：
-
-| 权限名称 | 权限标识 | 何时需要 |
-|---------|---------|------|
-| 获取群组中所有消息（敏感权限） | `im:message.group_msg` | 开启 `group_chat_history_share`，把群里未 @ 机器人的消息作为上下文时 |
-| 查看群成员 | `im:chat.members:read` | 开启 `resolve_mentions`，按群成员显示名生成原生 @ 时；`im:chat:read` 不能替代此权限 |
-
-默认新建模板包含以上权限，`feishu check` 会核验模板中的每一项是否已授予。已有机器人需要在开放平台补充权限并发布；更新本地模板不会自动修改线上授权。清理机器人自己发送的预览消息可使用已有的 `im:message:send_as_bot`，不必额外申请 `im:message:recall`。
-
-> 飞书用这些权限限制可调用的接口；具体能读到哪些消息、联系人，仍受应用可用范围和数据权限限制。
-> 缺权限时相关调用会静默失败，只在 Debug 日志中出现（如 `add reaction failed`）。功能不生效时先核对这张表。
-
-### 4.3 发布权限申请
-
-配置完权限后，点击「申请发布」使权限生效。
-
-如果启用了 `group_chat_history_share`，必须为应用申请并发布 `im:message.group_msg`，否则飞书只会向机器人推送被 @ 的群消息，未提及消息无法进入共享上下文。该功能不会回溯 lark-agent-bot 启动前的历史，也不会持久化待处理消息。
+| Setting | Suggestion |
+|---------|------------|
+| Bot name | `lark-agent-bot` |
+| Bot description | `Remote coding assistant` |
+| Bot avatar | Same as the app icon |
 
 ---
 
-## 第五步：配置事件与回调订阅（长连接模式）
+## Step 4: Configure permissions
 
-### 5.1 进入事件与回调页面
+### 4.1 Open permission management
 
-左侧导航栏点击 **「事件与回调」**。
+Click **"Permissions & Scopes"** in the left sidebar.
 
-### 5.2 选择事件配置
+### 4.2 Add the required permissions
 
-在标签页中点击： **「事件配置」**。
+Search for and add the following permissions. The "Scope" column can be pasted straight into the search box.
 
-在「订阅方式」中选择：
+**Required**: without these, the corresponding feature does not work at all.
 
-```
-✅ 使用长连接接收事件
-```
+| Permission | Scope | Used for |
+|------------|-------|----------|
+| Read private messages sent to the bot | `im:message.p2p_msg:readonly` | Receiving one-on-one messages |
+| Read group messages that @ the bot | `im:message.group_at_msg:readonly` | Receiving group messages that @ the bot |
+| Send messages as the bot | `im:message:send_as_bot` | Replying |
+| Update messages | `im:message:update` | Updating streaming output, progress and other messages in place |
+| Read one-on-one and group messages | `im:message:readonly` | Reading quoted / merged-forward message content |
+| Read and upload images or files | `im:resource` | Receiving images / files from users; sending images, files, voice and video (including `lark-agent-bot send` from the agent) |
+| Add and delete message reactions | `im:message.reactions:write_only` | Queued (`queued_emoji`), processing (`reaction_emoji`) and done (`done_emoji`) reactions |
+| Create and update cards | `cardkit:card:write` | Streaming cards |
+| Read group information | `im:chat:read` | Reading group information |
 
-点击**保存**。
+**Recommended**: without these, features degrade but sending and receiving still work.
 
-点击**添加事件**。
+| Permission | Scope | Used for |
+|------------|-------|----------|
+| Read and update basic user information | `contact:user.base:readonly` | Reading the sender's name, which the agent uses to tell speakers apart in group chats. "Read basic contact information" (`contact:contact.base:readonly`) does not return names |
+| Read message reactions | `im:message.reactions:read` | Reading reactions |
 
-在事件配置中添加以下事件：
+**As needed**:
 
-| 事件名称 | 事件标识 | 用途 |
-|---------|---------|------|
-| 接收消息 | `im.message.receive_v1` | 接收用户发送的消息 |
+| Permission | Scope | When it is needed |
+|------------|-------|-------------------|
+| Read all messages in groups (sensitive) | `im:message.group_msg` | When `group_chat_history_share` is on and group messages that do not @ the bot are used as context |
+| Read group members | `im:chat.members:read` | When `resolve_mentions` is on and native @-mentions are generated from group member display names; `im:chat:read` does not replace this permission |
 
-### 5.3 选择回调配置
+The default template for new apps includes all of the above, and `feishu check` verifies that each permission in the template has been granted. For an existing bot, add the permissions in the Open Platform and publish; updating the local template does not change the online grants. Cleaning up the bot's own preview messages uses the existing `im:message:send_as_bot`; `im:message:recall` is not needed.
 
-在标签页中点击： **「回调配置」**。
+> Feishu uses these permissions to limit which APIs the app can call; which messages and contacts it can actually read is still limited by the app's availability scope and data permissions.
+> A call that lacks a permission fails silently and only shows up in the debug log (for example `add reaction failed`). If a feature does not work, check this table first.
 
-在「订阅方式」中选择：
+### 4.3 Publish the permission request
 
-```
-✅ 使用长连接接收事件
-```
+After configuring the permissions, click "Request to publish" to make them take effect.
 
-点击**保存**。
-
-点击**添加回调**。
-
-在回调配置中添加以下回调：
-
-| 回调名称 | 回调标识 | 用途 |
-|---------|---------|------|
-| 卡片回调 | `card.action.trigger` | 响应交互卡片按钮点击（权限确认、provider 切换等） |
-
-> ⚠️ **重要**：如果不订阅 `card.action.trigger` 回调，用户点击卡片上的按钮（如权限确认、provider 选择等）时将无法正常响应，飞书客户端可能会显示加载超时或错误提示。如果暂时无法添加该回调，可以在配置中设置 `enable_feishu_card = false` 关闭交互卡片功能，所有交互将回退到纯文本模式。
-
-### 5.4 创建版本
-
-点击 **「创建版本」** 发布新版本以应用事件与回调配置。
+If `group_chat_history_share` is enabled, you must request and publish `im:message.group_msg` for the app; otherwise Feishu only pushes group messages that @ the bot, and messages without an @ cannot enter the shared context. The feature does not go back to history from before lark-agent-bot started, and pending messages are not persisted.
 
 ---
 
-## 第六步：启动 lark-agent-bot
+## Step 5: Configure event and callback subscriptions (long connection mode)
 
-### 6.1 启动服务
+### 5.1 Open the Events & Callbacks page
+
+Click **"Events & Callbacks"** in the left sidebar.
+
+### 5.2 Event configuration
+
+Click the **"Event Configuration"** tab.
+
+Under "Subscription mode", select:
+
+```
+✅ Receive events through persistent connection
+```
+
+Click **Save**.
+
+Click **Add Events**.
+
+Add the following event:
+
+| Event | Event key | Used for |
+|-------|-----------|----------|
+| Receive message | `im.message.receive_v1` | Receiving messages from users |
+
+### 5.3 Callback configuration
+
+Click the **"Callback Configuration"** tab.
+
+Under "Subscription mode", select:
+
+```
+✅ Receive events through persistent connection
+```
+
+Click **Save**.
+
+Click **Add Callback**.
+
+Add the following callback:
+
+| Callback | Callback key | Used for |
+|----------|--------------|----------|
+| Card action | `card.action.trigger` | Responding to interactive card button clicks (permission confirmation, provider switching, ...) |
+
+> ⚠️ **Important**: without the `card.action.trigger` callback, clicks on card buttons (permission confirmation, provider selection, ...) get no response, and the Feishu client may show a loading timeout or an error. If you cannot add the callback for now, set `enable_feishu_card = false` in the config to turn off interactive cards; every interaction then falls back to plain text.
+
+### 5.4 Create a version
+
+Click **"Create Version"** and publish it to apply the event and callback configuration.
+
+---
+
+## Step 6: Start lark-agent-bot
+
+### 6.1 Start the service
 
 ```bash
 lark-agent-bot
-# 或指定配置文件
+# or with an explicit config file
 lark-agent-bot -config /path/to/config.toml
 ```
 
-### 6.2 验证连接
+### 6.2 Check the connection
 
-启动后，lark-agent-bot 会自动与飞书建立 WebSocket 长连接。你会在日志中看到：
+After starting, lark-agent-bot opens the WebSocket long connection to Feishu. The log shows:
 
 ```
 level=INFO msg="platform started" project=my-project platform=feishu
@@ -333,275 +329,274 @@ level=INFO msg="lark-agent-bot is running" projects=1
 
 ---
 
-## 第七步：发布应用
+## Step 7: Publish the app
 
-### 7.1 提交审核
+### 7.1 Submit for review
 
-1. 左侧导航栏点击 **「版本管理与发布」**
-2. 点击「创建版本」
-3. 填写版本号和更新说明
-4. 点击「保存并发布」
+1. Click **"Version Management & Release"** in the left sidebar
+2. Click "Create Version"
+3. Fill in the version number and release notes
+4. Click "Save and Publish"
 
-### 7.2 可用性设置
+### 7.2 Availability
 
-- **企业版**：发布后需要管理员审批才能使用
-- **个人版**：发布后立即可用
-
----
-
-## 第八步：添加机器人到会话
-
-### 8.1 单聊使用
-
-在飞书中搜索你的机器人名称，直接发送消息即可开始对话。
-
-### 8.2 群聊使用
-
-1. 进入目标群聊
-2. 点击群设置 → 「群机器人」
-3. 添加你创建的机器人
+- **Enterprise tenants**: an administrator has to approve the release before the app can be used
+- **Personal tenants**: available immediately after publishing
 
 ---
 
-## 使用示例
+## Step 8: Add the bot to a chat
 
-配置完成后，你可以在飞书中这样使用：
+### 8.1 One-on-one chat
+
+Search for your bot's name in Feishu and send it a message to start a conversation.
+
+### 8.2 Group chat
+
+1. Open the target group chat
+2. Open group settings → "Bots"
+3. Add the bot you created
+
+---
+
+## Example
+
+Once configured, you can use it in Feishu like this:
 
 ```
-用户: 帮我分析一下当前项目的结构
+User: Analyze the structure of the current project
 
-lark-agent-bot: 🤔 思考中...
-lark-agent-bot: 🔧 执行: Bash(ls -la)
-lark-agent-bot: ✅ 这是一个 Node.js 项目，包含以下目录...
+lark-agent-bot: 🤔 Thinking...
+lark-agent-bot: 🔧 Running: Bash(ls -la)
+lark-agent-bot: ✅ This is a Node.js project with the following directories...
 ```
 
 ---
 
-## 架构图
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         飞书云                               │
+│                       Feishu cloud                           │
 │                                                              │
-│   用户消息 ──→ 飞书开放平台 ──→ WebSocket Gateway            │
+│   User message ──→ Feishu Open Platform ──→ WebSocket Gateway│
 │                                      │                       │
 └──────────────────────────────────────┼───────────────────────┘
                                        │
-                                       │ WebSocket 长连接
-                                       │ (无需公网IP)
+                                       │ WebSocket long connection
+                                       │ (no public IP needed)
                                        ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      你的本地环境                            │
+│                    Your local machine                        │
 │                                                              │
-│   lark-agent-bot ◄──► Claude Code CLI ◄──► 你的项目代码         │
+│   lark-agent-bot ◄──► Claude Code / Codex CLI ◄──► your code │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Mention 功能
+## Mentions
 
-开启 `resolve_mentions = true` 后，机器人发出的消息中 `@显示名` 会自动替换为飞书原生 at 标签。
+With `resolve_mentions = true`, `@DisplayName` in messages the bot sends is replaced with a native Feishu @ tag.
 
-### 配置
+### Configuration
 
 ```toml
 [projects.platforms.options]
 resolve_mentions = true
 ```
 
-### 语法
+### Syntax
 
-直接使用 `@显示名`，无需特殊标记：
+Just write `@DisplayName`; no special markup is needed:
 
 ```
-@张三 请查看巡检报告
+@Alice please review the inspection report
 ```
 
-### 使用示例
+### Examples
 
-**Cron 定时任务：**
+**Cron job:**
 
 ```bash
 lark-agent-bot cron add \
   --cron "0 9 * * *" \
-  --prompt "执行每日巡检报告，完成后通知 @张三 和 @李四 查看" \
-  --desc "每日巡检"
+  --prompt "Run the daily inspection report, then ask @Alice and @Bob to review it" \
+  --desc "Daily inspection"
 ```
 
-**AI 对话中：**
+**In agent replies:**
 
-AI 输出中包含 `@某人` 时，发送到飞书前会自动匹配并替换。
+When the agent's output contains `@someone`, it is matched and replaced before being sent to Feishu.
 
-### 工作原理
+### How it works
 
-1. 开启 `resolve_mentions` 后，发送消息前拉取群成员列表（懒加载，首次才拉）
-2. 成员列表缓存 1 小时，减少 API 调用
-3. 按名字长度从长到短匹配（`@张三丰` 优先于 `@张三`），避免部分匹配
-4. 未匹配到的 `@xxx` 保留原文不处理
-5. 根据消息类型自动选择正确的飞书 at 语法（文本消息 vs 卡片消息）
+1. With `resolve_mentions` on, the group member list is fetched before a message is sent (lazily, only the first time)
+2. The member list is cached for 1 hour to reduce API calls
+3. Names are matched from longest to shortest (`@Alice Smith` before `@Alice`) to avoid partial matches
+4. An `@xxx` with no match is left as is
+5. The right Feishu @ syntax is chosen for the message type (text message or card)
 
-### 权限要求
+### Required permissions
 
-需要以下飞书应用权限之一：
+One of the following Feishu app permissions is required:
 
-- `im:chat`（获取与更新群组信息）
-- `im:chat:readonly`（获取群组信息）
-- `im:chat.members:read`（查看群成员）
+- `im:chat` (read and update group information)
+- `im:chat:readonly` (read group information)
+- `im:chat.members:read` (read group members)
 
-### 注意事项
+### Notes
 
-- 名字匹配为精确匹配（`@张三` 只匹配显示名恰好是「张三」的成员）
-- 同名成员取第一个匹配到的
-- 被 at 的人必须是当前群的成员
-- 未开启 `resolve_mentions` 时不会触发任何成员查询
+- Names must match exactly (`@Alice` only matches a member whose display name is exactly "Alice")
+- If several members share a name, the first match is used
+- The person being mentioned must be a member of the current group
+- Without `resolve_mentions`, no member lookup happens
 
 ---
 
-## 机器人间 @ 通知（`mention_map`）
+## Bot-to-bot @ notifications (`mention_map`)
 
-`resolve_mentions` 通过匹配**群成员显示名**来解析 `@name`，但当目标是**另一个机器人 / Agent**（而非真人成员）时，机器人不一定出现在群成员列表中，名字匹配会失败。
+`resolve_mentions` resolves `@name` by matching **group member display names**. When the target is **another bot / agent** rather than a person, it is not always in the group member list, so name matching fails.
 
-`mention_map` 选项用于这种场景：手动把「显示名」映射到机器人的 `open_id`，让 lark-agent-bot 直接生成原生飞书 `<at user_id="...">` 标签，触发真正的 @ 通知。
+`mention_map` covers this case: it maps a display name to the bot's `open_id` by hand, so lark-agent-bot generates the native Feishu `<at user_id="...">` tag directly and the bot gets a real @ notification.
 
-### 配置
+### Configuration
 
 ```toml
 [projects.platforms.options]
-resolve_mentions = true                       # mention_map 依赖 resolve_mentions = true
+resolve_mentions = true                       # mention_map requires resolve_mentions = true
 mention_map = { BOT-B = "ou_bot_b_open_id", BOT-A = "ou_bot_a_open_id" }
 ```
 
-> `mention_map` 与 `resolve_mentions` 是叠加关系，并非二选一：
-> - `resolve_mentions` 负责按群成员显示名匹配（覆盖普通用户）
-> - `mention_map` 负责显式 open_id 映射（覆盖不在群成员列表里的机器人）
-> - 当同一个 `@name` 两者都能匹配时，**`mention_map` 优先级更高**，确保显式配置不会被群成员匹配覆盖。
+> `mention_map` adds to `resolve_mentions`; you do not choose one or the other:
+> - `resolve_mentions` matches group member display names (covers regular users)
+> - `mention_map` holds explicit open_id mappings (covers bots that are not in the group member list)
+> - When the same `@name` matches both, **`mention_map` wins**, so an explicit mapping is never overridden by a group member match.
 
-### 机器人之间派活
+### Handing work between bots
 
-飞书会把机器人发出的文本消息推给它 @ 到的机器人，所以同一个群里的两个机器人可以互相 @ 派活。配好 `mention_map` 后：
+Feishu delivers a text message sent by a bot to the bots it @-mentions, so two bots in the same group can hand work to each other with @. With `mention_map` configured:
 
-1. Agent 的系统提示词里会列出能 @ 的机器人（`mention_map` 的名字）。
-2. 用户的请求里有一部分适合别的机器人做时，Agent 单独发一条消息：`lark-agent-bot send --message "@BOT-B 请复核巡检报告"`。发送前会被替换成 `<at user_id="ou_bot_b_open_id">BOT-B</at> 请复核巡检报告`，以文本消息发出，BOT-B 会收到 @ 事件。
-3. BOT-B 自己做完，在群里回复结果。结果不会回到 BOT-A 手里；需要把结果拿回来接着处理时，用 relay（见使用文档「多机器人中继」）。
+1. The agent's system prompt lists the bots it can @ (the names in `mention_map`).
+2. When part of the user's request suits another bot, the agent sends a separate message: `lark-agent-bot send --message "@BOT-B please double-check the inspection report"`. Before sending, it becomes `<at user_id="ou_bot_b_open_id">BOT-B</at> please double-check the inspection report` and goes out as a text message, and BOT-B receives the @ event.
+3. BOT-B does the work and posts its result in the group itself. The result does not come back to BOT-A; when it needs the result to continue, use relay (see "Multi-Bot Relay" in the [usage guide](./usage.md#multi-bot-relay)).
 
-要点：
+Key points:
 
-- **必须用 `lark-agent-bot send` 单独发**。普通回复默认通过更新流式预览卡片送达，卡片里的 @ 不会通知对方。
-- **接收方要信任发送方**：`mention_map` 或 `peer_bots` 里列出的机器人，即使不在 `allow_from` 里，发来的消息也会被接受。没列出的机器人发来的消息会被忽略，不回复"未授权"。日志里会有一条 Info 记录，带上它的发送者 ID，方便加进配置。
-- **只转一手**：由其他机器人发起的会话里，发出的消息不会把 `@名字` 转成真的 @，`--at-users` 也不生效。被派活的机器人不能再转派，两个机器人也不会互相 @ 个没完。
+- **Send it separately with `lark-agent-bot send`**. Normal replies are delivered by updating the streaming preview card by default, and an @ inside a card does not notify the other bot.
+- **The receiver must trust the sender**: messages from bots listed in `mention_map` or `peer_bots` are accepted even if they are not in `allow_from`. Messages from bots not listed are ignored without an "unauthorized" reply; the log gets an Info line with the sender ID so you can add it to the config.
+- **One hop only**: in a session started by another bot, `@name` in outgoing messages is not turned into a real @, and `--at-users` has no effect. A bot that was handed work cannot hand it on, and two bots cannot keep @-mentioning each other forever.
 
-两个机器人互相派活的配置示例（ID 都要按下一节的方法获取）：
+Configuration for two bots that hand work to each other (get the IDs as described in the next section):
 
 ```toml
-# 机器人 A 的配置
+# Bot A's config
 [projects.platforms.options]
 resolve_mentions = true
-mention_map = { "BOT-B" = "<A 看到的 B 的 open_id>" }
+mention_map = { "BOT-B" = "<B's open_id as seen by A>" }
 peer_bots = { cli_bot_b_app_id = "BOT-B" }
 
-# 机器人 B 的配置
+# Bot B's config
 [projects.platforms.options]
 resolve_mentions = true
-mention_map = { "BOT-A" = "<B 看到的 A 的 open_id>" }
+mention_map = { "BOT-A" = "<A's open_id as seen by B>" }
 peer_bots = { cli_bot_a_app_id = "BOT-A" }
 ```
 
-### 如何获取对方机器人的 open_id
+### Getting the other bot's open_id
 
-`open_id` 是**按应用区分**的：同一个机器人，在不同应用看来 open_id 不同。所以不能用对方机器人日志里 `feishu: bot identified open_id=...` 打印的自身 ID，也不能用 `/open-apis/bot/v3/info` 返回的值，那是它在自己应用里的 ID。`mention_map` 要填的是**本应用看到的**对方 ID。
+An `open_id` is **specific to each app**: the same bot has a different open_id as seen from different apps. So you cannot use the bot's own ID printed in its log as `feishu: bot identified open_id=...`, nor the value returned by `/open-apis/bot/v3/info`; those are its ID within its own app. `mention_map` needs the other bot's ID **as seen by this app**.
 
-获取方法：
+How to get it:
 
-1. 在群里发一条同时 @ 两个机器人的消息，例如 `@BOT-A @BOT-B 测试`。
-2. 从机器人 A 的日志里找到这条消息的 `msg_id`（`message received ... msg_id=om_xxx`）。
-3. 用机器人 A 的凭证读这条消息，`mentions` 里 BOT-B 的 `id` 就是 A 的 `mention_map` 要填的值：
+1. In the group, send a message that @-mentions both bots, for example `@BOT-A @BOT-B test`.
+2. Find the message's `msg_id` in bot A's log (`message received ... msg_id=om_xxx`).
+3. Read the message with bot A's credentials; the `id` of BOT-B in `mentions` is the value for A's `mention_map`:
    ```bash
-   curl -H "Authorization: Bearer <A 的 tenant_access_token>" \
+   curl -H "Authorization: Bearer <A's tenant_access_token>" \
      https://open.feishu.cn/open-apis/im/v1/messages/om_xxx
    # data.items[0].mentions: [{ "name": "BOT-B", "id": "ou_...", "id_type": "open_id" }, ...]
    ```
-4. 用机器人 B 的凭证读同一条消息，得到 B 要填的 A 的 ID。
+4. Read the same message with bot B's credentials to get A's ID for B's config.
 
-机器人的 App ID（`cli_` 开头）在开放平台「凭证与基础信息」页，填到对方的 `peer_bots`。
+A bot's App ID (starting with `cli_`) is on the "Credentials & Basic Info" page in the Open Platform; put it in the other bot's `peer_bots`.
 
-### 注意事项
+### Notes
 
-- `mention_map` 必须配合 `resolve_mentions = true` 才会生效；单独配置 `mention_map` 不会触发解析。开启 `resolve_mentions` 后，发出消息里的 `@群成员名字` 也会变成真 @，被 @ 的人会收到提醒。
-- `@name` 必须与 `mention_map` 的 key 完全一致（区分大小写）。
-- 被 @ 的机器人需要在**目标群里**，且该群已开启机器人能力，否则飞书不会派发 @ 事件。
+- `mention_map` only works together with `resolve_mentions = true`; `mention_map` alone triggers no resolution. With `resolve_mentions` on, `@member name` in outgoing messages also becomes a real @, and the mentioned person is notified.
+- `@name` must match a `mention_map` key exactly (case-sensitive).
+- The mentioned bot must be **in the target group**, and the group must have bots enabled, otherwise Feishu does not dispatch the @ event.
 
 ---
 
-## 常见问题
+## FAQ
 
-### Q: 长连接和 Webhook 有什么区别？
+### Q: What is the difference between long connection and webhook?
 
-| 对比项 | 长连接模式 | Webhook 模式 |
-|-------|-----------|-------------|
-| 公网 IP | ❌ 不需要 | ✅ 需要 |
-| 域名 | ❌ 不需要 | ✅ 需要 |
-| HTTPS 证书 | ❌ 不需要 | ✅ 需要 |
-| 反向代理 | ❌ 不需要 | ✅ 需要（ngrok/frp） |
-| 配置复杂度 | 简单 | 较复杂 |
-| 适用场景 | 本地开发、内网 | 生产环境 |
+| | Long connection | Webhook |
+|---|----------------|---------|
+| Public IP | ❌ Not needed | ✅ Needed |
+| Domain name | ❌ Not needed | ✅ Needed |
+| HTTPS certificate | ❌ Not needed | ✅ Needed |
+| Reverse proxy | ❌ Not needed | ✅ Needed (ngrok/frp) |
+| Setup effort | Simple | More involved |
+| Typical use | Local development, intranet | Production |
 
-### Q: 长连接断开怎么办？
+### Q: What if the long connection drops?
 
-lark-agent-bot 内置了自动重连机制，断开后会自动尝试重新连接。
+lark-agent-bot reconnects automatically after a disconnect.
 
-### Q: 消息发送后没有响应？
+### Q: The bot does not respond to messages?
 
-检查以下项目：
-1. lark-agent-bot 服务是否正常运行
-2. 长连接是否建立成功（查看日志）
-3. 事件订阅是否配置了 `im.message.receive_v1`
+Check:
+1. lark-agent-bot is running
+2. The long connection was established (see the log)
+3. The `im.message.receive_v1` event is subscribed
 
-### Q: 点击卡片按钮没有反应或报错？
+### Q: Clicking card buttons does nothing or shows an error?
 
-lark-agent-bot 默认使用交互卡片显示权限确认、provider 选择等操作。如果点击按钮后无响应、显示加载超时或报错，请检查：
+lark-agent-bot uses interactive cards for permission confirmation, provider selection and similar actions by default. If a click gets no response, times out or shows an error, check:
 
-1. **事件订阅**：确认已在飞书开放平台订阅了 `card.action.trigger` 事件（详见第五步）
-2. **应用发布**：修改事件订阅后需要重新发布应用版本
-3. **权限配置**：确保应用有 `im:message:send_as_bot`、`im:message:update`、`cardkit:card:write` 权限（见第四步）
+1. **Subscription**: the `card.action.trigger` callback is subscribed in the Feishu Open Platform (see Step 5)
+2. **Release**: a new app version was published after changing the subscriptions
+3. **Permissions**: the app has `im:message:send_as_bot`, `im:message:update` and `cardkit:card:write` (see Step 4)
 
-**快速解决方案**：如果暂时无法配置卡片回调，可以在 `config.toml` 中关闭交互卡片：
+**Quick fix**: if you cannot configure the card callback for now, turn off interactive cards in `config.toml`:
 
 ```toml
 [projects.platforms.options]
 enable_feishu_card = false
 ```
 
-关闭后，所有交互将回退为纯文本模式，权限确认等操作通过直接回复文字完成。
+Every interaction then falls back to plain text, and permission confirmation and similar actions are done by replying with text.
 
-### Q: 提示权限不足？
+### Q: "Insufficient permissions"?
 
-确保已在「权限管理」中申请并获得了所有必要权限，并发布了新版本。
+Make sure every required permission has been requested and granted under "Permissions & Scopes", and that a new version has been published.
 
-### Q: 扫码页显示 OpenClaw 文案，是不是配置错了？
+### Q: The scan page shows OpenClaw wording. Is something misconfigured?
 
-通常是飞书注册模板侧的展示文案，不影响返回 `app_id/app_secret` 和接入 lark-agent-bot。
+That is usually display text from Feishu's registration template; it does not affect the returned `app_id/app_secret` or the connection to lark-agent-bot.
 
-### Q: 如何调试消息？
+### Q: How do I debug messages?
 
-在飞书开放平台「开发调试」→「调试工具」中可以模拟发送消息进行测试。
-
----
-
-## 参考链接
-
-- [飞书开放平台](https://open.feishu.cn/)
-- [飞书开放平台文档](https://open.feishu.cn/document/)
-- [机器人开发指南](https://open.feishu.cn/document/ukTMukTMukTM/uYjNwUjL2YDM14iN2ATN)
-- [事件订阅文档](https://open.feishu.cn/document/ukTMukTMukTM/uUTNz4SN1MjL1UzM)
-- [权限列表](https://open.feishu.cn/document/server-docs/application-scope/scope-list)
-- [OpenClaw 飞书接入教程](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
-- [飞书 WebSocket 长连接模式](https://m.blog.csdn.net/u014177256/article/details/158267848)
+In the Feishu Open Platform, "Development & Debugging" → "Debugging Tools" can simulate sending messages.
 
 ---
 
-## 下一步
+## References
 
-- [使用指南](./usage.zh-CN.md)
-- [返回首页](../README.md)
+- [Feishu Open Platform](https://open.feishu.cn/)
+- [Feishu Open Platform documentation](https://open.feishu.cn/document/)
+- [Bot development guide](https://open.feishu.cn/document/ukTMukTMukTM/uYjNwUjL2YDM14iN2ATN)
+- [Event subscription documentation](https://open.feishu.cn/document/ukTMukTMukTM/uUTNz4SN1MjL1UzM)
+- [Permission list](https://open.feishu.cn/document/server-docs/application-scope/scope-list)
+- [Lark Open Platform](https://open.larksuite.com/)
+
+---
+
+## Next steps
+
+- [Usage guide](./usage.md)
+- [Back to README](../README.md)
