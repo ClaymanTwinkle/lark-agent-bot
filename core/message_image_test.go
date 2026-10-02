@@ -3,7 +3,6 @@ package core
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -20,21 +19,6 @@ func TestExtFromMime(t *testing.T) {
 		if got := ExtFromMime(mime); got != want {
 			t.Errorf("ExtFromMime(%q) = %q, want %q", mime, got, want)
 		}
-	}
-}
-
-func TestAppendImageRefs(t *testing.T) {
-	if got := AppendImageRefs("hi", nil); got != "hi" {
-		t.Errorf("no paths should leave prompt untouched, got %q", got)
-	}
-
-	imagePath := filepath.Join(t.TempDir(), "a.png")
-	got := AppendImageRefs("", []string{imagePath})
-	if !strings.Contains(got, imagePath) {
-		t.Errorf("path missing from prompt: %q", got)
-	}
-	if !strings.Contains(strings.ToLower(got), "image") {
-		t.Errorf("prompt should tell the agent these are images: %q", got)
 	}
 }
 

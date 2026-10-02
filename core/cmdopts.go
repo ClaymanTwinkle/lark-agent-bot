@@ -20,7 +20,7 @@ import (
 //	"my-cli code -t foo"             → cmd="my-cli", extraArgs=["code", "-t", "foo"]
 //	["my-cli", "code", "-t", "foo"] → cmd="my-cli", extraArgs=["code", "-t", "foo"]
 //	"claude"                          → cmd="claude", extraArgs=nil
-//	"" (default "pi")                 → cmd="pi", extraArgs=nil
+//	"" (default "codex")              → cmd="codex", extraArgs=nil
 func ParseCmdOpts(opts map[string]any, defaultBin string) (cmd string, extraArgs []string) {
 	if v, ok := opts["cmd"]; ok {
 		if s, ok := v.(string); ok {
@@ -108,38 +108,4 @@ func filterNonEmpty(parts []string) []string {
 		out = append(out, p)
 	}
 	return out
-}
-
-// ParseConfigEnv parses opts["env"] (set via [projects.agent.options.env]
-// in config.toml) into a []string of KEY=VALUE pairs.
-//
-// Supports both map[string]string and map[string]any (from TOML parser).
-// Returns nil when no env is configured.
-//
-// The returned slice should be stored separately from sessionEnv so that
-// SetSessionEnv calls cannot overwrite static config env.
-func ParseConfigEnv(opts map[string]any) []string {
-	raw, ok := opts["env"]
-	if !ok || raw == nil {
-		return nil
-	}
-
-	switch m := raw.(type) {
-	case map[string]string:
-		env := make([]string, 0, len(m))
-		for k, v := range m {
-			env = append(env, k+"="+v)
-		}
-		return env
-	case map[string]any:
-		env := make([]string, 0, len(m))
-		for k, v := range m {
-			if s, ok := v.(string); ok {
-				env = append(env, k+"="+s)
-			}
-		}
-		return env
-	default:
-		return nil
-	}
 }

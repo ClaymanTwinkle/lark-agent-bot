@@ -34,29 +34,6 @@ func MergeEnv(base, extra []string) []string {
 	return append(merged, extra...)
 }
 
-// InjectedAgentEnv returns the env vars lark-agent-bot injects into a spawned
-// agent process so in-process extensions can learn lark-agent-bot's runtime state.
-// The CC_ prefix marks these vars as lark-agent-bot's public extension contract,
-// alongside CC_PROJECT / CC_SESSION_KEY / CC_DATA_DIR that the engine injects
-// as session env.
-//
-// Currently only the permission mode is exposed:
-//
-//	CC_PERMISSION_MODE — the session's permission mode ("default" | "yolo").
-//	    Extensions such as the pi permission-gate read it to auto-approve tool
-//	    calls in yolo mode. An empty mode returns nil, so non-yolo sessions see
-//	    no injected var.
-//
-// Kept as a single core helper so every agent opts into the same convention
-// instead of hardcoding the variable name; extending the contract (e.g.
-// CC_MODEL, CC_THINKING) only means extending this function.
-func InjectedAgentEnv(mode string) []string {
-	if mode == "" {
-		return nil
-	}
-	return []string{"CC_PERMISSION_MODE=" + mode}
-}
-
 // CheckAllowFrom logs a security warning at startup when allow_from is not
 // configured (defaults to permit-all). Platforms should call this during init.
 func CheckAllowFrom(platform, allowFrom string) {
@@ -358,31 +335,6 @@ func ExtFromMime(mime string) string {
 	default:
 		return ".png"
 	}
-}
-
-// AppendImageRefs appends saved image paths to the prompt. Kept separate from
-// AppendFileRefs so the wording tells the agent these are images the user sent
-// and that it should open them to see the content.
-func AppendImageRefs(prompt string, imagePaths []string) string {
-	if len(imagePaths) == 0 {
-		return prompt
-	}
-	if prompt == "" {
-		prompt = "Please look at the attached image(s)."
-	}
-	abs := make([]string, len(imagePaths))
-	for i, p := range imagePaths {
-		if filepath.IsAbs(p) {
-			abs[i] = p
-			continue
-		}
-		if a, err := filepath.Abs(p); err == nil {
-			abs[i] = a
-		} else {
-			abs[i] = p
-		}
-	}
-	return prompt + "\n\n(The user attached image(s), saved locally — read the file(s) to view them: " + strings.Join(abs, ", ") + ")"
 }
 
 // AudioAttachment represents a voice/audio message sent by the user.

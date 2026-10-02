@@ -239,13 +239,6 @@ var topLevelCommandHandlers = map[string]func([]string){
 }
 
 func main() {
-	// Agy hooks require stdout to contain only the final JSON decision. Handle
-	// this internal command before update checks, logging, or normal CLI setup.
-	if len(os.Args) > 1 && os.Args[1] == "_agy-permission-hook" {
-		runAntigravityPermissionHook()
-		return
-	}
-
 	checkUpdateAsync()
 	// When started as a daemon (CC_LOG_FILE set), redirect logs to a rotating file.
 	// Log file setup happens before flag.Parse() so the rotating writer is in
