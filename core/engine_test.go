@@ -13652,29 +13652,6 @@ func TestExtractSessionKeyParts(t *testing.T) {
 
 // --- Instant Reply tests ---
 
-// stubStreamingCardPlatform simulates a platform that supports StreamingCardPlatform
-// (e.g. DingTalk with AI Card configured), so instant reply should be skipped.
-type stubStreamingCardPlatform struct {
-	stubPlatformEngine
-	cardCreated bool
-	cardFail    bool // when true, CreateStreamingCard returns an error
-}
-
-func (p *stubStreamingCardPlatform) CreateStreamingCard(_ context.Context, _ any) (StreamingCard, error) {
-	if p.cardFail {
-		return nil, fmt.Errorf("stub: card_template_id not configured")
-	}
-	p.cardCreated = true
-	return &stubStreamingCard{}, nil
-}
-
-// stubStreamingCard is a minimal StreamingCard for tests.
-type stubStreamingCard struct{}
-
-func (c *stubStreamingCard) Update(_ context.Context, _ string) error   { return nil }
-func (c *stubStreamingCard) Finalize(_ context.Context, _ string) error { return nil }
-func (c *stubStreamingCard) Failed() bool                               { return false }
-
 func TestHandleMessage_InstantReply_SendsConfirmationWhenEnabled(t *testing.T) {
 	p := &stubPlatformEngine{n: "test"}
 	agentSession := newResultAgentSession("agent reply")
@@ -13788,75 +13765,6 @@ func TestHandleMessage_InstantReply_SkippedWhenDisabled(t *testing.T) {
 	}
 	if sent[0] != "agent reply" {
 		t.Fatalf("first reply = %q, want 'agent reply'", sent[0])
-	}
-}
-
-func TestHandleMessage_InstantReply_SkippedForStreamingCardPlatform(t *testing.T) {
-	p := &stubStreamingCardPlatform{stubPlatformEngine: stubPlatformEngine{n: "dingtalk"}}
-	agentSession := newResultAgentSession("agent reply")
-	agent := &resultAgent{session: agentSession}
-	e := NewEngine("test", agent, []Platform{p}, "", LangEnglish)
-	e.SetInstantReply(InstantReplyCfg{Enabled: true, Content: "🤔 Thinking..."})
-
-	msg := &Message{
-		SessionKey: "dingtalk:user1",
-		Platform:   "dingtalk",
-		UserID:     "u1",
-		UserName:   "user",
-		Content:    "hello",
-		ReplyCtx:   "ctx",
-	}
-	e.handleMessage(p, msg)
-
-	// When streaming card succeeds, the agent reply goes through streamCard.Finalize,
-	// not p.Send. Wait briefly then verify no instant reply was sent via p.Send.
-	time.Sleep(500 * time.Millisecond)
-
-	sent := p.getSent()
-	for _, s := range sent {
-		if s == "🤔 Thinking..." {
-			t.Fatalf("instant reply should be skipped for StreamingCardPlatform, but got: %v", sent)
-		}
-	}
-}
-
-func TestHandleMessage_InstantReply_SentWhenStreamingCardFails(t *testing.T) {
-	p := &stubStreamingCardPlatform{
-		stubPlatformEngine: stubPlatformEngine{n: "dingtalk"},
-		cardFail:           true,
-	}
-	agentSession := newResultAgentSession("agent reply")
-	agent := &resultAgent{session: agentSession}
-	e := NewEngine("test", agent, []Platform{p}, "", LangEnglish)
-	e.SetInstantReply(InstantReplyCfg{Enabled: true, Content: "🤔 Thinking..."})
-
-	msg := &Message{
-		SessionKey: "dingtalk:user1",
-		Platform:   "dingtalk",
-		UserID:     "u1",
-		UserName:   "user",
-		Content:    "hello",
-		ReplyCtx:   "ctx",
-	}
-	e.handleMessage(p, msg)
-
-	deadline := time.After(2 * time.Second)
-	for {
-		sent := p.getSent()
-		if len(sent) >= 2 {
-			break
-		}
-		select {
-		case <-deadline:
-			t.Fatalf("timed out waiting for replies, got: %v", p.getSent())
-		default:
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-
-	sent := p.getSent()
-	if sent[0] != "🤔 Thinking..." {
-		t.Fatalf("first reply = %q, want instant reply when card creation fails", sent[0])
 	}
 }
 
@@ -15960,82 +15868,5 @@ func TestAgentSystemPrompt_DocumentsAudioVideoFlags(t *testing.T) {
 	// doesn't silently downgrade --audio/--video to --file.
 	if !strings.Contains(prompt, "Do NOT downgrade") {
 		t.Error("AgentSystemPrompt missing the 'Do NOT downgrade' anti-regression line")
-	}
-}
-
-// --- Regression: streaming-card silent reply must not leak the NO_REPLY marker ---
-
-// recordingStreamCard captures the content passed to Finalize so tests can
-// assert what was rendered into the card.
-type recordingStreamCard struct {
-	mu      sync.Mutex
-	final   bool
-	content string
-}
-
-func (c *recordingStreamCard) Update(_ context.Context, _ string) error { return nil }
-func (c *recordingStreamCard) Finalize(_ context.Context, content string) error {
-	c.mu.Lock()
-	c.final = true
-	c.content = content
-	c.mu.Unlock()
-	return nil
-}
-func (c *recordingStreamCard) Failed() bool { return false }
-func (c *recordingStreamCard) finalized() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.final
-}
-func (c *recordingStreamCard) finalContent() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.content
-}
-
-// recordingStreamCardPlatform is a StreamingCardPlatform whose card records the
-// finalized content for assertions.
-type recordingStreamCardPlatform struct {
-	stubPlatformEngine
-	card *recordingStreamCard
-}
-
-func (p *recordingStreamCardPlatform) CreateStreamingCard(_ context.Context, _ any) (StreamingCard, error) {
-	return p.card, nil
-}
-
-// TestProcessInteractiveEvents_StreamingCard_BareNoReply_Suppressed is a
-// regression test for the bug where a silent (bare NO_REPLY) turn on a
-// StreamingCardPlatform rendered the literal "NO_REPLY" marker into the card:
-// the streamCard finalize branch ran before — and shadowed — the isSilent
-// suppression branch, so buildCardContent received the raw NO_REPLY response.
-// The card must finalize WITHOUT the marker on a silent turn.
-func TestProcessInteractiveEvents_StreamingCard_BareNoReply_Suppressed(t *testing.T) {
-	card := &recordingStreamCard{}
-	p := &recordingStreamCardPlatform{
-		stubPlatformEngine: stubPlatformEngine{n: "slack"},
-		card:               card,
-	}
-	e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
-	sessionKey := "slack:user-streamcard-bare-noreply"
-	session := e.sessions.GetOrCreateActive(sessionKey)
-	agentSession := newControllableSession("s-streamcard-bare-noreply")
-	state := &interactiveState{
-		agentSession: agentSession,
-		platform:     p,
-		replyCtx:     "ctx-streamcard-bare-noreply",
-	}
-	e.interactiveStates[sessionKey] = state
-
-	agentSession.events <- Event{Type: EventText, Content: "NO_REPLY"}
-	agentSession.events <- Event{Type: EventResult, Content: "NO_REPLY", Done: true}
-
-	e.processInteractiveEvents(state, session, e.sessions, sessionKey, "m-streamcard-bare-noreply", time.Now(), nil, nil, state.replyCtx, 0)
-
-	if !card.finalized() {
-		t.Fatalf("expected streaming card to be finalized on a silent turn")
-	}
-	if strings.Contains(card.finalContent(), "NO_REPLY") {
-		t.Fatalf("silent reply leaked NO_REPLY into the streaming card: %q", card.finalContent())
 	}
 }

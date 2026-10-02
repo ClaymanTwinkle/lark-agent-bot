@@ -302,10 +302,6 @@ level = "info" # debug, info, warn, error
 # before the agent starts processing. This gives users quick feedback
 # that their message was received (e.g. "🤔 Thinking...").
 # 收到用户消息后立即发送确认消息（在 Agent 开始处理之前），让用户知道消息已收到。
-#
-# Platforms with streaming card support
-# will skip instant reply since the card itself provides a "processing" indicator.
-# 已配置流式卡片的平台会自动跳过即时回复，因为卡片本身已提供处理指示。
 
 # [instant_reply]
 # enabled = false            # Enable/disable instant reply (default: false) / 启用/禁用即时确认回复（默认 false）

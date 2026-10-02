@@ -4713,38 +4713,6 @@ func (e *Engine) notifySessionCloseFailure(sessionKey string, platform Platform,
 
 const defaultEventIdleTimeout = 2 * time.Hour
 
-// cardToolEntry stores a tool call record for card content rendering.
-type cardToolEntry struct {
-	Index int
-	Name  string
-	Input string
-}
-
-// buildCardContent constructs the full markdown for the streaming card.
-func buildCardContent(thinking string, tools []cardToolEntry, answer string) string {
-	var sb strings.Builder
-	if thinking != "" {
-		sb.WriteString("💭 **Thinking**\n\n")
-		sb.WriteString(thinking)
-		sb.WriteString("\n\n---\n\n")
-	}
-	for _, t := range tools {
-		sb.WriteString(fmt.Sprintf("🔧 **Tool #%d**: `%s`\n", t.Index, t.Name))
-		if t.Input != "" {
-			sb.WriteString(t.Input)
-			sb.WriteString("\n")
-		}
-		sb.WriteString("\n")
-	}
-	if answer != "" {
-		if len(tools) > 0 || thinking != "" {
-			sb.WriteString("---\n\n")
-		}
-		sb.WriteString(answer)
-	}
-	return sb.String()
-}
-
 type agentErrorHandler struct {
 	contains string
 	msgKey   MsgKey
@@ -4861,29 +4829,13 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 		return e.sendWithErrorForWorkspace(p, replyCtx, content, workspaceDir)
 	}
 
-	// Streaming card: aggregate entire turn into a single updatable card.
-	var streamCard StreamingCard
-	var cardToolCalls []cardToolEntry  // track tool calls for card content
-	var cardThinkingText string        // latest thinking text
-	var cardAnswerText strings.Builder // accumulated answer text
-
-	if scp, ok := state.platform.(StreamingCardPlatform); ok {
-		if sc, err := scp.CreateStreamingCard(e.ctx, state.replyCtx); err != nil {
-			slog.Warn("streaming card creation failed, falling back to normal messages", "error", err)
-		} else {
-			streamCard = sc
-			slog.Info("streaming card created for turn", "session", sessionKey)
-		}
-	}
 	sp := newStreamPreview(e.streamPreview, state.platform, state.replyCtx, e.ctx, workspaceRenderer)
 	cp := newCompactProgressWriter(e.ctx, state.platform, state.replyCtx, e.agent.Name(), e.i18n.CurrentLang(), workspaceRenderer)
 	state.mu.Unlock()
 
-	// Send instant confirmation reply if enabled and no streaming card is active.
-	// Streaming cards provide their own "processing" indicator, so instant reply
-	// is only needed when the platform doesn't support cards or card creation failed.
-	// The agent's own turn answers no message of the user's.
-	if e.instantReply.Enabled && streamCard == nil && at == nil {
+	// Send instant confirmation reply if enabled. The agent's own turn answers
+	// no message of the user's.
+	if e.instantReply.Enabled && at == nil {
 		replyContent := e.instantReply.Content
 		if replyContent == "" {
 			replyContent = e.i18n.T(MsgStarting)
@@ -5114,7 +5066,6 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 			segmentStart = 0
 			silentHold = false
 			partialText = ""
-			cardAnswerText.Reset()
 			lastRichCardUpdate = time.Time{}
 			lastRichCardLen = 0
 
@@ -5178,13 +5129,6 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 				silentHold = false
 			}
 			if e.display.ThinkingMessages && event.Content != "" {
-				// --- StreamingCard path ---
-				if streamCard != nil && !streamCard.Failed() {
-					cardThinkingText = truncateIf(event.Content, e.display.ThinkingMaxLen)
-					_ = streamCard.Update(e.ctx, buildCardContent(cardThinkingText, cardToolCalls, cardAnswerText.String()))
-					continue // skip original independent message sending
-				}
-				// --- Original path (fallback) ---
 				// Flush accumulated text segment before thinking display
 				previewActive := sp.canPreview()
 				if len(textParts) > segmentStart {
@@ -5265,34 +5209,6 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 				silentHold = false
 			}
 			if e.display.ToolMessages {
-				// --- StreamingCard path ---
-				if streamCard != nil && !streamCard.Failed() {
-					toolInput := event.ToolInput
-					var formattedInput string
-					if toolInput == "" {
-						formattedInput = ""
-					} else if strings.Contains(toolInput, "```") {
-						formattedInput = toolInput
-					} else if strings.Contains(toolInput, "\n") || utf8.RuneCountInString(toolInput) > 200 {
-						lang := toolCodeLang(event.ToolName, toolInput)
-						formattedInput = fmt.Sprintf("```%s\n%s\n```", lang, toolInput)
-					} else {
-						switch event.ToolName {
-						case "shell", "run_shell_command", "Bash":
-							formattedInput = fmt.Sprintf("```bash\n%s\n```", toolInput)
-						default:
-							formattedInput = fmt.Sprintf("`%s`", toolInput)
-						}
-					}
-					cardToolCalls = append(cardToolCalls, cardToolEntry{
-						Index: toolCount,
-						Name:  event.ToolName,
-						Input: formattedInput,
-					})
-					_ = streamCard.Update(e.ctx, buildCardContent(cardThinkingText, cardToolCalls, cardAnswerText.String()))
-					continue // skip original independent message sending
-				}
-				// --- Original path (fallback) ---
 				// Flush accumulated text segment before tool display
 				previewActive := sp.canPreview()
 				if len(textParts) > segmentStart {
@@ -5405,101 +5321,86 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 				silentHold = couldBeSilentPrefix(peekSegment)
 				releasedNow := prevHold && !silentHold
 
-				handledByStreamCard := false
-				if streamCard != nil && !streamCard.Failed() {
-					textParts = append(textParts, content) // always accumulate for history
-					if !silentHold {
-						if releasedNow {
-							cardAnswerText.WriteString(peekSegment)
-						} else {
-							cardAnswerText.WriteString(content)
-						}
-						_ = streamCard.Update(e.ctx, buildCardContent(cardThinkingText, cardToolCalls, cardAnswerText.String()))
-					}
-					handledByStreamCard = true
-				}
-				if !handledByStreamCard {
-					if len(textParts) == 0 {
-						if hasRichCard {
-							if cardMessageID == nil && !silentHold {
-								card := buildResolvedRichCard(CardStatusWorking, "", toolSteps, partialText, true, e.composeRichStatusFooter(true, turnStart, e.agent, state.agentSession, state.workspaceDir))
-								if starter, ok := p.(PreviewStarter); ok {
-									handle, err := starter.SendPreviewStart(e.ctx, replyCtx, card)
-									if err != nil {
-										slog.Debug("rich card: failed to create initial text card", "platform", p.Name(), "error", err)
-									} else {
-										cardMessageID = handle
-									}
-								}
-							}
-						} else if !silentHold {
-							sp.setStatus(CardStatusWorking)
-						}
-					}
-					textParts = append(textParts, content)
-					partialText += content
+				if len(textParts) == 0 {
 					if hasRichCard {
-						if !silentHold {
-							// Lazy creation: if we held during the first text events and
-							// only released this chunk, the initial-create branch above
-							// won't fire (textParts is non-empty by now). Build the card
-							// here using the accumulated partialText so the card emerges
-							// with the post-prefix content already in body.
-							if cardMessageID == nil {
-								card := buildResolvedRichCard(CardStatusWorking, "", toolSteps, partialText, true, e.composeRichStatusFooter(true, turnStart, e.agent, state.agentSession, state.workspaceDir))
-								if starter, ok := p.(PreviewStarter); ok {
-									handle, err := starter.SendPreviewStart(e.ctx, replyCtx, card)
-									if err != nil {
-										slog.Debug("rich card: failed to create deferred text card", "platform", p.Name(), "error", err)
-									} else {
-										cardMessageID = handle
-									}
+						if cardMessageID == nil && !silentHold {
+							card := buildResolvedRichCard(CardStatusWorking, "", toolSteps, partialText, true, e.composeRichStatusFooter(true, turnStart, e.agent, state.agentSession, state.workspaceDir))
+							if starter, ok := p.(PreviewStarter); ok {
+								handle, err := starter.SendPreviewStart(e.ctx, replyCtx, card)
+								if err != nil {
+									slog.Debug("rich card: failed to create initial text card", "platform", p.Name(), "error", err)
+								} else {
+									cardMessageID = handle
 								}
 							}
-							// Throttle: cardkit-v1 streaming text path uses tighter limits (200ms / 20 chars)
-							// for smoother typewriter UX; full-card Patch fallback keeps the original 1500ms / 30 chars.
-							streamer, hasStreamer := p.(RichCardTextStreamer)
-							throttleDur := 1500 * time.Millisecond
-							throttleChars := 30
-							if hasStreamer && cardMessageID != nil {
-								throttleDur = 200 * time.Millisecond
-								throttleChars = 20
+						}
+					} else if !silentHold {
+						sp.setStatus(CardStatusWorking)
+					}
+				}
+				textParts = append(textParts, content)
+				partialText += content
+				if hasRichCard {
+					if !silentHold {
+						// Lazy creation: if we held during the first text events and
+						// only released this chunk, the initial-create branch above
+						// won't fire (textParts is non-empty by now). Build the card
+						// here using the accumulated partialText so the card emerges
+						// with the post-prefix content already in body.
+						if cardMessageID == nil {
+							card := buildResolvedRichCard(CardStatusWorking, "", toolSteps, partialText, true, e.composeRichStatusFooter(true, turnStart, e.agent, state.agentSession, state.workspaceDir))
+							if starter, ok := p.(PreviewStarter); ok {
+								handle, err := starter.SendPreviewStart(e.ctx, replyCtx, card)
+								if err != nil {
+									slog.Debug("rich card: failed to create deferred text card", "platform", p.Name(), "error", err)
+								} else {
+									cardMessageID = handle
+								}
 							}
-							if cardMessageID != nil && (time.Since(lastRichCardUpdate) > throttleDur || len(partialText)-lastRichCardLen > throttleChars) {
-								// Prefer per-element streaming text update (cardkit-v1) when available;
-								// it engages Lark's native typewriter rendering. Falls back to
-								// full-card Patch on ErrNotSupported (handle without cardID) or any error.
-								streamed := false
-								if hasStreamer {
-									streamBody := resolveRichCardMarkdown(partialText, false)
-									if err := streamer.StreamRichCardText(e.ctx, cardMessageID, streamBody); err == nil {
+						}
+						// Throttle: cardkit-v1 streaming text path uses tighter limits (200ms / 20 chars)
+						// for smoother typewriter UX; full-card Patch fallback keeps the original 1500ms / 30 chars.
+						streamer, hasStreamer := p.(RichCardTextStreamer)
+						throttleDur := 1500 * time.Millisecond
+						throttleChars := 30
+						if hasStreamer && cardMessageID != nil {
+							throttleDur = 200 * time.Millisecond
+							throttleChars = 20
+						}
+						if cardMessageID != nil && (time.Since(lastRichCardUpdate) > throttleDur || len(partialText)-lastRichCardLen > throttleChars) {
+							// Prefer per-element streaming text update (cardkit-v1) when available;
+							// it engages Lark's native typewriter rendering. Falls back to
+							// full-card Patch on ErrNotSupported (handle without cardID) or any error.
+							streamed := false
+							if hasStreamer {
+								streamBody := resolveRichCardMarkdown(partialText, false)
+								if err := streamer.StreamRichCardText(e.ctx, cardMessageID, streamBody); err == nil {
+									lastRichCardUpdate = time.Now()
+									lastRichCardLen = len(partialText)
+									streamed = true
+								} else if !errors.Is(err, ErrNotSupported) {
+									slog.Debug("rich card: streaming text update failed, falling back to full Patch", "platform", p.Name(), "error", err)
+								}
+							}
+							if !streamed {
+								card := buildResolvedRichCard(CardStatusWorking, "", toolSteps, partialText, true, e.composeRichStatusFooter(true, turnStart, e.agent, state.agentSession, state.workspaceDir))
+								if updater, ok := p.(MessageUpdater); ok {
+									if err := updater.UpdateMessage(e.ctx, cardMessageID, card); err == nil {
 										lastRichCardUpdate = time.Now()
 										lastRichCardLen = len(partialText)
-										streamed = true
-									} else if !errors.Is(err, ErrNotSupported) {
-										slog.Debug("rich card: streaming text update failed, falling back to full Patch", "platform", p.Name(), "error", err)
-									}
-								}
-								if !streamed {
-									card := buildResolvedRichCard(CardStatusWorking, "", toolSteps, partialText, true, e.composeRichStatusFooter(true, turnStart, e.agent, state.agentSession, state.workspaceDir))
-									if updater, ok := p.(MessageUpdater); ok {
-										if err := updater.UpdateMessage(e.ctx, cardMessageID, card); err == nil {
-											lastRichCardUpdate = time.Now()
-											lastRichCardLen = len(partialText)
-										} else {
-											slog.Debug("rich card: failed to update text card", "platform", p.Name(), "error", err)
-										}
+									} else {
+										slog.Debug("rich card: failed to update text card", "platform", p.Name(), "error", err)
 									}
 								}
 							}
 						}
-					} else {
-						if !silentHold && sp.canPreview() {
-							if releasedNow {
-								sp.appendText(peekSegment) // flush all held chunks at once
-							} else {
-								sp.appendText(content)
-							}
+					}
+				} else {
+					if !silentHold && sp.canPreview() {
+						if releasedNow {
+							sp.appendText(peekSegment) // flush all held chunks at once
+						} else {
+							sp.appendText(content)
 						}
 					}
 				}
@@ -5856,37 +5757,7 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 
 			replyStart := time.Now()
 
-			// --- StreamingCard path ---
-			if streamCard != nil && !streamCard.Failed() {
-				sp.finish("", "") // cleanup preview (should be no-op if card was active)
-				// Silent reply: never render the NO_REPLY marker into the card.
-				// cardAnswerText holds only the text streamed BEFORE the marker
-				// (empty for a bare NO_REPLY, since silentHold suppresses card
-				// writes while the segment is still a NO_REPLY prefix). Finalize
-				// with that instead of fullResponse so the card resolves to Done
-				// without leaking the marker, and skip the fallback send that
-				// would otherwise post the suppressed marker verbatim.
-				cardBody := fullResponse
-				if isSilent {
-					cardBody = strings.TrimRight(cardAnswerText.String(), " \t\r\n")
-				}
-				finalContent := buildCardContent(cardThinkingText, cardToolCalls, cardBody)
-				if err := streamCard.Finalize(e.ctx, finalContent); err != nil {
-					slog.Error("streaming card finalize failed, sending fallback", "error", err)
-					// Fallback: send the response as a normal message — but never
-					// for a silent reply, which has no deliverable content.
-					if !isSilent {
-						for _, chunk := range SplitMessageCodeFenceAware(fullResponse, maxPlatformMessageLen) {
-							if err := sendWorkspaceWithError(p, replyCtx, chunk); err != nil {
-								return
-							}
-						}
-					}
-				}
-				if isSilent {
-					slog.Info("silent reply suppressed", "session", session.ID)
-				}
-			} else if isSilent {
+			if isSilent {
 				// Silent reply: drop any in-flight preview and skip all send paths.
 				// sp.discard() clears previewMsgID so sp.needsDoneReaction() also returns false,
 				// preventing a stray done_emoji push.
@@ -6171,23 +6042,8 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 				sp = newStreamPreview(e.streamPreview, queued.platform, queued.replyCtx, e.ctx, queuedRenderer)
 				cp = newCompactProgressWriter(e.ctx, queued.platform, queued.replyCtx, e.agent.Name(), e.i18n.CurrentLang(), queuedRenderer)
 
-				// Reset streaming card state for the next turn
-				streamCard = nil
-				cardToolCalls = nil
-				cardThinkingText = ""
-				cardAnswerText.Reset()
-
-				// Try to create a new streaming card for the queued turn
-				if scp, ok := queued.platform.(StreamingCardPlatform); ok {
-					if sc, err := scp.CreateStreamingCard(e.ctx, queued.replyCtx); err != nil {
-						slog.Warn("streaming card creation failed for queued turn", "error", err)
-					} else {
-						streamCard = sc
-					}
-				}
-
-				// Send instant reply for queued turn if no streaming card is active.
-				if e.instantReply.Enabled && streamCard == nil {
+				// Send instant reply for queued turn.
+				if e.instantReply.Enabled {
 					replyContent := e.instantReply.Content
 					if replyContent == "" {
 						replyContent = e.i18n.T(MsgStarting)
