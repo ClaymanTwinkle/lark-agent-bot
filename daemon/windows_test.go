@@ -331,7 +331,14 @@ func TestSchtasksInstall_TightensExistingScriptACL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "D:P(A;;FA;;;" + user.User.Sid.String() + ")"
+	// Round-trip the expected DACL through Windows so well-known accounts
+	// get the same SDDL alias as the actual one, e.g. "LA" for the built-in
+	// Administrator that CI runners use.
+	wantSD, err := windows.SecurityDescriptorFromString("D:P(A;;FA;;;" + user.User.Sid.String() + ")")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := wantSD.String()
 	// Windows may retain the AUTO_INHERITED bookkeeping flag even though
 	// the protected DACL contains only our explicit current-user ACE.
 	if got := strings.Replace(sd.String(), "D:PAI", "D:P", 1); got != want {

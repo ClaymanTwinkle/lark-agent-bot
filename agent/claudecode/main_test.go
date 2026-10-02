@@ -3,6 +3,8 @@ package claudecode
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -31,4 +33,22 @@ func runTestsWithIsolatedHome(m *testing.M) (code int) {
 		}
 	}
 	return m.Run()
+}
+
+// fakeClaudeCLI returns the path of an empty file New's CLI lookup accepts,
+// for tests that construct an agent on hosts without claude. New only
+// looks the CLI up, it never runs it. Tests used to set run_as_user to skip
+// the lookup, but on Windows run_as_user is not supported and the lookup
+// always happens.
+func fakeClaudeCLI(t *testing.T) string {
+	t.Helper()
+	name := "claude"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

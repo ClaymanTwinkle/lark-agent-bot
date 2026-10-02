@@ -108,7 +108,10 @@ func writeWorkspaceSkill(t *testing.T, root, name, body string) {
 }
 func newWorkspaceSkillsEngine(t *testing.T, p Platform) (*Engine, string, string) {
 	t.Helper()
-	base := t.TempDir()
+	// The engine keys workspaces by their resolved path, so the test uses
+	// that form too: on Windows t.TempDir() can be an 8.3 short path
+	// (C:UsersRUNNER~1...), on macOS it sits behind the /var symlink.
+	base := normalizeWorkspacePath(t.TempDir())
 	a, b, global := filepath.Join(base, "a"), filepath.Join(base, "b"), filepath.Join(base, "global")
 	for _, ws := range []string{a, b} {
 		writeWorkspaceSkill(t, filepath.Join(ws, ".agents", "skills"), filepath.Base(ws)+"-only", "Unique "+filepath.Base(ws))

@@ -17,6 +17,7 @@ func TestNew_ParsesRunAsUserAndRunAsEnv(t *testing.T) {
 		"work_dir":    t.TempDir(),
 		"run_as_user": "partseeker-coder",
 		"run_as_env":  []any{"PGSSLROOTCERT", "PGSSLMODE"},
+		"cmd":         fakeClaudeCLI(t),
 	}
 	a, err := New(opts)
 	if err != nil {
@@ -35,6 +36,9 @@ func TestNew_ParsesRunAsUserAndRunAsEnv(t *testing.T) {
 }
 
 func TestNew_RunAsUserSkipsClaudeLookPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("run_as_user is not supported on Windows; New always looks the CLI up")
+	}
 	// With run_as_user set, the supervisor's PATH lookup for "claude" is
 	// skipped because the target user's PATH is what matters. Verify that
 	// New() doesn't fail even when claude isn't on this test process's PATH.
@@ -1115,7 +1119,7 @@ func TestNew_ParsesContextWindowTokens(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.opts["work_dir"] = t.TempDir()
-			tc.opts["run_as_user"] = "ci-test-skip-cli-lookup"
+			tc.opts["cmd"] = fakeClaudeCLI(t)
 			a, err := New(tc.opts)
 			if err != nil {
 				t.Fatalf("New returned error: %v", err)
@@ -1136,7 +1140,7 @@ func TestWorkspaceAgentOptions_PropagatesContextWindowTokens(t *testing.T) {
 	opts := map[string]any{
 		"work_dir":              t.TempDir(),
 		"context_window_tokens": 750_000,
-		"run_as_user":           "ci-test-skip-cli-lookup",
+		"cmd":                   fakeClaudeCLI(t),
 	}
 	a, err := New(opts)
 	if err != nil {
