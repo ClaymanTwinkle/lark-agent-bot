@@ -740,17 +740,18 @@ func TestSessionRouting_ReconstructReplyCtx(t *testing.T) {
 	}
 }
 
-// The relay visibility echo only follows a topic for keys that start with
-// "feishu:". A lark platform's topic keys fall back to core's default.
+// The relay visibility echo follows a topic on lark as on feishu: a lark
+// platform's topic keys start with "lark:". Keys of the other platform and
+// non-topic keys fall back to core's default.
 func TestSessionRouting_RelayGroupVisibilityKeyOnLark(t *testing.T) {
 	p, _, _ := newRoutingTestPlatform(t, "lark", routingOpts(true, false))
-	for _, key := range []string{"lark:oc_chat:root:om_root", "lark:oc_chat:ou_user"} {
+	if got, ok := p.RelayGroupVisibilityKey("lark:oc_chat:root:om_root"); got != "lark:oc_chat:root:om_root" || !ok {
+		t.Fatalf("RelayGroupVisibilityKey(lark root) = (%q, %v), want the same key", got, ok)
+	}
+	for _, key := range []string{"lark:oc_chat:ou_user", "feishu:oc_chat:root:om_root"} {
 		if got, ok := p.RelayGroupVisibilityKey(key); got != "" || ok {
 			t.Fatalf("RelayGroupVisibilityKey(%q) = (%q, %v), want (\"\", false)", key, got, ok)
 		}
-	}
-	if got, ok := p.RelayGroupVisibilityKey("feishu:oc_chat:root:om_root"); got != "feishu:oc_chat:root:om_root" || !ok {
-		t.Fatalf("RelayGroupVisibilityKey(feishu root) = (%q, %v), want the same key", got, ok)
 	}
 }
 

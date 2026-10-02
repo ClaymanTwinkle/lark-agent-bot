@@ -163,12 +163,11 @@ func (p *Platform) ReconstructReplyCtx(sessionKey string) (any, error) {
 // RelayGroupVisibilityKey implements core.RelayGroupVisibilityTarget. When
 // the caller's session is a topic session, the relay visibility echo goes
 // back into that topic; otherwise the platform returns ("", false) so core
-// falls back to the chat-level ":relay" key. Only keys starting with
-// "feishu:" qualify, so on the lark platform the echo always goes to the
-// chat.
+// falls back to the chat-level ":relay" key. Only this platform's own keys
+// qualify: a lark platform's topic keys start with "lark:".
 func (p *Platform) RelayGroupVisibilityKey(callerSessionKey string) (string, bool) {
 	platform, _, _, ok := topicOfSessionKey(callerSessionKey)
-	if !ok || platform != "feishu" {
+	if !ok || platform != p.platformName {
 		return "", false
 	}
 	return callerSessionKey, true

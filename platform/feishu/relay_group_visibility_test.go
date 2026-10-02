@@ -5,14 +5,14 @@ import (
 )
 
 // TestPlatform_RelayGroupVisibilityKey pins the contract feishu's
-// Platform satisfies for core.RelayGroupVisibilityTarget: only feishu
-// session keys whose third segment carries a non-empty "root:..." or
+// Platform satisfies for core.RelayGroupVisibilityTarget: only the
+// platform's own session keys whose third segment carries a non-empty "root:..." or
 // "thread:..." prefix turn into a thread-scoped visibility key; every
 // other shape (bare-user keys, short keys, empty tails, or anything
 // from a foreign platform) returns ("", false) so core falls back to
 // its legacy "<platform>:<chatID>:relay" default.
 func TestPlatform_RelayGroupVisibilityKey(t *testing.T) {
-	p := &Platform{}
+	p := &Platform{platformName: "feishu"}
 
 	cases := []struct {
 		name       string
@@ -31,6 +31,7 @@ func TestPlatform_RelayGroupVisibilityKey(t *testing.T) {
 		{"feishu only two parts", "feishu:oc_chat", "", false},
 
 		// ── foreign platforms (must miss even if shape coincides) ─
+		{"lark root on a feishu platform", "lark:oc_chat:root:om_msg", "", false},
 		{"slack t prefix", "slack:C123:t:1717000000.000100", "", false},
 		{"slack bare user", "slack:C123:U456", "", false},
 		{"telegram numeric", "telegram:-100123:456:789", "", false},
