@@ -657,9 +657,12 @@ func load(path string) (*Config, error) {
 		return nil, fmt.Errorf("read config file: %w", err)
 	}
 	cfg := &Config{Log: LogConfig{Level: "info"}}
-	if err := toml.Unmarshal(data, cfg); err != nil {
+	unknown, err := decodeConfig(data, cfg)
+	if err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
+	// Warn, don't fail: a config that started before must keep starting.
+	warnUnknownKeys(path, unknown)
 	resolveEnvInConfig(cfg)
 	expandHomeInConfig(cfg)
 	if cfg.DataDir == "" {
@@ -1609,7 +1612,13 @@ func loadLocked() (*Config, error) {
 	return cfg, nil
 }
 
+// saveConfig rewrites config.toml from cfg, which drops comments and any key
+// no Config field took. It refuses when the file on disk has such keys, so a
+// misspelled or misplaced key is reported instead of silently deleted.
 func saveConfig(cfg *Config) error {
+	if err := checkRewritable(ConfigPath); err != nil {
+		return err
+	}
 	dir := filepath.Dir(ConfigPath)
 	tmp, err := os.CreateTemp(dir, ".config-*.tmp")
 	if err != nil {
@@ -3335,16 +3344,18 @@ func writeRawConfig(content string) error {
 }
 
 // FormatConfigFile reads the config file at the given path, formats it, and
-// writes it back. It validates the TOML syntax before writing.
+// writes it back. It validates the TOML syntax before writing and warns about
+// unknown keys. Formatting works on the text, so those keys are kept.
 func FormatConfigFile(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read config: %w", err)
 	}
-	cfg := &Config{}
-	if err := toml.Unmarshal(data, cfg); err != nil {
+	unknown, err := decodeConfig(data, &Config{})
+	if err != nil {
 		return fmt.Errorf("invalid TOML: %w", err)
 	}
+	warnUnknownKeys(path, unknown)
 	formatted := formatTOML(string(data))
 	if formatted == string(data) {
 		return nil
