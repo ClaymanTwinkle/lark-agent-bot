@@ -74,6 +74,45 @@ jobs:
       - name: Build release archives
         run: make release-all VERSION="$TAG"
 
+      # --generate-notes lists merged pull requests, and changes land on main
+      # without them, so the notes were only a compare link. /upgrade shows
+      # these notes before updating.
+      - name: Write release notes
+        run: |
+          exclude=()
+          if [[ "$TAG" != *-* ]]; then
+            # A release is compared with the previous release, not a beta.
+            exclude=(--exclude '*-*')
+          fi
+          prev="$(git describe --tags --abbrev=0 --match 'v*' "${exclude[@]}" "$TAG^" 2>/dev/null || true)"
+          range="$TAG"
+          if [ -n "$prev" ]; then
+            range="$prev..$TAG"
+          fi
+          # section TITLE PATTERN [-v]: commit subjects matching (or with -v,
+          # not matching) PATTERN, without their "type:" prefix.
+          section() {
+            local lines grep_args=(-E)
+            if [ "${3:-}" = -v ]; then
+              grep_args+=(-v)
+            fi
+            lines="$(git log --no-merges --format='%s (%h)' "$range" \
+              | grep "${grep_args[@]}" "$2" \
+              | sed -E 's/^[a-z]+(\([^)]*\))?!?: //; s/^/- /' || true)"
+            if [ -n "$lines" ]; then
+              printf '## %s\n\n%s\n\n' "$1" "$lines"
+            fi
+          }
+          {
+            section 'Features' '^feat(\(|!|:)'
+            section 'Fixes' '^fix(\(|!|:)'
+            section 'Other changes' '^(feat|fix)(\(|!|:)' -v
+            if [ -n "$prev" ]; then
+              echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$prev...$TAG"
+            fi
+          } > release-notes.md
+          cat release-notes.md
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -89,7 +128,7 @@ jobs:
           else
             gh release create "$TAG" "${assets[@]}" \
               --title "$TAG" \
-              --generate-notes \
+              --notes-file release-notes.md \
               --verify-tag \
               "${prerelease[@]}"
           fi

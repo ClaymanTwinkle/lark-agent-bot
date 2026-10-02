@@ -144,7 +144,7 @@ Pushing a `v*` tag:
 
 1. builds the web admin and runs the tests;
 2. cross-compiles linux / macOS / windows binaries for amd64 and arm64, packs them as `lark-agent-bot-<tag>-<os>-<arch>.tar.gz|.zip`, and writes `checksums.txt`;
-3. creates the GitHub Release with those assets. Tags containing `-` (e.g. `v0.2.0-beta.1`) are marked as pre-releases;
+3. creates the GitHub Release with those assets, and notes listing the commits since the previous release, grouped into features, fixes and other changes. Tags containing `-` (e.g. `v0.2.0-beta.1`) are marked as pre-releases;
 4. publishes the `lark-agent-bot` npm package when the repository has an `NPM_TOKEN` secret (pre-releases go to the `beta` dist-tag).
 
 The workflow can also be run manually from the Actions tab to rebuild an existing tag. To package locally: `make release-all VERSION=v0.1.0` (output in `dist/`).

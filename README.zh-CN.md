@@ -143,7 +143,7 @@ git push origin v0.1.0
 
 1. 构建 Web 后台并运行测试；
 2. 交叉编译 linux / macOS / windows 的 amd64、arm64 二进制，打包为 `lark-agent-bot-<tag>-<os>-<arch>.tar.gz|.zip`，并生成 `checksums.txt`；
-3. 创建 GitHub Release 并上传产物。标签里带 `-`（如 `v0.2.0-beta.1`）时标记为预发布；
+3. 创建 GitHub Release 并上传产物，发布说明按新功能、修复、其他分组列出上个版本以来的提交。标签里带 `-`（如 `v0.2.0-beta.1`）时标记为预发布；
 4. 如果仓库配置了 `NPM_TOKEN` secret，同步发布 npm 包 `lark-agent-bot`（预发布版本使用 `beta` dist-tag）。
 
 也可以在 Actions 页面手动触发 Release 工作流，重新构建已有标签。本地打包：`make release-all VERSION=v0.1.0`，产物在 `dist/`。
