@@ -131,6 +131,16 @@ jobs:
       - name: Regression tests
         run: go test -tags=regression,no_web ./tests/e2e/...
 
+      # Tests that need a real agent CLI, API key or Feishu config skip themselves.
+      - name: Integration tests
+        run: go test -tags=integration,no_web ./tests/integration/...
+
+      # Not run in CI, but compiled so they keep up with interface changes.
+      - name: Compile blackbox and performance tests
+        run: |
+          go vet -tags=blackbox ./tests/blackbox/...
+          go vet -tags=performance ./tests/performance/...
+
   cross-build:
     runs-on: ubuntu-latest
     needs: lint

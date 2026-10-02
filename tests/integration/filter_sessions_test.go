@@ -152,7 +152,9 @@ func setupFilterSessionTest(t *testing.T, agentType string, filterEnabled bool) 
 	case "claudecode":
 		homeDir, _ := os.UserHomeDir()
 		absWorkDir, _ := filepath.Abs(workDir)
-		projectKey := strings.ReplaceAll(absWorkDir, string(filepath.Separator), "-")
+		// Claude Code also turns the colon of a Windows drive letter into "-";
+		// left in, it makes the directory name invalid.
+		projectKey := strings.NewReplacer(string(filepath.Separator), "-", ":", "-").Replace(absWorkDir)
 		projectDir := filepath.Join(homeDir, ".claude", "projects", projectKey)
 		t.Cleanup(func() { os.RemoveAll(projectDir) })
 		for i, id := range allIDs {

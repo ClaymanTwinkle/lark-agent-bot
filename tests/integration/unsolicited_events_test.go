@@ -234,7 +234,7 @@ func TestIntegration_UnsolicitedEventsEndToEnd(t *testing.T) {
 
 	// Feed the foreground turn events.
 	sess.emit(core.Event{Type: core.EventText, Content: "Submitted, waiting..."})
-	sess.emit(core.Event{Type: core.EventResult, Content: "Submitted, waiting..."})
+	sess.emit(core.Event{Type: core.EventResult, Content: "Submitted, waiting...", Done: true})
 
 	require.True(t, waitForMessage(t, platform, "Submitted", 3*time.Second),
 		"foreground turn response was not delivered")
@@ -244,7 +244,7 @@ func TestIntegration_UnsolicitedEventsEndToEnd(t *testing.T) {
 	// behavior they would sit in the buffer until drained by the next msg.
 	const bgDoneMarker = "All 5 campaigns created successfully"
 	sess.emit(core.Event{Type: core.EventText, Content: bgDoneMarker})
-	sess.emit(core.Event{Type: core.EventResult, Content: bgDoneMarker})
+	sess.emit(core.Event{Type: core.EventResult, Content: bgDoneMarker, Done: true})
 
 	require.True(t, waitForMessage(t, platform, bgDoneMarker, 3*time.Second),
 		"unsolicited event was not relayed to platform")
@@ -269,7 +269,7 @@ func TestIntegration_UnsolicitedEventsEndToEnd(t *testing.T) {
 
 	const secondTurnMarker = "no failures, all clean"
 	sess.emit(core.Event{Type: core.EventText, Content: secondTurnMarker})
-	sess.emit(core.Event{Type: core.EventResult, Content: secondTurnMarker})
+	sess.emit(core.Event{Type: core.EventResult, Content: secondTurnMarker, Done: true})
 
 	require.True(t, waitForMessage(t, platform, secondTurnMarker, 3*time.Second),
 		"second foreground turn response was not delivered")
@@ -323,7 +323,7 @@ func TestIntegration_StaleEventsDrainedAfterAbnormalExit(t *testing.T) {
 	// should NOT be started. These events should sit in the buffer.
 	const leftoverMarker = "LEFTOVER-SHOULD-BE-DRAINED"
 	sess.emit(core.Event{Type: core.EventText, Content: leftoverMarker})
-	sess.emit(core.Event{Type: core.EventResult, Content: leftoverMarker})
+	sess.emit(core.Event{Type: core.EventResult, Content: leftoverMarker, Done: true})
 
 	// ─── Phase 3: send a NEXT user message ─────────────────────
 	// drainEvents() in processInteractiveMessageWith should clear the
@@ -344,7 +344,7 @@ func TestIntegration_StaleEventsDrainedAfterAbnormalExit(t *testing.T) {
 	// Feed the new turn's events.
 	const retryMarker = "retry succeeded"
 	sess.emit(core.Event{Type: core.EventText, Content: retryMarker})
-	sess.emit(core.Event{Type: core.EventResult, Content: retryMarker})
+	sess.emit(core.Event{Type: core.EventResult, Content: retryMarker, Done: true})
 
 	require.True(t, waitForMessage(t, platform, retryMarker, 3*time.Second),
 		"retry turn response not delivered")
