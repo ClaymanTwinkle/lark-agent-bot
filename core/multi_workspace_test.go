@@ -20,28 +20,21 @@ func (a *namedTestAgent) StartSession(_ context.Context, _ string) (AgentSession
 func (a *namedTestAgent) ListSessions(_ context.Context) ([]AgentSessionInfo, error) { return nil, nil }
 func (a *namedTestAgent) Stop() error                                                { return nil }
 
-// mockChannelResolver implements both Platform and ChannelNameResolver.
-type mockChannelResolver struct {
-	name  string
-	names map[string]string
+// mockWorkspacePlatform is a bare Platform with a configurable name.
+type mockWorkspacePlatform struct {
+	name string
 }
 
-func (m *mockChannelResolver) Name() string {
+func (m *mockWorkspacePlatform) Name() string {
 	if m.name != "" {
 		return m.name
 	}
 	return "mock"
 }
-func (m *mockChannelResolver) Start(MessageHandler) error                     { return nil }
-func (m *mockChannelResolver) Reply(_ context.Context, _ any, _ string) error { return nil }
-func (m *mockChannelResolver) Send(_ context.Context, _ any, _ string) error  { return nil }
-func (m *mockChannelResolver) Stop() error                                    { return nil }
-func (m *mockChannelResolver) ResolveChannelName(channelID string) (string, error) {
-	if name, ok := m.names[channelID]; ok {
-		return name, nil
-	}
-	return "", fmt.Errorf("unknown channel %s", channelID)
-}
+func (m *mockWorkspacePlatform) Start(MessageHandler) error                     { return nil }
+func (m *mockWorkspacePlatform) Reply(_ context.Context, _ any, _ string) error { return nil }
+func (m *mockWorkspacePlatform) Send(_ context.Context, _ any, _ string) error  { return nil }
+func (m *mockWorkspacePlatform) Stop() error                                    { return nil }
 
 func newTestEngineWithMultiWorkspace(t *testing.T, baseDir string) *Engine {
 	t.Helper()
@@ -66,47 +59,9 @@ func newTestEngineWithMultiWorkspaceAgent(t *testing.T, baseDir string) *Engine 
 	return e
 }
 
-func TestMultiWorkspaceResolution_ConventionMatch(t *testing.T) {
-	baseDir := t.TempDir()
-	channelName := "my-project"
-	channelID := "C001"
-
-	// Create a directory matching the channel name
-	if err := os.MkdirAll(filepath.Join(baseDir, channelName), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	e := newTestEngineWithMultiWorkspace(t, baseDir)
-	p := &mockChannelResolver{names: map[string]string{channelID: channelName}}
-
-	ws, name, err := e.resolveWorkspace(p, channelID)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if name != channelName {
-		t.Errorf("expected channel name %q, got %q", channelName, name)
-	}
-	// resolveWorkspace returns normalizeWorkspacePath'd result; use it for comparison
-	expectedWS := normalizeWorkspacePath(filepath.Join(baseDir, channelName))
-	if ws != expectedWS {
-		t.Errorf("expected workspace %q, got %q", expectedWS, ws)
-	}
-
-	// Verify auto-binding was persisted
-	b := e.workspaceBindings.Lookup("project:test", workspaceChannelKey(p.Name(), channelID))
-	if b == nil {
-		t.Fatal("expected binding to be created by convention match")
-	}
-	if b.Workspace != expectedWS {
-		t.Errorf("binding workspace = %q, want %q", b.Workspace, expectedWS)
-	}
-}
-
-func TestMultiWorkspaceResolution_NoMatch(t *testing.T) {
-	baseDir := t.TempDir() // empty directory — no convention match possible
-
-	e := newTestEngineWithMultiWorkspace(t, baseDir)
-	p := &mockChannelResolver{names: map[string]string{"C002": "nonexistent-project"}}
+func TestMultiWorkspaceResolution_UnboundChannel(t *testing.T) {
+	e := newTestEngineWithMultiWorkspace(t, t.TempDir())
+	p := &mockWorkspacePlatform{}
 
 	ws, name, err := e.resolveWorkspace(p, "C002")
 	if err != nil {
@@ -115,8 +70,8 @@ func TestMultiWorkspaceResolution_NoMatch(t *testing.T) {
 	if ws != "" {
 		t.Errorf("expected empty workspace, got %q", ws)
 	}
-	if name != "nonexistent-project" {
-		t.Errorf("expected channel name %q, got %q", "nonexistent-project", name)
+	if name != "" {
+		t.Errorf("expected empty channel name, got %q", name)
 	}
 }
 
@@ -135,7 +90,7 @@ func TestMultiWorkspaceResolution_ExistingBinding(t *testing.T) {
 	e.workspaceBindings.Bind("project:test", channelID, channelName, wsDir)
 
 	// Platform that does NOT know this channel — binding should still work
-	p := &mockChannelResolver{names: map[string]string{}}
+	p := &mockWorkspacePlatform{}
 
 	ws, name, err := e.resolveWorkspace(p, channelID)
 	if err != nil {
@@ -164,7 +119,7 @@ func TestMultiWorkspaceResolution_SharedBinding(t *testing.T) {
 	e := newTestEngineWithMultiWorkspace(t, baseDir)
 	e.workspaceBindings.Bind(sharedWorkspaceBindingsKey, channelID, channelName, wsDir)
 
-	p := &mockChannelResolver{names: map[string]string{}}
+	p := &mockWorkspacePlatform{}
 
 	ws, name, err := e.resolveWorkspace(p, channelID)
 	if err != nil {
@@ -191,8 +146,8 @@ func TestMultiWorkspaceResolution_SharedBindingDoesNotCrossPlatforms(t *testing.
 	e := newTestEngineWithMultiWorkspace(t, baseDir)
 	e.workspaceBindings.Bind(sharedWorkspaceBindingsKey, workspaceChannelKey("mock-a", channelID), "shared-channel", wsDir)
 
-	pA := &mockChannelResolver{name: "mock-a", names: map[string]string{}}
-	pB := &mockChannelResolver{name: "mock-b", names: map[string]string{}}
+	pA := &mockWorkspacePlatform{name: "mock-a"}
+	pB := &mockWorkspacePlatform{name: "mock-b"}
 
 	ws, _, err := e.resolveWorkspace(pA, channelID)
 	if err != nil {
@@ -220,7 +175,7 @@ func TestMultiWorkspaceResolution_MissingDirRemovesBinding(t *testing.T) {
 	e := newTestEngineWithMultiWorkspace(t, baseDir)
 	e.workspaceBindings.Bind("project:test", channelID, channelName, missingDir)
 
-	p := &mockChannelResolver{names: map[string]string{}}
+	p := &mockWorkspacePlatform{}
 
 	ws, name, err := e.resolveWorkspace(p, channelID)
 	if err != nil {
@@ -248,7 +203,7 @@ func TestMultiWorkspaceResolution_MissingDirKeepsSharedBinding(t *testing.T) {
 	e := newTestEngineWithMultiWorkspace(t, baseDir)
 	e.workspaceBindings.Bind(sharedWorkspaceBindingsKey, channelID, channelName, missingDir)
 
-	p := &mockChannelResolver{names: map[string]string{}}
+	p := &mockWorkspacePlatform{}
 
 	ws, name, err := e.resolveWorkspace(p, channelID)
 	if err != nil {
@@ -513,7 +468,7 @@ func TestLooksLikeLocalDir(t *testing.T) {
 func TestWorkspaceInitFlow_SlashCommandCleansUpExistingFlow(t *testing.T) {
 	baseDir := t.TempDir()
 	e := newTestEngineWithMultiWorkspace(t, baseDir)
-	p := &mockChannelResolver{names: map[string]string{"C010": "test-channel"}}
+	p := &mockWorkspacePlatform{}
 
 	channelID := "C010"
 	channelKey := workspaceChannelKey(p.Name(), channelID)
@@ -742,7 +697,7 @@ func TestCommandContextWithWorkspace_BoundChannel(t *testing.T) {
 	channelKey := "test-platform:" + channelID
 	e.workspaceBindings.Bind("project:test", channelKey, "bound-channel", wsDir)
 
-	p := &mockChannelResolver{name: "test-platform", names: map[string]string{}}
+	p := &mockWorkspacePlatform{name: "test-platform"}
 	msg := &Message{
 		Platform:   "test-platform",
 		ChannelKey: channelID,
@@ -780,7 +735,7 @@ func TestCommandContextWithWorkspace_UnboundChannelFallsBack(t *testing.T) {
 	baseDir := t.TempDir()
 	e := newTestEngineWithMultiWorkspaceAgent(t, baseDir)
 
-	p := &mockChannelResolver{name: "test-platform", names: map[string]string{}}
+	p := &mockWorkspacePlatform{name: "test-platform"}
 	msg := &Message{
 		Platform:   "test-platform",
 		ChannelKey: "C-unbound",

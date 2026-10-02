@@ -152,7 +152,7 @@ func excludeWorktreeDir(ctx context.Context, root string) error {
 //	/workspace worktree             list the worktrees
 //	/workspace worktree <name>      create or reuse <name> and route the chat to it
 //	/workspace worktree rm <name>   remove <name>; its branch is kept
-func (e *Engine) handleWorktreeCommand(p Platform, msg *Message, channelKey string, channelName func() string, args []string) {
+func (e *Engine) handleWorktreeCommand(p Platform, msg *Message, channelKey string, args []string) {
 	b, _, usable := e.lookupEffectiveWorkspaceBinding(channelKey)
 	if !usable {
 		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsNoBinding))
@@ -181,7 +181,7 @@ func (e *Engine) handleWorktreeCommand(p Platform, msg *Message, channelKey stri
 		}
 		e.removeWorktree(ctx, p, msg, trees, args[1])
 	case len(args) == 1:
-		e.openWorktree(ctx, p, msg, channelKey, channelName, trees, args[0])
+		e.openWorktree(ctx, p, msg, channelKey, trees, args[0])
 	default:
 		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsWorktreeUsage))
 	}
@@ -214,7 +214,7 @@ func (e *Engine) replyWorktreeList(p Platform, msg *Message, trees []gitWorktree
 
 // openWorktree routes the chat to the worktree called name, creating it (and
 // its branch, from the main worktree's HEAD) when it does not exist yet.
-func (e *Engine) openWorktree(ctx context.Context, p Platform, msg *Message, channelKey string, channelName func() string, trees []gitWorktree, name string) {
+func (e *Engine) openWorktree(ctx context.Context, p Platform, msg *Message, channelKey string, trees []gitWorktree, name string) {
 	root := trees[0].Path
 	if !validWorktreeName(ctx, root, name) {
 		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsWorktreeInvalidName, name))
@@ -224,7 +224,7 @@ func (e *Engine) openWorktree(ctx context.Context, p Platform, msg *Message, cha
 	projectKey := "project:" + e.name
 	for _, t := range trees[1:] {
 		if sameWorkspacePath(t.Path, path) {
-			e.workspaceBindings.Bind(projectKey, channelKey, channelName(), t.Path)
+			e.workspaceBindings.Bind(projectKey, channelKey, "", t.Path)
 			e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsWorktreeSwitched, name, t.Path))
 			return
 		}
@@ -254,7 +254,7 @@ func (e *Engine) openWorktree(ctx context.Context, p Platform, msg *Message, cha
 		path = normalizeWorkspacePath(path)
 		reply = e.i18n.Tf(MsgWsWorktreeCreated, name, base, path)
 	}
-	e.workspaceBindings.Bind(projectKey, channelKey, channelName(), path)
+	e.workspaceBindings.Bind(projectKey, channelKey, "", path)
 	slog.Info("worktree: chat routed to worktree", "channel_key", channelKey, "worktree", path)
 	e.reply(p, msg.ReplyCtx, reply)
 }

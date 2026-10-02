@@ -6897,23 +6897,8 @@ func (e *Engine) handleCommand(p Platform, msg *Message, raw string) bool {
 }
 
 func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string) {
-	channelID := effectiveChannelID(msg)
 	channelKey := effectiveWorkspaceChannelKey(msg)
 	projectKey := "project:" + e.name
-	resolveChannelName := func() func() string {
-		resolved := false
-		channelName := ""
-		return func() string {
-			if resolved {
-				return channelName
-			}
-			resolved = true
-			if resolver, ok := p.(ChannelNameResolver); ok {
-				channelName, _ = resolver.ResolveChannelName(channelID)
-			}
-			return channelName
-		}
-	}()
 	replyWorkspaceInfo := func(b *WorkspaceBinding, bindingKey string) {
 		if bindingKey == sharedWorkspaceBindingsKey {
 			e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsInfoShared, b.Workspace, b.BoundAt.Format(time.RFC3339)))
@@ -6947,7 +6932,7 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 		}
 
 		normalizedPath := normalizeWorkspacePath(routePath)
-		e.workspaceBindings.Bind(bindingKey, channelKey, resolveChannelName(), normalizedPath)
+		e.workspaceBindings.Bind(bindingKey, channelKey, "", normalizedPath)
 		e.reply(p, msg.ReplyCtx, e.i18n.Tf(successKey, normalizedPath))
 		return true
 	}
@@ -6960,7 +6945,7 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 			return false
 		}
 
-		e.workspaceBindings.Bind(bindingKey, channelKey, resolveChannelName(), normalizeWorkspacePath(wsPath))
+		e.workspaceBindings.Bind(bindingKey, channelKey, "", normalizeWorkspacePath(wsPath))
 		e.reply(p, msg.ReplyCtx, e.i18n.Tf(successKey, wsName))
 		return true
 	}
@@ -6977,7 +6962,7 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 				e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsInitDirNotFound, target))
 				return false
 			}
-			e.workspaceBindings.Bind(bindingKey, channelKey, resolveChannelName(), normalizeWorkspacePath(dirPath))
+			e.workspaceBindings.Bind(bindingKey, channelKey, "", normalizeWorkspacePath(dirPath))
 			e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsBindSuccess, dirPath))
 			return true
 		}
@@ -6995,7 +6980,7 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 		cloneTo := filepath.Join(e.baseDir, repoName)
 
 		if _, err := os.Stat(cloneTo); err == nil {
-			e.workspaceBindings.Bind(bindingKey, channelKey, resolveChannelName(), normalizeWorkspacePath(cloneTo))
+			e.workspaceBindings.Bind(bindingKey, channelKey, "", normalizeWorkspacePath(cloneTo))
 			e.reply(p, msg.ReplyCtx, e.i18n.Tf(successKey, cloneTo))
 			return true
 		}
@@ -7007,7 +6992,7 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 			return false
 		}
 
-		e.workspaceBindings.Bind(bindingKey, channelKey, resolveChannelName(), normalizeWorkspacePath(cloneTo))
+		e.workspaceBindings.Bind(bindingKey, channelKey, "", normalizeWorkspacePath(cloneTo))
 		e.reply(p, msg.ReplyCtx, e.i18n.Tf(successKey, cloneTo))
 		return true
 	}
@@ -7141,7 +7126,7 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 		listBindings(projectKey, MsgWsListEmpty, MsgWsListTitle)
 
 	case "worktree":
-		e.handleWorktreeCommand(p, msg, channelKey, resolveChannelName, args[1:])
+		e.handleWorktreeCommand(p, msg, channelKey, args[1:])
 
 	default:
 		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsUsage))
@@ -16863,13 +16848,12 @@ func (e *Engine) runAsUser() string {
 	return ""
 }
 
-// resolveWorkspace resolves a channel to a workspace directory.
-// Returns (workspacePath, channelName, error).
+// resolveWorkspace resolves a channel to the workspace directory it is
+// bound to. Returns (workspacePath, channelName, error).
 // If workspacePath is empty, the init flow should be triggered.
 func (e *Engine) resolveWorkspace(p Platform, channelID string) (string, string, error) {
 	channelKey := workspaceChannelKey(p.Name(), channelID)
 
-	// Step 1: Check existing binding
 	if b, _, usable := e.lookupEffectiveWorkspaceBinding(channelKey); b != nil {
 		if !usable {
 			return "", b.ChannelName, nil
@@ -16877,34 +16861,7 @@ func (e *Engine) resolveWorkspace(p Platform, channelID string) (string, string,
 		return normalizeWorkspacePath(b.Workspace), b.ChannelName, nil
 	}
 
-	// Step 2: Resolve channel name for convention match
-	channelName := ""
-	if resolver, ok := p.(ChannelNameResolver); ok {
-		name, err := resolver.ResolveChannelName(channelID)
-		if err != nil {
-			slog.Warn("failed to resolve channel name", "channel", channelID, "err", err)
-		} else {
-			channelName = name
-		}
-	}
-
-	if channelName == "" {
-		return "", "", nil
-	}
-
-	// Step 3: Convention match — check if base_dir/<channel-name> exists
-	candidate := filepath.Join(e.baseDir, channelName)
-	if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-		// Auto-bind
-		projectKey := "project:" + e.name
-		normalized := normalizeWorkspacePath(candidate)
-		e.workspaceBindings.Bind(projectKey, channelKey, channelName, normalized)
-		slog.Info("workspace auto-bound by convention",
-			"channel", channelName, "workspace", normalized)
-		return normalized, channelName, nil
-	}
-
-	return "", channelName, nil
+	return "", "", nil
 }
 
 // handleWorkspaceInitFlow manages the conversational workspace setup.

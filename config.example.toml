@@ -751,10 +751,11 @@ level = "info" # debug, info, warn, error
 # =============================================================================
 # Multi-workspace Mode / 多工作区模式
 # =============================================================================
-# Single bot, multiple workspaces. Channel name maps to ~/workspace/<channel-name>
-# automatically. Use /workspace init <url> to clone and bind a new repo.
-# 单个 bot 服务多个工作区。频道名称自动映射到 ~/workspace/<频道名>。
-# 使用 /workspace init <url> 克隆并绑定新仓库。
+# Single bot, multiple workspaces. Each chat is bound to a directory, e.g. one
+# under base_dir, with /workspace bind or the picker card. Use
+# /workspace init <url> to clone and bind a new repo.
+# 单个 bot 服务多个工作区。每个群聊用 /workspace bind 或选择卡片绑定一个目录
+# （例如 base_dir 下的子目录）。使用 /workspace init <url> 克隆并绑定新仓库。
 #
 # [[projects]]
 # name = "claude-multi"

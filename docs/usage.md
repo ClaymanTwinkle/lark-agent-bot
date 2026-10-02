@@ -1016,7 +1016,7 @@ branches is still up to you (or the agent).
 
 ### How It Works
 
-- On platforms that can resolve channel names, a channel named `#project-a` auto-binds to `base_dir/project-a/`; otherwise bind explicitly with `/workspace bind` or `/workspace init`
+- A chat has no workspace until you bind one with `/workspace bind`, `/workspace init` or the picker card
 - Each channel has isolated sessions and agent state
 
 ---

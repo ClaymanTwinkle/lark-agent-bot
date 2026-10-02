@@ -902,7 +902,7 @@ type = "claudecode"
 
 ### 工作原理
 
-- 平台能解析频道名时，名为 `#project-a` 的频道会自动绑定 `base_dir/project-a/`；否则请用 `/workspace bind` 或 `/workspace init` 显式绑定
+- 群聊在用 `/workspace bind`、`/workspace init` 或选择卡片绑定之前没有工作区
 - 每个频道有独立的会话和 Agent 状态
 
 ---

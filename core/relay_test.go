@@ -532,12 +532,13 @@ func TestHandleRelay_MultiWorkspaceRoutesBySourceSessionKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p := &mockChannelResolver{name: "mock", names: map[string]string{channelID: "relay-ws"}}
+	p := &mockWorkspacePlatform{name: "mock"}
 	globalAgent := &sessionEnvRecordingAgent{session: newResultAgentSession("global")}
 	e := NewEngine("test", globalAgent, []Platform{p}, "", LangEnglish)
 	e.SetMultiWorkspace(baseDir, filepath.Join(t.TempDir(), "bindings.json"))
 
 	normalizedWsDir := normalizeWorkspacePath(wsDir)
+	e.workspaceBindings.Bind("project:test", workspaceChannelKey("mock", channelID), "", normalizedWsDir)
 	workspaceAgent := &sessionEnvRecordingAgent{session: newResultAgentSession("workspace")}
 	ws := e.workspacePool.GetOrCreate(normalizedWsDir)
 	ws.agent = workspaceAgent
@@ -562,9 +563,6 @@ func TestHandleRelay_MultiWorkspaceRoutesBySourceSessionKey(t *testing.T) {
 	}
 	if got := ws.sessions.ActiveSessionID("relay:source:mock:" + channelID); got == "" {
 		t.Fatal("expected relay session in workspace session manager")
-	}
-	if b := e.workspaceBindings.Lookup("project:test", workspaceChannelKey("mock", channelID)); b == nil || b.Workspace != normalizedWsDir {
-		t.Fatalf("expected convention binding to be created for %q", normalizedWsDir)
 	}
 }
 

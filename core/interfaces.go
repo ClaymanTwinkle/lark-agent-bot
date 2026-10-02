@@ -620,12 +620,6 @@ type PermissionModeInfo struct {
 	DescZh  string
 }
 
-// ChannelNameResolver is an optional interface for platforms that can resolve
-// channel IDs to human-readable names.
-type ChannelNameResolver interface {
-	ResolveChannelName(channelID string) (string, error)
-}
-
 // StreamingCard represents an active streaming card that aggregates
 // an entire agent turn (tool calls, thinking, text) into a single
 // updatable message.
