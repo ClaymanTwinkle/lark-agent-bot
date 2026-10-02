@@ -61,7 +61,7 @@ xattr -d com.apple.quarantine /usr/local/bin/lark-agent-bot
 
 ### Option C: Build from source
 
-Requires Go 1.25+ and Node.js/npm (`make build` also builds the embedded Web UI; use `make build-noweb` to skip it).
+Requires Go 1.25+. `make build` also builds the embedded web admin, which needs Node.js 20+ and pnpm. Without them, `make build-noweb` or a plain `go build ./cmd/lark-agent-bot` gives the same binary without the web admin.
 
 ```bash
 git clone https://github.com/ClaymanTwinkle/lark-agent-bot.git

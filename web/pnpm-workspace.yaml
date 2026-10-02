@@ -1,1 +1,5 @@
-onlyBuiltDependencies: esbuild
+# pnpm 10 reads onlyBuiltDependencies; pnpm 11+ reads allowBuilds.
+onlyBuiltDependencies:
+  - esbuild
+allowBuilds:
+  esbuild: true

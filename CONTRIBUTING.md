@@ -20,7 +20,7 @@ A helpful issue includes:
 - Before submitting:
 
 ```bash
-cd web && pnpm install && pnpm build && cd ..
+cd web && pnpm install && pnpm build && cd ..   # only needed to include the web admin
 gofmt -l .
 go vet ./...
 go test ./...
@@ -54,7 +54,7 @@ Maintainers release by pushing a `v*` tag; see the "Releasing" section of the [R
 - 提交前执行：
 
 ```bash
-cd web && pnpm install && pnpm build && cd ..
+cd web && pnpm install && pnpm build && cd ..   # 只在需要包含 Web 管理后台时执行
 gofmt -l .
 go vet ./...
 go test ./...

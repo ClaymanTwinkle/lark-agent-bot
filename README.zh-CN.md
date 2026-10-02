@@ -47,10 +47,11 @@ npm install -g lark-agent-bot
 #   https://github.com/ClaymanTwinkle/lark-agent-bot/releases
 #   文件名形如 lark-agent-bot-v0.1.0-linux-amd64.tar.gz、lark-agent-bot-v0.1.0-windows-amd64.zip
 
-# 方式三：源码构建（需要 Go 1.25+、Node.js 20+、pnpm）
+# 方式三：源码构建（需要 Go 1.25+；Web 管理后台还需要 Node.js 20+ 和 pnpm）
 git clone https://github.com/ClaymanTwinkle/lark-agent-bot.git
 cd lark-agent-bot
-make build
+make build                          # 先构建 Web 管理后台，再生成 ./lark-agent-bot
+go build ./cmd/lark-agent-bot       # 只用 Go：生成不带 Web 管理后台的同一个程序
 ```
 
 还需要装好至少一个 Agent CLI 并完成登录，例如：

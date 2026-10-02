@@ -60,11 +60,12 @@ node_modules/
 # ============================================================================
 # Build & distribution
 # ============================================================================
-dist/
+/dist/
 build/
 bin/
 release/
-# Keep web/dist directory (for embedded admin UI) but ignore build artifacts
+# Keep web/dist (embedded by web/embed.go) so a plain `go build` works before
+# the web admin is built; ignore the build output itself
 web/dist/*
 !web/dist/.keep
 # TypeScript incremental build cache — generated locally, should not be committed

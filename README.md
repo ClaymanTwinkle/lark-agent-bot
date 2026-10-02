@@ -48,10 +48,11 @@ npm install -g lark-agent-bot
 #   https://github.com/ClaymanTwinkle/lark-agent-bot/releases
 #   e.g. lark-agent-bot-v0.1.0-linux-amd64.tar.gz, lark-agent-bot-v0.1.0-windows-amd64.zip
 
-# Option 3: build from source (Go 1.25+, Node.js 20+, pnpm)
+# Option 3: build from source (Go 1.25+; the web admin also needs Node.js 20+ and pnpm)
 git clone https://github.com/ClaymanTwinkle/lark-agent-bot.git
 cd lark-agent-bot
-make build
+make build                          # builds the web admin, then ./lark-agent-bot
+go build ./cmd/lark-agent-bot       # Go only: same binary without the web admin
 ```
 
 You also need at least one agent CLI installed and logged in, for example:

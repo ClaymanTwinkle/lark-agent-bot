@@ -75,15 +75,16 @@ _TAGS_FLAG  := $(if $(_BUILD_TAGS),-tags '$(_BUILD_TAGS)',)
 
 .PHONY: build run clean test test-fast test-full test-smoke test-e2e test-release test-release-local test-performance pre-test lint release release-all web
 
+# The web admin uses pnpm (web/pnpm-lock.yaml), the same as CI.
 web:
-	@if [ ! -d web/node_modules ]; then cd web && npm install; fi
-	cd web && npm run build
+	@if [ ! -d web/node_modules ]; then cd web && pnpm install --frozen-lockfile; fi
+	cd web && pnpm build
 
 build: web
 	go build $(_TAGS_FLAG) -ldflags "$(LDFLAGS)" -o $(APP) $(CMD)
 
 build-noweb:
-	go build $(_TAGS_FLAG) -tags 'no_web' -ldflags "$(LDFLAGS)" -o $(APP) $(CMD)
+	go build -tags '$(strip $(_BUILD_TAGS) no_web)' -ldflags "$(LDFLAGS)" -o $(APP) $(CMD)
 
 run: build
 	./$(APP)
