@@ -147,6 +147,10 @@ jobs:
   test-windows:
     runs-on: windows-latest
     needs: lint
+    defaults:
+      run:
+        # PowerShell would parse the comma in -tags=a,b as an array.
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
