@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -531,11 +532,29 @@ func parseEnvStr(s string) map[string]string {
 
 // ── Presets ────────────────────────────────────────────────────
 
+// configuredPresetsURL returns the config's provider_presets_url, the list
+// the bot itself shows, or "" when there is no config or it sets none.
+func configuredPresetsURL(configPath string) string {
+	if _, err := os.Stat(configPath); err != nil {
+		return ""
+	}
+	cfg, err := config.LoadPermissive(configPath)
+	if err != nil {
+		slog.Warn("provider presets: cannot read config, using the default list", "path", configPath, "error", err)
+		return ""
+	}
+	return strings.TrimSpace(cfg.ProviderPresetsURL)
+}
+
 func runProviderPresets(args []string) {
 	fs := flag.NewFlagSet("provider presets", flag.ExitOnError)
+	configFile := fs.String("config", "", "path to config file (for provider_presets_url)")
 	url := fs.String("url", "", "override presets URL")
 	_ = fs.Parse(args)
 
+	if *url == "" {
+		*url = configuredPresetsURL(resolveConfigPath(*configFile))
+	}
 	if *url != "" {
 		core.SetPresetsURL(*url)
 	}
@@ -553,11 +572,7 @@ func runProviderPresets(args []string) {
 
 	fmt.Printf("Provider Presets (v%d)\n\n", data.Version)
 	for i, p := range data.Providers {
-		sponsor := ""
-		if p.Tier <= 1 {
-			sponsor = " ⭐ SPONSOR"
-		}
-		fmt.Printf("%d. %s%s\n", i+1, p.DisplayName, sponsor)
+		fmt.Printf("%d. %s\n", i+1, p.DisplayName)
 		if p.Description != "" {
 			fmt.Printf("   %s\n", p.Description)
 		}
