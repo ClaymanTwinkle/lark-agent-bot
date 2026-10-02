@@ -95,13 +95,7 @@ func TestMarkQueued_AddsDefaultEmojiAndClearRemovesIt(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("queued reaction not deleted")
 	}
-	deadline := time.Now().Add(2 * time.Second)
-	for readTypingLedger(t, path) != nil {
-		if time.Now().After(deadline) {
-			t.Fatalf("ledger still holds removed reaction: %v", readTypingLedger(t, path))
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+	waitTypingLedgerRemoved(t, path)
 }
 
 func TestMarkQueued_NotShown(t *testing.T) {

@@ -105,6 +105,24 @@ func writeTypingLedger(t *testing.T, path string, entries ...typingReaction) {
 	}
 }
 
+// waitTypingLedgerRemoved waits for the platform to delete the ledger file,
+// which it does once the last reaction is removed. It only stats the file:
+// on Windows a file another goroutine has open cannot be deleted, so polling
+// with readTypingLedger made the platform's os.Remove fail.
+func waitTypingLedgerRemoved(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("ledger still holds removed reaction: %v", readTypingLedger(t, path))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -135,13 +153,7 @@ func TestTypingReaction_RecordedUntilRemoved(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("typing reaction not deleted")
 	}
-	deadline := time.Now().Add(2 * time.Second)
-	for readTypingLedger(t, path) != nil {
-		if time.Now().After(deadline) {
-			t.Fatalf("ledger still holds removed reaction: %v", readTypingLedger(t, path))
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+	waitTypingLedgerRemoved(t, path)
 }
 
 func TestTypingReaction_FailedDeleteKeptForNextStart(t *testing.T) {
