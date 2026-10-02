@@ -2944,3 +2944,12 @@ func TestMgmt_CCSwitchProviders_MethodNotAllowed(t *testing.T) {
 		t.Fatal("expected DELETE on cc-switch to fail")
 	}
 }
+
+func TestManagementServerDoesNotStartWithoutToken(t *testing.T) {
+	mgmt := NewManagementServer(0, "", nil)
+	mgmt.Start()
+	defer mgmt.Stop()
+	if mgmt.server != nil {
+		t.Fatal("management API started without a token; it must not listen unauthenticated")
+	}
+}

@@ -191,6 +191,14 @@ type CCSwitchProviderInfo struct {
 }
 
 func (m *ManagementServer) Start() {
+	// The API listens on every interface and can read the config with its
+	// secrets, change it and drive the agents, so it never runs open.
+	// `lark-agent-bot web` and /web setup generate a token.
+	if m.token == "" {
+		slog.Error("management api not started: management.token is required",
+			"help", "set management.token in config, or run `lark-agent-bot web` to set one up")
+		return
+	}
 	mux := http.NewServeMux()
 	handler := m.buildHandler(mux)
 

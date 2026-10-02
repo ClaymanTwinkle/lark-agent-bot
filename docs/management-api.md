@@ -67,7 +67,7 @@ token = "mgmt-secret"
 | `token`  | string  | (required)| Shared secret for authentication                 |
 | `cors_origins` | string[] | (unset) | Origins allowed to call the API from a browser (see [§8](#8-cors)) |
 
-When `enabled` is `false`, the Management API is not started. The token should be a strong, random string (e.g. 32+ characters). With an empty token the server does not check requests at all, so always set one; `/web setup` and `lark-agent-bot web` generate it.
+When `enabled` is `false`, the Management API is not started. The token should be a strong, random string (e.g. 32+ characters). Without a token the Management API does not start (it listens on every interface); `/web setup` and `lark-agent-bot web` generate one.
 
 ### 2.2 Base URL
 
