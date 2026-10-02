@@ -168,6 +168,26 @@ func normalizeReasoningEffort(raw string) string {
 
 func (a *Agent) Name() string { return "codex" }
 
+// CLIBinaryName implements core.AgentDoctorInfo. It returns the CLI sessions
+// run, so /doctor and `lark-agent-bot doctor` look where sessions do: the
+// cmd option, PATH, then the Codex desktop app's copy (resolveCodexBin).
+// When none is found it returns the configured name, which the check then
+// reports as missing.
+func (a *Agent) CLIBinaryName() string {
+	a.mu.RLock()
+	cmd := a.cmd
+	a.mu.RUnlock()
+	if bin, _, err := resolveCodexBin(cmd); err == nil {
+		return bin
+	}
+	if cmd == "" {
+		return "codex"
+	}
+	return cmd
+}
+
+func (a *Agent) CLIDisplayName() string { return "Codex" }
+
 func (a *Agent) SetWorkDir(dir string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

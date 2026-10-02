@@ -117,3 +117,23 @@ func TestWithBinDirOnPathPrependsToSessionPath(t *testing.T) {
 		t.Fatalf("last env entry = %q, want the codex dir before the process PATH", got)
 	}
 }
+
+func TestCLIBinaryNameUsesTheResolvedCLI(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &Agent{cmd: self}
+	if got := a.CLIBinaryName(); got != self {
+		t.Fatalf("CLIBinaryName() = %q, want the configured CLI %q", got, self)
+	}
+
+	missing := filepath.Join(t.TempDir(), "no-such-codex")
+	a = &Agent{cmd: missing}
+	if got := a.CLIBinaryName(); got != missing {
+		t.Fatalf("CLIBinaryName() = %q, want the configured name %q when it is missing", got, missing)
+	}
+	if got := a.CLIDisplayName(); got != "Codex" {
+		t.Fatalf("CLIDisplayName() = %q", got)
+	}
+}
