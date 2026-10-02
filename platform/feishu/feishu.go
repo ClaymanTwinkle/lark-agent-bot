@@ -1315,33 +1315,6 @@ func (p *Platform) prepareReceiptAcknowledgement(msg *core.Message) {
 	}
 }
 
-// populateWorkspaceChannelKeys keeps workspace binding scope aligned with the
-// session scope. In Feishu topic mode the session key contains the root message
-// ID, while the legacy chat-level binding remains the default for new topics.
-func (p *Platform) populateWorkspaceChannelKeys(msg *core.Message) {
-	if msg == nil || msg.ChannelKey != "" {
-		return
-	}
-	rctx, ok := msg.ReplyCtx.(replyContext)
-	if !ok || rctx.chatID == "" {
-		return
-	}
-	msg.ChannelKey = rctx.chatID
-	if !p.threadIsolation {
-		return
-	}
-	parts := strings.SplitN(rctx.sessionKey, ":", 3)
-	if len(parts) != 3 || parts[0] != p.platformName || parts[1] != rctx.chatID {
-		return
-	}
-	rootID, ok := parseThreadRootID(parts[2])
-	if !ok {
-		return
-	}
-	msg.ChannelKey = rctx.chatID + ":topic:" + rootID
-	msg.LegacyChannelKey = rctx.chatID
-}
-
 // bufferImage adds a freshly-downloaded image to the per-session batch buffer.
 // Consecutive image-only messages from the same session (same chatID + userID
 // + parentID) coalesce into a single multi-image dispatch after imageBatchWindow
@@ -1927,7 +1900,7 @@ func (p *Platform) onMessage(ctx context.Context, event *larkim.P2MessageReceive
 	slog.Debug(p.tag()+": routed inbound message",
 		"message_id", messageID,
 		"session_key", sessionKey,
-		"reply_in_thread", p.shouldReplyInThread(rctx),
+		"reply_in_thread", p.replyTarget(rctx).inThread,
 	)
 
 	// Mark this thread as bot-engaged so subsequent attachment-only messages
@@ -1986,7 +1959,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 	// exception: earlier unmentioned messages were never dispatched to the
 	// agent, so bootstrap its context from the parent/root reply chain once.
 	var quoted quotedMessage
-	if parentID != "" && (!p.threadIsolation || !isThreadSessionKey(sessionKey) || rctx.bootstrapThread) {
+	if parentID != "" && (!p.threadScoped(sessionKey) || rctx.bootstrapThread) {
 		quoted = p.fetchQuotedMessage(ctx, parentID)
 	}
 	historyText := p.formatGroupHistory(groupHistoryCtx)
@@ -3354,7 +3327,7 @@ func (p *Platform) Reply(ctx context.Context, rctx any, content string) error {
 	content = p.resolveOutboundMentions(ctx, rc, content)
 	msgType, msgBody := buildReplyContent(content)
 
-	if !p.shouldUseThreadOrReplyAPI(rc) {
+	if p.replyTarget(rc).replyTo == "" {
 		return p.sendNewMessageToChat(ctx, rc, msgType, msgBody)
 	}
 	return p.replyMessage(ctx, rc, msgType, msgBody)
@@ -3369,7 +3342,7 @@ func (p *Platform) Send(ctx context.Context, rctx any, content string) error {
 		return fmt.Errorf("%s: invalid reply context type %T", p.tag(), rctx)
 	}
 
-	if p.shouldUseThreadOrReplyAPI(rc) {
+	if p.replyTarget(rc).replyTo != "" {
 		return p.Reply(ctx, rctx, content)
 	}
 
@@ -3410,7 +3383,7 @@ func (p *Platform) SendWithStatusFooter(ctx context.Context, rctx any, content, 
 	processedBody := sanitizeMarkdownURLs(preprocessFeishuMarkdown(content))
 	processedFooter := sanitizeMarkdownURLs(preprocessFeishuMarkdown(footer))
 	cardJSON := buildCardJSONWithStatusFooter(processedBody, processedFooter)
-	if p.shouldUseThreadOrReplyAPI(rc) {
+	if p.replyTarget(rc).replyTo != "" {
 		return p.replyMessage(ctx, rc, larkim.MsgTypeInteractive, cardJSON)
 	}
 	return p.sendNewMessageToChat(ctx, rc, larkim.MsgTypeInteractive, cardJSON)
@@ -3563,7 +3536,7 @@ func (p *Platform) sendVideoMessage(ctx context.Context, rc replyContext, video 
 }
 
 func (p *Platform) sendMediaMessage(ctx context.Context, rc replyContext, msgType, content string) error {
-	if p.shouldUseThreadOrReplyAPI(rc) {
+	if p.replyTarget(rc).replyTo != "" {
 		return p.replyMessage(ctx, rc, msgType, content)
 	}
 	return p.createMessage(ctx, rc.chatID, msgType, content, "send media message")
@@ -4146,7 +4119,7 @@ func isAttachmentMsgType(msgType string) bool {
 // It reports whether this call activated the thread for the first time. It is
 // a no-op when thread isolation is disabled or sessionKey is not a thread key.
 func (p *Platform) markThreadSessionActive(sessionKey string) bool {
-	if !p.threadIsolation || !isThreadSessionKey(sessionKey) {
+	if !p.threadScoped(sessionKey) {
 		return false
 	}
 	_, loaded := p.activeThreadSessions.LoadOrStore(sessionKey, time.Now())
@@ -4159,7 +4132,7 @@ func (p *Platform) markThreadSessionActive(sessionKey string) bool {
 // isActiveThreadSession reports whether the given sessionKey corresponds to a
 // thread that has previously been engaged by an @bot message.
 func (p *Platform) isActiveThreadSession(sessionKey string) bool {
-	if !p.threadIsolation || !isThreadSessionKey(sessionKey) {
+	if !p.threadScoped(sessionKey) {
 		return false
 	}
 	_, ok := p.activeThreadSessions.Load(sessionKey)
@@ -4188,51 +4161,6 @@ func stripMentions(text string, mentions []*larkim.MentionEvent, botOpenID strin
 	return strings.TrimSpace(text)
 }
 
-// TODO: Session-key derivation and reply-thread behavior are split across multiple code paths here.
-// Should revisit thread/root handling without changing thread_isolation=false behavior.
-func (p *Platform) makeSessionKey(msg *larkim.EventMessage, chatID, userID string) string {
-	if p.threadIsolation && msg != nil && stringValue(msg.ChatType) == "group" {
-		rootID := stringValue(msg.RootId)
-		if rootID == "" {
-			rootID = stringValue(msg.MessageId)
-		}
-		if rootID != "" {
-			return fmt.Sprintf("%s:%s:root:%s", p.tag(), chatID, rootID)
-		}
-	}
-	if p.shareSessionInChannel {
-		return fmt.Sprintf("%s:%s", p.tag(), chatID)
-	}
-	return fmt.Sprintf("%s:%s:%s", p.tag(), chatID, userID)
-}
-
-func (p *Platform) sessionKeyFromCardAction(chatID, userID string, value map[string]any) string {
-	if value != nil {
-		if sessionKey, _ := value["session_key"].(string); sessionKey != "" {
-			return sessionKey
-		}
-	}
-	if p.shareSessionInChannel {
-		return fmt.Sprintf("%s:%s", p.tag(), chatID)
-	}
-	return fmt.Sprintf("%s:%s:%s", p.tag(), chatID, userID)
-}
-
-func (p *Platform) shouldReplyInThread(rc replyContext) bool {
-	if rc.messageID == "" {
-		return false
-	}
-	return p.threadIsolation && isThreadSessionKey(rc.sessionKey)
-}
-
-// shouldUseThreadOrReplyAPI is true when we should call Im.Message.Reply (optionally with ReplyInThread).
-func (p *Platform) shouldUseThreadOrReplyAPI(rc replyContext) bool {
-	if rc.messageID == "" {
-		return false
-	}
-	return !p.noReplyToTrigger
-}
-
 func (p *Platform) sendNewMessageToChat(ctx context.Context, rc replyContext, msgType, content string) error {
 	if rc.chatID == "" {
 		return fmt.Errorf("%s: chatID is empty, cannot send new message", p.tag())
@@ -4244,7 +4172,7 @@ func (p *Platform) buildReplyMessageReqBody(rc replyContext, msgType, content st
 	body := larkim.NewReplyMessageReqBodyBuilder().
 		MsgType(msgType).
 		Content(content)
-	if p.shouldReplyInThread(rc) {
+	if p.replyTarget(rc).inThread {
 		body.ReplyInThread(true)
 	}
 	return body.Build()
@@ -4655,64 +4583,6 @@ func stringValue(v *string) string {
 // message history API reports bots as "app".
 func isBotSenderType(senderType string) bool {
 	return strings.EqualFold(senderType, "bot") || strings.EqualFold(senderType, "app")
-}
-
-func (p *Platform) ReconstructReplyCtx(sessionKey string) (any, error) {
-	// {platformName}:{chatID}:{userID}
-	parts := strings.SplitN(sessionKey, ":", 3)
-	if len(parts) < 2 || parts[0] != p.platformName {
-		return nil, fmt.Errorf("%s: invalid session key %q", p.tag(), sessionKey)
-	}
-	rc := replyContext{chatID: parts[1], sessionKey: sessionKey}
-	if len(parts) == 3 {
-		if rootID, ok := parseThreadRootID(parts[2]); ok {
-			rc.messageID = rootID
-		}
-	}
-	return rc, nil
-}
-
-// RelayGroupVisibilityKey implements core.RelayGroupVisibilityTarget for
-// feishu.  When the caller session key targets a feishu thread (its
-// third colon-separated segment carries a non-empty "root:" or
-// "thread:" prefix produced by makeSessionKey), the visibility echo
-// gets routed back into that thread; otherwise the platform returns
-// ("", false) so core falls back to the channel-level ":relay" default.
-func (p *Platform) RelayGroupVisibilityKey(callerSessionKey string) (string, bool) {
-	parts := strings.SplitN(callerSessionKey, ":", 3)
-	if len(parts) < 3 || parts[0] != "feishu" {
-		return "", false
-	}
-	chatID := parts[1]
-	third := parts[2]
-	for _, pfx := range []string{"root:", "thread:"} {
-		if after, ok := strings.CutPrefix(third, pfx); ok && after != "" {
-			return "feishu:" + chatID + ":" + third, true
-		}
-	}
-	return "", false
-}
-
-func parseThreadRootID(sessionTail string) (string, bool) {
-	for _, prefix := range []string{"root:", "thread:"} {
-		if strings.HasPrefix(sessionTail, prefix) {
-			rootID := strings.TrimPrefix(sessionTail, prefix)
-			if rootID != "" {
-				return rootID, true
-			}
-			return "", false
-		}
-	}
-	return "", false
-}
-
-func isThreadSessionKey(sessionKey string) bool {
-	parts := strings.SplitN(sessionKey, ":", 3)
-	if len(parts) != 3 {
-		return false
-	}
-	_, ok := parseThreadRootID(parts[2])
-	return ok
 }
 
 // feishuPreviewHandle stores the message ID for an editable preview message.
@@ -5315,7 +5185,7 @@ func (p *Platform) SendPreviewStart(ctx context.Context, rctx any, content strin
 	}
 
 	var msgID string
-	if p.shouldUseThreadOrReplyAPI(rc) {
+	if p.replyTarget(rc).replyTo != "" {
 		req := larkim.NewReplyMessageReqBuilder().
 			MessageId(rc.messageID).
 			Body(p.buildReplyMessageReqBody(rc, larkim.MsgTypeInteractive, sendContent)).
@@ -5742,7 +5612,7 @@ func (p *Platform) SendAudio(ctx context.Context, rctx any, audio []byte, format
 	// we used Reply (in-thread) or Create (new message) when issues
 	// recur. The Reply path has historically had narrower MsgType
 	// support on some Feishu desktop client versions.
-	if p.shouldUseThreadOrReplyAPI(rc) {
+	if p.replyTarget(rc).replyTo != "" {
 		slog.Debug(p.tag()+": SendAudio using Reply API",
 			"file_key", fileKey, "msg_id", rc.messageID, "format", format)
 	} else {
@@ -5903,7 +5773,7 @@ func (p *Platform) onBotMenu(event *larkapplication.P2BotMenuV6) error {
 	}
 
 	userName := p.resolveUserName(userID)
-	sessionKey := p.platformName + ":" + userID + ":" + userID
+	sessionKey := p.menuSessionKey(userID)
 
 	p.getHandler()(p.dispatchPlatform(), &core.Message{
 		SessionKey: sessionKey,

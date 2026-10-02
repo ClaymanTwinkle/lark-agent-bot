@@ -25,7 +25,7 @@ func (p *interactivePlatform) ReplyCard(ctx context.Context, rctx any, card *cor
 	}
 
 	cardJSON := renderCard(card, rc.sessionKey)
-	if !p.shouldUseThreadOrReplyAPI(rc) {
+	if p.replyTarget(rc).replyTo == "" {
 		if rc.chatID == "" {
 			return fmt.Errorf("%s: chatID is empty, cannot send card", p.tag())
 		}
@@ -44,7 +44,7 @@ func (p *interactivePlatform) SendCard(ctx context.Context, rctx any, card *core
 		return fmt.Errorf("%s: chatID is empty, cannot send card", p.tag())
 	}
 
-	if !p.noReplyToTrigger && p.shouldReplyInThread(rc) {
+	if p.replyTarget(rc).inThread {
 		return p.ReplyCard(ctx, rctx, card)
 	}
 
