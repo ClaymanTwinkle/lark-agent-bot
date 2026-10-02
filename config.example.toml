@@ -16,10 +16,20 @@
 # =============================================================================
 # Global Settings / 全局设置
 # =============================================================================
+# These are top-level keys. TOML has no way to end a table, so every key below
+# a [table] header belongs to that table: keep top-level keys above the first
+# header ([log] below), or they are ignored. lark-agent-bot logs a warning for
+# every key it does not know, with its full path (e.g. log.idle_timeout_mins).
+# 以下是顶层键。TOML 没有结束表的写法，写在 [表] 标题下面的键都属于那个表：顶层键必须
+# 放在第一个表标题（下面的 [log]）之前，否则不生效。lark-agent-bot 遇到不认识的键会打
+# 警告日志，写明完整路径（如 log.idle_timeout_mins）。
 
 # Language for bot messages / 机器人消息语言
 # - "en": English
-# - "zh": 中文
+# - "zh": 简体中文
+# - "zh-TW": 繁體中文
+# - "ja": 日本語
+# - "es": Español
 # - "" (empty/not set): Auto-detect from user's first message / 留空自动检测
 # language = "en"
 
@@ -70,6 +80,85 @@
 # 默认 2（略高于 120 秒优雅停止等待）。设 0 关闭该自愈。
 # busy_timeout_mins = 2
 
+# Agent idle timeout: max minutes between consecutive agent events before
+# considering the session stuck. Set to 0 to disable the timeout entirely.
+# Agent 空闲超时：两次 agent 事件之间的最大等待分钟数，超时则认为会话卡住。设为 0 禁用。
+# idle_timeout_mins = 120  # default: 120 (2 hours) / 默认 120（2 小时）
+
+# Stall notice: when a turn has had no agent events for this many minutes, tell
+# the user once that it may be stuck (with what it is waiting on) and how to
+# /stop it. Notify only — the turn keeps running; idle_timeout_mins still ends
+# it. stall_notice_mins applies while the agent waits on the model,
+# stall_tool_notice_mins while a tool runs (tools are often silent longer).
+# Set to 0 to disable.
+# 卡住提醒：一轮对话超过这么多分钟没有任何 agent 事件时，提醒用户一次可能卡住了
+# （说明卡在等模型还是在跑哪个工具）以及可以 /stop。只提醒不中止，中止仍由
+# idle_timeout_mins 负责。stall_notice_mins 用于等模型返回时，
+# stall_tool_notice_mins 用于工具运行时（工具正常运行也可能长时间无输出）。设为 0 禁用。
+# stall_notice_mins = 5         # default: 5 / 默认 5
+# stall_tool_notice_mins = 15   # default: 15 / 默认 15
+
+# Retry notice: when the agent keeps retrying a failed model request (network
+# error, rate limit, overload...), tell the user once per run of retries, with
+# the attempt and reason, at this attempt. Retries that will wait a minute or
+# more, or that got no response at all, are reported right away. Currently
+# reported by Claude Code. Set to 0 to disable.
+# 重试提醒：agent 连续重试失败的模型请求（网络错误、限流、过载等）时，在第几次重试
+# 提醒用户一次，并说明次数和原因；同一段连续重试只提醒一次。下次重试要等 1 分钟
+# 以上、或请求完全没有响应时立即提醒。目前由 Claude Code 上报。设为 0 禁用。
+# retry_notice_attempts = 3     # default: 3 / 默认 3
+
+# Restart after /upgrade: a restart stops every agent process, so when /upgrade
+# installs an update while tasks are in progress (running turns, queued
+# messages, background tasks, pending permission prompts), the restart waits
+# for them to finish, up to this many minutes; then it restarts anyway and the
+# interrupted chats are told. /restart still restarts at once. 0 restarts
+# immediately.
+# /upgrade 后的重启：重启会结束所有 agent 进程，所以 /upgrade 装好更新时如果还有任务
+# 在处理（正在进行的对话、排队的消息、后台任务、等待确认的权限请求），会等它们做完再
+# 重启，最多等这么多分钟；到时间仍会重启，被打断的会话会收到提示。/restart 仍立即
+# 重启。设为 0 表示立即重启。
+# upgrade_restart_wait_mins = 120  # default: 120 / 默认 120
+
+# Absolute wall-clock cap per agent turn in minutes. Unlike idle_timeout_mins
+# (which resets on every event), this timer is never reset — it guarantees the
+# session is released even when a long bash command generates periodic tool events.
+# Recommended: 30–60 minutes for most use cases. Default: 0 (disabled).
+# 每次 agent 对话的绝对时间上限（分钟）。与 idle_timeout_mins 不同，此计时器不会因
+# 工具调用事件而重置，可防止长时间运行的 bash 命令永久占用会话（#1091）。
+# 推荐值：30–60。默认 0（禁用）。
+# max_turn_time_mins = 0  # default: disabled / 默认禁用
+
+# Workspace idle timeout for multi-workspace projects (see "Multi-workspace
+# Mode" below): when a workspace has had no message for this many minutes and
+# none of its sessions is busy, its agent processes are closed to free
+# resources. The workspace binding is kept; the next message starts the agent
+# again. Applies to every project in this process. 0 disables. Default: 15.
+# Setting it under [[projects]] is deprecated (still honored, with a warning).
+# 多工作区项目的工作区空闲回收时间（见下方「多工作区模式」）：某个工作区这么多分钟没有
+# 消息、且没有会话在忙时，关闭它的 agent 进程以释放资源；工作区绑定保留，下一条消息会
+# 重新启动 agent。对本进程内所有项目生效。设为 0 禁用，默认 15。
+# 写在 [[projects]] 下的旧写法已弃用（仍然生效，但会打警告）。
+# workspace_idle_timeout_mins = 15
+
+# Provider presets: the recommended-provider list used by /provider in chat
+# and by the web admin. Fetched from GitHub (raw.githubusercontent.com); if
+# that fails, from the jsDelivr mirror of the default list. Set this to fetch
+# the list from your own URL instead (same JSON format as provider-presets.json
+# in this repo); the jsDelivr fallback still serves the default list.
+# 服务商预设：聊天里 /provider 和 Web 管理后台使用的推荐服务商列表。默认从 GitHub
+# （raw.githubusercontent.com）拉取，失败时改从 jsDelivr 镜像拉取默认列表。设置此项可
+# 改为从你自己的 URL 拉取（格式同本仓库的 provider-presets.json）；拉取失败时回退的
+# jsDelivr 仍是默认列表。
+# provider_presets_url = "https://raw.githubusercontent.com/ClaymanTwinkle/lark-agent-bot/main/provider-presets.json"
+
+# Banned words: messages containing any of these words are blocked and NOT
+# forwarded to the AI agent. Matching is case-insensitive.
+# 违禁词：消息中包含以下任一违禁词时，将被拦截，不会转发给 AI Agent。匹配不区分大小写。
+# banned_words = ["违禁词1", "违禁词2", "secret_project"]
+
+# The first table header: top-level keys must stay above this line.
+# 第一个表标题：顶层键必须写在这一行之前。
 [log]
 level = "info" # debug, info, warn, error
 
@@ -80,10 +169,8 @@ level = "info" # debug, info, warn, error
 # 在此统一定义服务商，项目通过 provider_refs 按名称引用。
 # This avoids duplicating API keys across projects.
 # 避免在多个项目中重复配置 API Key。
-#
-# Remote presets URL (fetches recommended providers list from GitHub/Gitee)
-# 远程预设列表 URL（从 GitHub/Gitee 拉取推荐服务商）
-# provider_presets_url = "https://raw.githubusercontent.com/ClaymanTwinkle/lark-agent-bot/main/provider-presets.json"
+# The recommended-provider list (provider_presets_url) is a top-level key, see above.
+# 推荐服务商列表地址 provider_presets_url 是顶层键，见上方。
 
 # [[providers]]
 # name = "anthropic"
@@ -140,146 +227,10 @@ level = "info" # debug, info, warn, error
 # hide_agent_footer = false      # Strip standalone model/token footer lines emitted by agents (default: false)
 #                                # 过滤 agent 自己混入正文的模型/token 统计 footer 行（默认 false 不过滤）
 
-# Per-project override: each [[projects]] entry may have its own [projects.display]
-# block that overrides individual fields of the global [display] block above.
-# Resolution order is per-field — set fields win, unset fields fall back to global,
-# then to built-in defaults. Useful when one project should be quiet while others
-# stay verbose, or vice versa.
-# 每个 [[projects]] 条目可以有自己的 [projects.display] 块，逐字段覆盖全局
-# [display]。已设字段优先，未设字段回落到全局值，再回落到默认值。
-#
-# [[projects]]
-# name = "noisy-project"
-# [projects.display]
-# thinking_messages = false  # Override only this field; others inherit from global
-# tool_messages = false
-# hide_agent_footer = true   # Hide agent-emitted model/token footer only for this project
+# Each [[projects]] entry can override these fields with its own
+# [projects.display] block, see Project 1 below.
+# 每个 [[projects]] 可以用自己的 [projects.display] 块逐字段覆盖以上设置，见下方项目 1。
 
-# Agent idle timeout: max minutes between consecutive agent events before
-# considering the session stuck. Set to 0 to disable the timeout entirely.
-# Agent 空闲超时：两次 agent 事件之间的最大等待分钟数，超时则认为会话卡住。设为 0 禁用。
-# idle_timeout_mins = 120  # default: 120 (2 hours) / 默认 120（2 小时）
-
-# Stall notice: when a turn has had no agent events for this many minutes, tell
-# the user once that it may be stuck (with what it is waiting on) and how to
-# /stop it. Notify only — the turn keeps running; idle_timeout_mins still ends
-# it. stall_notice_mins applies while the agent waits on the model,
-# stall_tool_notice_mins while a tool runs (tools are often silent longer).
-# Set to 0 to disable.
-# 卡住提醒：一轮对话超过这么多分钟没有任何 agent 事件时，提醒用户一次可能卡住了
-# （说明卡在等模型还是在跑哪个工具）以及可以 /stop。只提醒不中止，中止仍由
-# idle_timeout_mins 负责。stall_notice_mins 用于等模型返回时，
-# stall_tool_notice_mins 用于工具运行时（工具正常运行也可能长时间无输出）。设为 0 禁用。
-# stall_notice_mins = 5         # default: 5 / 默认 5
-# stall_tool_notice_mins = 15   # default: 15 / 默认 15
-
-# Retry notice: when the agent keeps retrying a failed model request (network
-# error, rate limit, overload...), tell the user once per run of retries, with
-# the attempt and reason, at this attempt. Retries that will wait a minute or
-# more, or that got no response at all, are reported right away. Currently
-# reported by Claude Code. Set to 0 to disable.
-# 重试提醒：agent 连续重试失败的模型请求（网络错误、限流、过载等）时，在第几次重试
-# 提醒用户一次，并说明次数和原因；同一段连续重试只提醒一次。下次重试要等 1 分钟
-# 以上、或请求完全没有响应时立即提醒。目前由 Claude Code 上报。设为 0 禁用。
-# retry_notice_attempts = 3     # default: 3 / 默认 3
-
-# Restart after /upgrade: a restart stops every agent process, so when /upgrade
-# installs an update while tasks are in progress (running turns, queued
-# messages, background tasks, pending permission prompts), the restart waits
-# for them to finish, up to this many minutes; then it restarts anyway and the
-# interrupted chats are told. /restart still restarts at once. 0 restarts
-# immediately.
-# /upgrade 后的重启：重启会结束所有 agent 进程，所以 /upgrade 装好更新时如果还有任务
-# 在处理（正在进行的对话、排队的消息、后台任务、等待确认的权限请求），会等它们做完再
-# 重启，最多等这么多分钟；到时间仍会重启，被打断的会话会收到提示。/restart 仍立即
-# 重启。设为 0 表示立即重启。
-# upgrade_restart_wait_mins = 120  # default: 120 / 默认 120
-
-# Absolute wall-clock cap per agent turn in minutes. Unlike idle_timeout_mins
-# (which resets on every event), this timer is never reset — it guarantees the
-# session is released even when a long bash command generates periodic tool events.
-# Recommended: 30–60 minutes for most use cases. Default: 0 (disabled).
-# 每次 agent 对话的绝对时间上限（分钟）。与 idle_timeout_mins 不同，此计时器不会因
-# 工具调用事件而重置，可防止长时间运行的 bash 命令永久占用会话（#1091）。
-# 推荐值：30–60。默认 0（禁用）。
-# max_turn_time_mins = 0  # default: disabled / 默认禁用
-
-# Auto-reset the active session after the user has been inactive for a while.
-# Unlike idle_timeout_mins, this does not detect stuck agent execution. It
-# rotates to a fresh lark-agent-bot session when the user comes back after being idle.
-# This avoids "context drift", where stale chat history (failed commands,
-# debugging noise, abandoned tangents) gets re-ingested via --continue every
-# time the workspace pool evicts the session, and starts to dominate the model's
-# attention. The previous session is preserved and remains accessible via
-# /list and /switch.
-#
-# Default: 30 minutes when unset. Set to 0 to opt out and always continue the
-# previous session (the pre-default behavior).
-# 用户长时间未发消息后，自动切换到一个新的活跃会话。
-# 这与 idle_timeout_mins 不同：它不是检测 agent 卡住，而是用户回来后自动开始新会话。
-# 默认值为 30 分钟（未设置时）。设为 0 可以禁用此行为，恢复始终继续上次会话。
-# [[projects]]
-# reset_on_idle_mins = 30   # default when unset / 未设置时的默认值；设为 0 表示禁用
-
-# Close an idle live agent process after a clean turn while preserving the
-# lark-agent-bot session and saved agent session ID. The next message in the same
-# chat/thread starts a new agent process and resumes the same conversation.
-# This is per chat session/thread, unlike workspace_idle_timeout_mins which
-# reaps an entire workspace. Set to 0 or leave unset to disable.
-# Unlike reset_on_idle_mins, this defaults to disabled because closing a live
-# agent process is an opt-in resource optimization.
-# An agent still running background tasks (Claude Code background shells and
-# subagents) is not idle: the process stays until they finish.
-# 在单次对话正常完成后，如果该聊天会话/主题长时间没有新消息，则关闭对应的 live agent
-# 进程，但保留 lark-agent-bot 会话和已保存的 agent_session_id。下次同一会话有消息时会
-# 重新启动 agent 进程并续接原会话。这是按会话/主题生效，不同于按 workspace 回收的
-# workspace_idle_timeout_mins。设为 0 或不设置表示禁用。
-# 与 reset_on_idle_mins 不同，此项默认禁用，因为关闭 live agent 进程属于显式开启的资源优化。
-# agent 还有后台任务在跑时（Claude Code 的后台命令和后台 subagent）不算空闲，进程会保留到任务结束。
-# [[projects]]
-# agent_session_idle_timeout_mins = 30
-
-# =============================================================================
-# OS-user isolation via run_as_user (Linux/macOS only)
-# 通过 run_as_user 实现 OS 用户隔离（仅限 Linux/macOS）
-# =============================================================================
-#
-# Spawn a project's agent command under a different Unix user via
-# `sudo -n -iu <user>`. This provides OS-level file-system isolation from
-# the supervisor user that runs lark-agent-bot itself, so a misbehaving agent
-# cannot read files outside the target user's permission scope.
-#
-# Currently supported by: claudecode.
-# Other agents use the supervisor user until migrated in a follow-up PR.
-#
-# Setup (one-time):
-#   1. Create the target Unix user and install their tooling:
-#        sudo useradd -m -s /bin/bash partseeker-coder
-#        sudo -iu partseeker-coder
-#        # install claude CLI, set up ~/.claude/settings.json, PGSSL certs,
-#        # ~/.pgpass, plugin state, anything the agent needs.
-#   2. Grant the supervisor user passwordless sudo to the target:
-#        # /etc/sudoers.d/lark-agent-bot
-#        partseeker-orchestrator ALL=(partseeker-coder) NOPASSWD: ALL
-#   3. Ensure the target user does NOT have passwordless sudo to anywhere
-#      else. `sudo -n -iu partseeker-coder -- sudo -n true` must fail.
-#   4. Ensure the target user can read AND write the project's work_dir.
-#   5. Run `lark-agent-bot doctor user-isolation` to audit the setup before
-#      starting lark-agent-bot.
-#
-# lark-agent-bot refuses to start if any preflight gate fails (missing sudo,
-# target can escalate, work_dir inaccessible) or if the isolation probe
-# detects that the target user can read another user's secrets.
-#
-# [[projects]]
-# name = "claude-sandboxed"
-# run_as_user = "partseeker-coder"
-# # Extra env vars to forward across the sudo boundary. The default
-# # allowlist (PATH, LANG, LC_*, TERM) is always included; only list
-# # names that the target user cannot reasonably set in their own shell
-# # profile. Secrets belong in the target user's ~/.claude/settings.json
-# # env block, NOT here.
-# run_as_env = ["PGSSLROOTCERT", "PGSSLMODE"]
 # =============================================================================
 # Streaming Preview / 流式预览
 # =============================================================================
@@ -349,44 +300,6 @@ level = "info" # debug, info, warn, error
 # timeout_secs = 120        # Max relay wait in seconds; 0 = disabled (default: 120) / relay 最大等待秒数；0 = 禁用（默认 120）
 # visibility = "full"       # "full" (default), "summary", or "none" / 群内可见消息：完整、摘要或不显示
 # peers_dir = "/srv/lark-agent-bot/relay-peers"  # Registry shared by local lark-agent-bot processes so relay reaches projects in other processes; all processes must use the same dir (default: <home>/.lark-agent-bot/relay-peers) / 本机各 lark-agent-bot 进程共享的登记目录，relay 靠它找到其他进程里的项目，各进程必须一致（默认 <home>/.lark-agent-bot/relay-peers）
-
-# =============================================================================
-# Auto-Compress (after each turn) / 自动压缩（每轮结束后）
-# =============================================================================
-# Automatically trigger /compress when token usage exceeds the threshold.
-#
-# Timing matters here: this runs AFTER a turn has finished, not inside it. The
-# agent's own loop is not interrupted, so a turn that grows past the threshold
-# mid-flight is only compressed once it completes. Agents that compact natively
-# mid-turn (Claude Code, via autoCompactWindow) do so *during* the loop and are
-# therefore strictly more timely — prefer that where it is available, and use
-# this when the agent has no such mechanism or when you want a visible,
-# turn-boundary compaction point.
-#
-# 时机很关键：本功能在**一轮对话结束后**触发，不会打断 agent 自己的迭代循环。
-# 因此如果某一轮在中途就越过了阈值，也要等该轮跑完才会压缩。原生支持轮内压缩的
-# agent（如 Claude Code 的 autoCompactWindow）会在循环过程中压缩，时机更准；能用
-# 原生机制就优先用原生，本功能适用于 agent 自身没有压缩能力、或你希望压缩发生在
-# 一个可见的、干净的轮次边界上的场景。
-#
-# [projects.auto_compress]
-# enabled = true
-# max_tokens = 12000     # estimated token threshold to trigger compression
-# min_gap_mins = 30      # minimum minutes between auto-compress runs (default 30)
-# allow_heuristic = false  # decide from the text-length heuristic when an agent that
-#                          # CAN report exact usage has not reported it yet. Off by
-#                          # default: wait for the exact number instead. The heuristic
-#                          # counts only lark-agent-bot's own history text, ignoring tool
-#                          # results and the fixed system-prompt+tools overhead, so it
-#                          # is routinely several times off. Agents with no usage
-#                          # reporting at all always use the heuristic — for them it is
-#                          # the only mechanism available, and this flag does not apply.
-#                          # 当「有能力上报精确用量的 agent」暂时还没上报时，是否退回文本
-#                          # 长度启发式估算。默认关闭：宁可等到精确值。该启发式只统计
-#                          # lark-agent-bot 自身的对话文本，忽略 tool_result 与系统提示词/
-#                          # 工具定义的固定开销，误差常达数倍。完全没有用量上报能力的
-#                          # agent 始终使用启发式——那是它们唯一的机制，本开关对其无效。
-
 
 # =============================================================================
 # Cron Settings / 定时任务设置
@@ -701,16 +614,6 @@ level = "info" # debug, info, warn, error
 # 此外，lark-agent-bot 还会自动发现 Agent 的 commands 目录下的 .md 文件。
 
 # =============================================================================
-# Banned Words / 违禁词
-# =============================================================================
-#
-# Messages containing any of these words will be blocked and NOT forwarded to
-# the AI agent. Matching is case-insensitive.
-# 消息中包含以下任一违禁词时，将被拦截，不会转发给 AI Agent。匹配不区分大小写。
-
-# banned_words = ["违禁词1", "违禁词2", "secret_project"]
-
-# =============================================================================
 # Command Aliases / 命令别名
 # =============================================================================
 #
@@ -752,6 +655,9 @@ level = "info" # debug, info, warn, error
 # /workspace init <url> to clone and bind a new repo.
 # 单个 bot 服务多个工作区。每个群聊用 /workspace bind 或选择卡片绑定一个目录
 # （例如 base_dir 下的子目录）。使用 /workspace init <url> 克隆并绑定新仓库。
+# Idle workspaces are closed after workspace_idle_timeout_mins (a top-level
+# key, see Global Settings above).
+# 空闲工作区的回收时间由顶层键 workspace_idle_timeout_mins 控制，见上方全局设置。
 #
 # [[projects]]
 # name = "claude-multi"
@@ -815,13 +721,100 @@ name = "my-backend"
 # Explicit user list: only these users can run privileged commands.
 # 指定用户列表：仅这些用户可执行特权命令。
 # admin_from = "user_id_1,user_id_2"
-#
+
+# Or, instead of the list above / 或者代替上面的用户列表：
 # ⚠️ RISK WARNING / 风险提示:
 # Setting admin_from = "*" grants ALL allowed users full shell access to the host machine.
 # Only use this for personal single-user deployments where you trust every allowed user.
 # 设置 admin_from = "*" 将授予所有已允许的用户对主机的完整 shell 访问权限。
 # 仅在个人单用户部署中使用此配置，确保所有允许的用户均可信任。
 # admin_from = "*"
+
+# Start a fresh session after the user has been away: when a message arrives
+# more than this many minutes after the user's last message in the session,
+# lark-agent-bot starts a new session for it instead of continuing the old one
+# (not while the agent is still working). Unlike idle_timeout_mins, this does
+# not detect a stuck agent. It avoids "context drift", where stale chat
+# history (failed commands, debugging noise, abandoned tangents) keeps being
+# resumed and starts to dominate the model's attention. The previous session
+# is kept and stays reachable via /list and /switch.
+# Default: 0 (off), so the next message always continues the previous session.
+# 用户离开一段时间后自动开始新会话：距离用户在该会话里的上一条消息超过这么多分钟时，
+# 新消息会进入一个新会话，而不是继续旧会话（agent 仍在工作时不会切换）。这与
+# idle_timeout_mins 不同：它不检测 agent 卡住，用途是避免「上下文漂移」：旧的聊天记录
+# （失败的命令、调试噪音、放弃的方向）被反复续接，逐渐占据模型注意力。旧会话保留，
+# 可通过 /list 和 /switch 找回。默认 0（关闭）：下一条消息总是继续上次的会话。
+# reset_on_idle_mins = 30
+
+# Close an idle live agent process after a clean turn while preserving the
+# lark-agent-bot session and saved agent session ID. The next message in the same
+# chat/thread starts a new agent process and resumes the same conversation.
+# This is per chat session/thread, unlike workspace_idle_timeout_mins which
+# reaps an entire workspace. Set to 0 or leave unset to disable (the default):
+# closing a live agent process is an opt-in resource optimization.
+# An agent still running background tasks (Claude Code background shells and
+# subagents) is not idle: the process stays until they finish.
+# 在单次对话正常完成后，如果该聊天会话/主题长时间没有新消息，则关闭对应的 live agent
+# 进程，但保留 lark-agent-bot 会话和已保存的 agent_session_id。下次同一会话有消息时会
+# 重新启动 agent 进程并续接原会话。这是按会话/主题生效，不同于按 workspace 回收的
+# workspace_idle_timeout_mins。设为 0 或不设置表示禁用（默认），关闭 live agent 进程
+# 属于显式开启的资源优化。
+# agent 还有后台任务在跑时（Claude Code 的后台命令和后台 subagent）不算空闲，进程会保留到任务结束。
+# agent_session_idle_timeout_mins = 30
+
+# OS-user isolation via run_as_user (Linux/macOS only)
+# 通过 run_as_user 实现 OS 用户隔离（仅限 Linux/macOS）
+#
+# Spawn this project's agent command under a different Unix user via
+# `sudo -n -iu <user>`. This provides OS-level file-system isolation from
+# the supervisor user that runs lark-agent-bot itself, so a misbehaving agent
+# cannot read files outside the target user's permission scope.
+#
+# Currently supported by: claudecode.
+# Other agents use the supervisor user until migrated in a follow-up PR.
+#
+# Setup (one-time):
+#   1. Create the target Unix user and install their tooling:
+#        sudo useradd -m -s /bin/bash partseeker-coder
+#        sudo -iu partseeker-coder
+#        # install claude CLI, set up ~/.claude/settings.json, PGSSL certs,
+#        # ~/.pgpass, plugin state, anything the agent needs.
+#   2. Grant the supervisor user passwordless sudo to the target:
+#        # /etc/sudoers.d/lark-agent-bot
+#        partseeker-orchestrator ALL=(partseeker-coder) NOPASSWD: ALL
+#   3. Ensure the target user does NOT have passwordless sudo to anywhere
+#      else. `sudo -n -iu partseeker-coder -- sudo -n true` must fail.
+#   4. Ensure the target user can read AND write the project's work_dir.
+#   5. Run `lark-agent-bot doctor user-isolation` to audit the setup before
+#      starting lark-agent-bot.
+#
+# lark-agent-bot refuses to start if any preflight gate fails (missing sudo,
+# target can escalate, work_dir inaccessible) or if the isolation probe
+# detects that the target user can read another user's secrets.
+#
+# run_as_user = "partseeker-coder"
+# Extra env vars to forward across the sudo boundary. The default allowlist
+# (LANG, LC_ALL, LC_CTYPE, LC_MESSAGES, TERM) is always included; PATH is not
+# (the target user's login shell sets it). Only list names that the target
+# user cannot reasonably set in their own shell profile. Secrets belong in the
+# target user's ~/.claude/settings.json env block, NOT here.
+# run_as_env = ["PGSSLROOTCERT", "PGSSLMODE"]
+
+# Settings below this point are tables of this project ([projects.xxx]);
+# project-level keys like the ones above must stay above them.
+# 以下是本项目的子表（[projects.xxx]）；上面这类项目级的键必须写在它们之前。
+
+# Per-project display: overrides individual fields of the global [display]
+# block for this project. Resolution order is per-field — set fields win, unset
+# fields fall back to global, then to built-in defaults. Useful when one project
+# should be quiet while others stay verbose, or vice versa.
+# 项目级显示设置：逐字段覆盖全局 [display]。已设字段优先，未设字段回落到全局值，
+# 再回落到默认值。适合让某个项目安静、其他项目保持详细，或者反过来。
+#
+# [projects.display]
+# thinking_messages = false  # Override only this field; others inherit from global
+# tool_messages = false
+# hide_agent_footer = true   # Hide agent-emitted model/token footer only for this project
 
 # Multi-user mode — per-user rate limits and role-based command ACL
 # 多用户模式 — 按用户速率限制和基于角色的命令权限控制
@@ -872,8 +865,49 @@ name = "my-backend"
 #   - check background tasks
 #   - continue unfinished work
 
+# Auto-Compress (after each turn) / 自动压缩（每轮结束后）
+# Automatically trigger /compress when token usage exceeds the threshold.
+#
+# Timing matters here: this runs AFTER a turn has finished, not inside it. The
+# agent's own loop is not interrupted, so a turn that grows past the threshold
+# mid-flight is only compressed once it completes. Agents that compact natively
+# mid-turn (Claude Code, via autoCompactWindow) do so *during* the loop and are
+# therefore strictly more timely — prefer that where it is available, and use
+# this when the agent has no such mechanism or when you want a visible,
+# turn-boundary compaction point.
+#
+# 时机很关键：本功能在**一轮对话结束后**触发，不会打断 agent 自己的迭代循环。
+# 因此如果某一轮在中途就越过了阈值，也要等该轮跑完才会压缩。原生支持轮内压缩的
+# agent（如 Claude Code 的 autoCompactWindow）会在循环过程中压缩，时机更准；能用
+# 原生机制就优先用原生，本功能适用于 agent 自身没有压缩能力、或你希望压缩发生在
+# 一个可见的、干净的轮次边界上的场景。
+#
+# [projects.auto_compress]
+# enabled = true
+# max_tokens = 12000     # estimated token threshold to trigger compression
+# min_gap_mins = 30      # minimum minutes between auto-compress runs (default 30)
+# allow_heuristic = false  # decide from the text-length heuristic when an agent that
+#                          # CAN report exact usage has not reported it yet. Off by
+#                          # default: wait for the exact number instead. The heuristic
+#                          # counts only lark-agent-bot's own history text, ignoring tool
+#                          # results and the fixed system-prompt+tools overhead, so it
+#                          # is routinely several times off. Agents with no usage
+#                          # reporting at all always use the heuristic — for them it is
+#                          # the only mechanism available, and this flag does not apply.
+#                          # 当「有能力上报精确用量的 agent」暂时还没上报时，是否退回文本
+#                          # 长度启发式估算。默认关闭：宁可等到精确值。该启发式只统计
+#                          # lark-agent-bot 自身的对话文本，忽略 tool_result 与系统提示词/
+#                          # 工具定义的固定开销，误差常达数倍。完全没有用量上报能力的
+#                          # agent 始终使用启发式——那是它们唯一的机制，本开关对其无效。
+
 [projects.agent]
 type = "claudecode"
+# Reference global [[providers]] (see Global Providers above) by name, to avoid
+# duplicating keys per project; switch between them with /provider in chat. A
+# provider whose agent_types leaves out this project's agent type is skipped.
+# 按名称引用全局 [[providers]]（见上方全局服务商），避免每个项目重复配置；在聊天里用
+# /provider 切换。agent_types 不含本项目 agent 类型的服务商会被跳过。
+# provider_refs = ["minimaxi-claude", "dashscope"]
 
 [projects.agent.options]
 work_dir = "/path/to/backend"
@@ -895,6 +929,21 @@ mode = "auto" # "auto" (default when unset) | "default" (manual) | "acceptEdits"
 #
 # When using IM platforms, you can reply "允许"/"allow" to grant permission.
 # 在 IM 平台中，可回复"允许"或"allow"来授权操作。
+
+# Optional: the agent CLI to run (default: "claude"; "codex" for Codex projects).
+# Set it when startup fails with "CLI not found in PATH": a service (daemon)
+# often has a shorter PATH than your shell. Use the absolute path, e.g. from
+# `which claude` (macOS/Linux) or `where claude` (Windows). A string is split
+# on spaces, the first word being the program and the rest extra arguments;
+# when the path has spaces, use an array, one item per argument, such as
+# ['C:\Program Files\Claude\claude.exe']. cli_path / command are deprecated
+# names for this key.
+# 可选：要运行的 agent CLI（默认 "claude"，Codex 项目为 "codex"）。
+# 启动报 "CLI not found in PATH" 时设置它：以服务（daemon）方式运行时 PATH 往往比你的
+# shell 短。填绝对路径，可用 `which claude`（macOS/Linux）或 `where claude`（Windows）
+# 查到。字符串按空格拆分，第一段是程序，其余是额外参数；路径含空格时用数组，每项一个
+# 参数，如 ['C:\Program Files\Claude\claude.exe']。cli_path / command 是这个键的旧名，已弃用。
+# cmd = "/usr/local/bin/claude"
 
 # Optional: set reasoning effort level (passed to claude --effort)
 # 可选：设置推理强度等级（传递给 claude --effort）
@@ -954,21 +1003,6 @@ mode = "auto" # "auto" (default when unset) | "default" (manual) | "acceptEdits"
 # （如 "opus[1m]"），否则按 200K 运行。
 # model = "opus"
 
-# Optional: per-project environment variables injected into Claude Code sessions.
-# This allows different projects to use different model providers (Kimi, Mimo, DeepSeek, etc.)
-# without modifying global ~/.claude/settings.json.
-# 可选：为每个项目单独配置环境变量，注入到 Claude Code 会话中。
-# 这样不同项目可以使用不同的模型供应商，无需修改全局的 ~/.claude/settings.json。
-#
-# [projects.agent.options.env]
-# ANTHROPIC_BASE_URL = "https://api.kimi.com/coding"
-# ANTHROPIC_AUTH_TOKEN = "sk-kimi-xxx"
-# ANTHROPIC_MODEL = "K2.6"
-# ANTHROPIC_DEFAULT_HAIKU_MODEL = "K2.6"
-# ANTHROPIC_DEFAULT_SONNET_MODEL = "K2.6"
-# ANTHROPIC_DEFAULT_OPUS_MODEL = "K2.6"
-# ANTHROPIC_DEFAULT_FABLE_MODEL = "K2.6"
-
 # Claude Code Router Integration / Claude Code Router 集成
 # Route Claude Code requests through Claude Code Router to use different model providers.
 # 通过 Claude Code Router 路由 Claude Code 请求，使用不同的模型提供商。
@@ -986,13 +1020,28 @@ mode = "auto" # "auto" (default when unset) | "default" (manual) | "acceptEdits"
 # Note: When using router, provider settings below are ignored as the router handles model selection.
 # 注意：使用 router 时，下方的 provider 设置将被忽略，因为 router 负责模型选择。
 
-# Active provider (matches a name in [[projects.agent.providers]] or provider_refs)
-# 当前激活的 provider（对应下方 providers 或 provider_refs 中的 name）
+# Active provider: a name from [[projects.agent.providers]] below or from
+# provider_refs (under [projects.agent] above)
+# 当前激活的 provider：下方 [[projects.agent.providers]] 或上方 [projects.agent] 下
+# provider_refs 中的 name
 # provider = "anthropic"
 
-# Reference global [[providers]] by name — avoids duplicating keys per project
-# 引用全局 [[providers]] — 避免每个项目重复配置
-# provider_refs = ["minimaxi", "dashscope"]
+# Optional: per-project environment variables injected into Claude Code sessions.
+# This allows different projects to use different model providers (Kimi, Mimo, DeepSeek, etc.)
+# without modifying global ~/.claude/settings.json.
+# It is a table of its own: agent options like the ones above must stay above it.
+# 可选：为每个项目单独配置环境变量，注入到 Claude Code 会话中。
+# 这样不同项目可以使用不同的模型供应商，无需修改全局的 ~/.claude/settings.json。
+# 它是一个单独的表：上面这类 agent 选项必须写在它之前。
+#
+# [projects.agent.options.env]
+# ANTHROPIC_BASE_URL = "https://api.kimi.com/coding"
+# ANTHROPIC_AUTH_TOKEN = "sk-kimi-xxx"
+# ANTHROPIC_MODEL = "K2.6"
+# ANTHROPIC_DEFAULT_HAIKU_MODEL = "K2.6"
+# ANTHROPIC_DEFAULT_SONNET_MODEL = "K2.6"
+# ANTHROPIC_DEFAULT_OPUS_MODEL = "K2.6"
+# ANTHROPIC_DEFAULT_FABLE_MODEL = "K2.6"
 
 # API Providers — switch between them via /provider command in chat
 # or via CLI: lark-agent-bot provider add --project my-backend --name relay --api-key sk-xxx
@@ -1137,6 +1186,12 @@ app_secret = "your-feishu-app-secret"
 #                           # Agent 完成回复后添加的表情回复（如 "DONE"）；设为 "none" 可禁用
 # group_reply_all = false   # If true, respond to ALL group messages without requiring @mention
 #                           # 设为 true 时，群聊中无需 @机器人 也会响应所有消息（默认 false）
+#                           # Feishu only delivers group messages that do not @ the bot when the app has the
+#                           # im:message.group_msg permission. / 飞书只在应用有 im:message.group_msg 权限时才推送未 @ 机器人的群消息。
+# require_mention = true    # Same switch, inverted: false = respond to all group messages (same as group_reply_all = true);
+#                           # true (default) = only when @mentioned, unless group_reply_all = true.
+#                           # 同一个开关的反向写法：false 等同于 group_reply_all = true；true（默认）表示仅在被 @ 时响应，
+#                           # 除非设置了 group_reply_all = true。
 # share_session_in_channel = false  # If true, all users in a group share one agent session
 #                                   # 设为 true 时，群聊内所有用户共享同一个 Agent 会话
 # thread_isolation = false  # If true, group messages use Feishu reply threads as session boundaries (one thread/root = one agent session and, in multi-workspace mode, one workspace binding)
@@ -1297,8 +1352,7 @@ app_secret = "your-feishu-app-secret"
 #
 # [projects.agent.options]
 # work_dir = "/path/to/frontend"
-# mode = "auto"
-# mode = "bypassPermissions"
+# mode = "bypassPermissions"  # yolo: every tool call is auto-approved / 全部自动通过
 #
 # [[projects.platforms]]
 # type = "feishu"
