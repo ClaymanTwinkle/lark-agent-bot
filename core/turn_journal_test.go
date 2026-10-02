@@ -132,7 +132,7 @@ func TestNotifyInterruptedTurns_SendsNoticeAfterPlatformReady(t *testing.T) {
 	}
 	// Not plat.markReady: that promoted method would register the embedded
 	// stub and bypass the key recording.
-	e.OnPlatformReady(plat)
+	e.onPlatformReady(plat)
 
 	got := plat.waitForSent(t, 1, 3*time.Second)
 	if len(got) != 1 {

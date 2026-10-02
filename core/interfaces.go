@@ -325,27 +325,6 @@ type CardRefresher interface {
 	RefreshCard(ctx context.Context, sessionKey string, card *Card) error
 }
 
-// PlatformLifecycleHandler receives readiness state transitions from async
-// recoverable platforms.
-type PlatformLifecycleHandler interface {
-	OnPlatformReady(p Platform)
-	OnPlatformUnavailable(p Platform, err error)
-}
-
-// AsyncRecoverablePlatform is an optional interface for platforms that start
-// a background recovery loop and later report readiness or unavailability.
-//
-// Platforms implementing this interface may return from Start() before they are
-// actually ready to receive traffic. Callers must treat OnPlatformReady as the
-// signal that deferred platform capabilities may be initialized and the
-// platform is usable. A nil Start() return therefore means the recovery loop
-// was launched successfully, not necessarily that an initial connection was
-// established.
-type AsyncRecoverablePlatform interface {
-	Platform
-	SetLifecycleHandler(h PlatformLifecycleHandler)
-}
-
 // MessageHandler is called by platforms when a new message arrives.
 type MessageHandler func(p Platform, msg *Message)
 
@@ -639,19 +618,6 @@ type PermissionModeInfo struct {
 	NameZh  string
 	Desc    string
 	DescZh  string
-}
-
-// BotCommandInfo represents a command for bot menu registration (e.g. Telegram setMyCommands).
-type BotCommandInfo struct {
-	Command     string // command name without leading "/"
-	Description string // short description for the menu
-	IsSkill     bool   // whether this entry comes from a skill
-}
-
-// CommandRegistrar is an optional interface for platforms that support
-// registering commands to the platform's native menu (e.g. Telegram's setMyCommands).
-type CommandRegistrar interface {
-	RegisterCommands(commands []BotCommandInfo) error
 }
 
 // ChannelNameResolver is an optional interface for platforms that can resolve

@@ -69,16 +69,15 @@ func (p *restartNotifyStub) ReconstructReplyCtx(sessionKey string) (any, error) 
 	return "rctx-" + sessionKey, nil
 }
 
-// markReady simulates the engine's onPlatformReady transition. The
-// engine's lookupReadyPlatform checks the platformReady map, which is
-// normally mutated by the real engine; tests below use the public
-// OnPlatformReady path to do the same.
+// markReady simulates the engine marking the platform ready, as Start
+// does after the platform starts. lookupReadyPlatform reads the
+// platformReady map that onPlatformReady fills.
 func (p *restartNotifyStub) markReady(t *testing.T, e *Engine) {
 	t.Helper()
 	if !p.ready.CompareAndSwap(false, true) {
 		return
 	}
-	e.OnPlatformReady(p)
+	e.onPlatformReady(p)
 }
 
 // waitForSent polls until the stub has recorded at least n sent
@@ -278,7 +277,7 @@ func (p *panickingRestartStub) markReady(t *testing.T, e *Engine) {
 	if !inner.ready.CompareAndSwap(false, true) {
 		return
 	}
-	e.OnPlatformReady(p) // pass the OUTER stub so Send dispatches to our panic
+	e.onPlatformReady(p) // pass the OUTER stub so Send dispatches to our panic
 }
 
 func (p *panickingRestartStub) Send(_ context.Context, _ any, _ string) error {

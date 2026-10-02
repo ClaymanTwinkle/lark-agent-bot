@@ -268,17 +268,6 @@ func TestSkills_UnboundMissingAndFailedWorkspace(t *testing.T) {
 	}
 }
 
-func TestSkills_MultiWorkspaceMenuDoesNotExposeProjectSkills(t *testing.T) {
-	p := &stubPlatformEngine{n: "feishu"}
-	e, _, _ := newWorkspaceSkillsEngine(t, p)
-	commands := e.GetAllCommands()
-	for _, command := range commands {
-		if command.IsSkill {
-			t.Fatalf("unscoped skill in global menu: %s", command.Command)
-		}
-	}
-}
-
 func TestSkills_ScheduledJobsUseExecutionWorkspace(t *testing.T) {
 	for _, kind := range []string{"cron", "timer"} {
 		for _, override := range []bool{false, true} {

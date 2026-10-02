@@ -1289,10 +1289,8 @@ func main() {
 	warnNonStandardBinaryName()
 
 	// After startup, check if we were restarted and queue the success
-	// notification. The engine dispatches it on the first OnPlatformReady
-	// for the target platform (or with a 10s safety timeout), so async
-	// platforms that need 2-3s to actually connect (e.g. Telegram) do not
-	// silently drop the notify. See issue #1383.
+	// notification. The engine dispatches it once the target platform is
+	// ready, or drops it after a 10s safety timeout. See issue #1383.
 	if notify := core.ConsumeRestartNotify(cfg.DataDir); notify != nil {
 		slog.Info("post-restart: queuing success notification", "platform", notify.Platform, "session", notify.SessionKey)
 		for _, e := range engines {

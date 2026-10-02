@@ -1108,81 +1108,6 @@ func TestCUJ_C3_DefaultModeDenyStopsToolExecution(t *testing.T) {
 }
 
 // ===========================================================================
-// CUJ-G3 · After a platform reports its WS connection went down and then
-// came back, the engine re-initializes platform capabilities (command
-// menu re-registration) AND user messages continue to be processed.
-//
-// SPOTLIGHT: 🟡 Reconnect logic is platform-specific and historically
-// fragile. This CUJ locks down the engine-side contract: every
-// ready→unavailable→ready cycle MUST re-run initPlatformCapabilities so
-// stale state (e.g. commands registered against an old WS) gets refreshed.
-// ===========================================================================
-
-func TestCUJ_G3_PlatformReconnectReinitializesAndDelivers(t *testing.T) {
-	dir := t.TempDir()
-	plat := &stubLifecyclePlatform{
-		stubPlatformEngine: stubPlatformEngine{n: "test-lifecycle"},
-	}
-	agent := &cujAgent{}
-	e := NewEngine("test", agent, []Platform{plat}, dir+"/sessions.json", LangEnglish)
-
-	// 1. Initial connect.
-	e.OnPlatformReady(plat)
-	if got := plat.registerCalls; got != 1 {
-		t.Fatalf("after first ready, registerCalls = %d, want 1", got)
-	}
-
-	// 2. User sends a message; engine handles it normally.
-	msg1 := &Message{
-		SessionKey: "test:karen", Platform: "test-lifecycle",
-		MessageID: "m1", UserID: "karen", UserName: "karen",
-		Content: "before disconnect", ReplyCtx: "ctx-karen",
-	}
-	e.ReceiveMessage(plat, msg1)
-	deadline := time.After(2 * time.Second)
-	for len(plat.getSent()) < 1 {
-		select {
-		case <-deadline:
-			t.Fatal("first message did not produce a reply")
-		default:
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-	plat.clearSent()
-
-	// 3. Simulate WS drop.
-	e.OnPlatformUnavailable(plat, errSimDisconnect)
-
-	// 4. Simulate reconnect.
-	e.OnPlatformReady(plat)
-	if got := plat.registerCalls; got != 2 {
-		t.Fatalf("after reconnect, registerCalls = %d, want 2 (commands must be re-registered to refresh stale WS state)", got)
-	}
-
-	// 5. After reconnect, user message must still process end-to-end.
-	msg2 := &Message{
-		SessionKey: "test:karen", Platform: "test-lifecycle",
-		MessageID: "m2", UserID: "karen", UserName: "karen",
-		Content: "after reconnect", ReplyCtx: "ctx-karen",
-	}
-	e.ReceiveMessage(plat, msg2)
-	deadline = time.After(2 * time.Second)
-	for len(plat.getSent()) < 1 {
-		select {
-		case <-deadline:
-			t.Fatalf("post-reconnect message did not produce a reply (engine wedged?). Got: %v", plat.getSent())
-		default:
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-}
-
-// errSimDisconnect is a sentinel used by CUJ-G3 to simulate a transient
-// disconnect from the platform side. The exact text is irrelevant; engine
-// only uses it for logging.
-var errSimDisconnect = &startSessionError{msg: "simulated ws disconnect"}
-
-// ===========================================================================
 // SPRINT 2 · A organization (basic conversation)
 // ===========================================================================
 
@@ -1969,8 +1894,6 @@ func TestCUJ_F4_HotReloadBannedWordsTakesEffect(t *testing.T) {
 func TestCUJ_G2_TimeoutLinkedToEngineTest(t *testing.T) {
 	t.Log("CUJ-G2: agent timeout handling covered by engine_test.go (agent session timed out path at engine.go:4273)")
 }
-
-// CUJ-G3 already exists above.
 
 // CUJ-G4 · Agent process crash mid-session → engine surfaces a user-visible
 // error AND remains usable for the next message (recovery path).

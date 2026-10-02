@@ -155,10 +155,8 @@ func ConsumeRestartNotify(dataDir string) *RestartRequest {
 }
 
 // SendRestartNotification sends a "restart successful" message to the
-// platform/session that initiated the restart. For async-recoverable
-// platforms that may not be ready yet at startup, the call is queued
-// and dispatched on the first OnPlatformReady for the matching platform
-// (see issue #1383).
+// platform/session that initiated the restart. The call is queued and
+// dispatched once the matching platform is ready (see issue #1383).
 func (e *Engine) SendRestartNotification(platformName, sessionKey string) {
 	req := &RestartRequest{Platform: platformName, SessionKey: sessionKey}
 	e.SetPendingRestartNotify(req)
@@ -178,10 +176,9 @@ func (e *Engine) SetPendingRestartNotify(req *RestartRequest) {
 	firedCh := e.pendingRestartFiredCh
 	e.pendingRestartMu.Unlock()
 
-	// If the target platform is already ready, fire the dispatch on a
-	// goroutine so the caller (main startup) is not blocked. If not yet
-	// ready, OnPlatformReady will pick it up. A safety goroutine drops
-	// the notify after a timeout if the platform never reaches ready.
+	// Dispatch on a goroutine so the caller (main startup) is not blocked.
+	// It waits for the platform to be ready and drops the notify after a
+	// timeout if the platform never gets there.
 	go e.runPendingRestartNotify(req, firedCh)
 }
 
@@ -205,9 +202,8 @@ func (e *Engine) SetPendingRestartTimeout(d time.Duration) {
 // runPendingRestartNotify dispatches the notify for a platform that is
 // already ready, with bounded retry on transient send failure. The fired
 // channel is closed when the notify is fully resolved (success, exhausted
-// retries, or platform dropped from engine). This is called from
-// SetPendingRestartNotify on a background goroutine and from
-// onPlatformReady (also on a goroutine).
+// retries, or platform dropped from engine). It runs on a background
+// goroutine started by SetPendingRestartNotify.
 func (e *Engine) runPendingRestartNotify(req *RestartRequest, firedCh chan struct{}) {
 	defer close(firedCh)
 
@@ -513,10 +509,8 @@ type Engine struct {
 	replyFooterUsage    replyFooterUsageCache
 
 	// pendingRestartNotify is queued at startup if a /restart was consumed
-	// from the run/restart_notify file. It is dispatched on the first
-	// OnPlatformReady for the matching platform name, so async platforms
-	// (Telegram, Weixin, Matrix, Discord) have a chance to actually connect
-	// before the post-restart message is sent. See issue #1383.
+	// from the run/restart_notify file. It is dispatched once the platform
+	// with the matching name is ready. See issue #1383.
 	pendingRestartMu      sync.Mutex
 	pendingRestartNotify  *RestartRequest
 	pendingRestartFiredCh chan struct{} // closed when the notify is dispatched (success or exhausted)
@@ -2328,20 +2322,10 @@ func (e *Engine) ExecuteHeartbeat(sessionKey, prompt string, silent bool) error 
 func (e *Engine) Start() error {
 	var startErrs []error
 	readyCount := 0
-	pendingCount := 0
 	for _, p := range e.platforms {
-		_, isAsync := p.(AsyncRecoverablePlatform)
-		if async, ok := p.(AsyncRecoverablePlatform); ok {
-			async.SetLifecycleHandler(e)
-		}
 		if err := p.Start(e.handleMessage); err != nil {
 			slog.Warn("platform start failed", "project", e.name, "platform", p.Name(), "error", err)
 			startErrs = append(startErrs, fmt.Errorf("[%s] start platform %s: %w", e.name, p.Name(), err))
-			continue
-		}
-		if isAsync {
-			pendingCount++
-			slog.Info("platform recovery loop started", "project", e.name, "platform", p.Name())
 			continue
 		}
 		e.onPlatformReady(p)
@@ -2349,12 +2333,11 @@ func (e *Engine) Start() error {
 	}
 
 	// Log summary
-	if len(startErrs) > 0 || pendingCount > 0 {
+	if len(startErrs) > 0 {
 		slog.Warn("engine started with partial readiness",
 			"project", e.name,
 			"agent", e.agent.Name(),
 			"ready", readyCount,
-			"pending", pendingCount,
 			"failed", len(startErrs))
 	} else {
 		slog.Info("engine started", "project", e.name, "agent", e.agent.Name(), "platforms", len(e.platforms))
@@ -2417,20 +2400,6 @@ func (e *Engine) Stop() error {
 	return nil
 }
 
-// OnPlatformReady marks an async platform as ready and initializes platform-level
-// capabilities once per ready cycle.
-func (e *Engine) OnPlatformReady(p Platform) {
-	e.onPlatformReady(p)
-}
-
-// OnPlatformUnavailable marks an async platform as unavailable.
-func (e *Engine) OnPlatformUnavailable(p Platform, err error) {
-	if !e.markPlatformUnavailable(p) {
-		return
-	}
-	slog.Warn("platform unavailable", "project", e.name, "platform", p.Name(), "error", err)
-}
-
 // ReceiveMessage delivers a message from a platform to the engine.
 // This is a public wrapper for use in integration tests and external callers.
 func (e *Engine) ReceiveMessage(p Platform, msg *Message) {
@@ -2459,30 +2428,7 @@ func (e *Engine) markPlatformReady(p Platform) bool {
 	return true
 }
 
-func (e *Engine) markPlatformUnavailable(p Platform) bool {
-	e.platformLifecycleMu.Lock()
-	defer e.platformLifecycleMu.Unlock()
-
-	if e.stopping || e.ctx.Err() != nil {
-		return false
-	}
-	if !e.platformReady[p] {
-		return false
-	}
-	e.platformReady[p] = false
-	return true
-}
-
 func (e *Engine) initPlatformCapabilities(p Platform) {
-	if registrar, ok := p.(CommandRegistrar); ok {
-		commands := e.GetAllCommands()
-		if err := registrar.RegisterCommands(commands); err != nil {
-			slog.Error("platform command registration failed", "project", e.name, "platform", p.Name(), "error", err)
-		} else {
-			slog.Debug("platform commands registered", "project", e.name, "platform", p.Name(), "count", len(commands))
-		}
-	}
-
 	if nav, ok := p.(CardNavigable); ok {
 		nav.SetCardNavigationHandler(e.handleCardNav)
 	}
@@ -9809,88 +9755,6 @@ func (e *Engine) renderHelpGroupCard(groupKey string) *Card {
 	}
 	cb.Note(e.i18n.T(MsgHelpTip))
 	return cb.Build()
-}
-
-// GetAllCommands returns all available commands for bot menu registration.
-// It includes built-in commands (with localized descriptions) and custom commands.
-func (e *Engine) GetAllCommands() []BotCommandInfo {
-	var commands []BotCommandInfo
-
-	e.userRolesMu.RLock()
-	disabledCmds := e.disabledCmds
-	e.userRolesMu.RUnlock()
-
-	// Collect built-in  commands (use primary name, first in names list)
-	seenCmds := make(map[string]bool)
-	for _, c := range builtinCommands {
-		if len(c.names) == 0 {
-			continue
-		}
-		// Use id as primary
-		primaryName := c.id
-		if seenCmds[primaryName] {
-			continue
-		}
-		seenCmds[primaryName] = true
-
-		// Skip disabled commands
-		if disabledCmds[c.id] {
-			continue
-		}
-
-		commands = append(commands, BotCommandInfo{
-			Command:     primaryName,
-			Description: e.i18n.T(MsgKey(primaryName)),
-		})
-	}
-
-	// Collect custom commands from CommandRegistry
-	for _, c := range e.commands.ListAll() {
-		if seenCmds[strings.ToLower(c.Name)] {
-			continue
-		}
-		seenCmds[strings.ToLower(c.Name)] = true
-
-		desc := c.Description
-		if desc == "" {
-			desc = "Custom command"
-		}
-
-		commands = append(commands, BotCommandInfo{
-			Command:     c.Name,
-			Description: desc,
-		})
-	}
-
-	// Platform-wide menus have no workspace context. In multi-workspace
-	// mode users discover skills through /skills in their bound channel.
-	var menuSkills []*Skill
-	if !e.multiWorkspace {
-		menuSkills = e.skillsForAgent(e.agent).ListAll()
-	}
-	for _, s := range menuSkills {
-		lowerName := strings.ToLower(s.Name)
-		if seenCmds[lowerName] {
-			continue
-		}
-		if disabledCmds[lowerName] {
-			continue
-		}
-		seenCmds[lowerName] = true
-
-		desc := s.Description
-		if desc == "" {
-			desc = "Skill"
-		}
-
-		commands = append(commands, BotCommandInfo{
-			Command:     s.Name,
-			Description: desc,
-			IsSkill:     true,
-		})
-	}
-
-	return commands
 }
 
 func (e *Engine) cmdModel(p Platform, msg *Message, args []string) {
