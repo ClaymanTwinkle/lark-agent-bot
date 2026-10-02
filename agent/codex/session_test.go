@@ -730,7 +730,9 @@ func TestSend_HandlesLargeJSONLines(t *testing.T) {
 
 	var gotTextLen int
 	var gotResult bool
-	timeout := time.After(5 * time.Second)
+	// On Windows the fake codex is a PowerShell script writing 11 MB to
+	// stdout: about 1.5s alone, over 5s while the rest of go test ./... runs.
+	timeout := time.After(20 * time.Second)
 
 	for !gotResult {
 		select {
