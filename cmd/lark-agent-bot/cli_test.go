@@ -233,6 +233,25 @@ func TestSetupText_FollowsConfigLanguage(t *testing.T) {
 	}
 }
 
+// `lark-agent-bot --config x.toml web` must manage x.toml, not the default
+// config.
+func TestResolveConfigPath_UsesConfigBeforeCommand(t *testing.T) {
+	old := rootConfigPath
+	rootConfigPath = "root.toml"
+	t.Cleanup(func() { rootConfigPath = old })
+
+	if got := resolveConfigPath(""); got != "root.toml" {
+		t.Errorf("resolveConfigPath(\"\") = %q, want root.toml", got)
+	}
+	if got := resolveConfigPath("own.toml"); got != "own.toml" {
+		t.Errorf("resolveConfigPath(own.toml) = %q, want own.toml", got)
+	}
+	p := newPreflight("")
+	if p.configPath != "root.toml" || !strings.Contains(p.command("feishu check", "demo"), "--config root.toml") {
+		t.Errorf("doctor checks %q and suggests %q", p.configPath, p.command("feishu check", "demo"))
+	}
+}
+
 func TestConfigCommand_HelpPrintsUsage(t *testing.T) {
 	for _, args := range [][]string{{"--help"}, {"-h"}, {"help"}, {"path", "--help"}, {"example", "-h"}, {"format", "--help"}} {
 		out := captureStdout(t, func() { runConfig(args) })

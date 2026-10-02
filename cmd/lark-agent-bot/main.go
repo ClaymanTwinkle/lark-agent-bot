@@ -282,6 +282,9 @@ func main() {
 		return
 	}
 
+	// `lark-agent-bot --config x.toml web` is how a bot started with
+	// --config is managed: commands without a --config of their own use it.
+	rootConfigPath = rootOpts.configPath
 	if runTopLevelCommand(rootOpts.args) {
 		return
 	}
@@ -1532,10 +1535,23 @@ func applyProjectStateOverride(projectName string, agent core.Agent, configuredW
 	return override
 }
 
+// rootConfigPath is the --config given before the command, "" when none was.
+var rootConfigPath string
+
+// configFlagOrRoot returns a command's --config value, or the --config given
+// before the command when the command got none.
+func configFlagOrRoot(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	return rootConfigPath
+}
+
 // resolveConfigPath determines which config file to use.
-// Priority: explicit flag → ./config.toml → ~/.lark-agent-bot/config.toml
+// Priority: explicit flag → --config before the command → ./config.toml →
+// ~/.lark-agent-bot/config.toml
 func resolveConfigPath(explicit string) string {
-	if explicit != "" {
+	if explicit = configFlagOrRoot(explicit); explicit != "" {
 		return explicit
 	}
 	if _, err := os.Stat("config.toml"); err == nil {
@@ -1610,7 +1626,8 @@ Usage:
   lark-agent-bot <command> [args]
 
 Flags:
-  --config <path>    Path to config file (default: ./config.toml or ~/.lark-agent-bot/config.toml)
+  --config <path>    Path to config file, also for a command that follows
+                     (default: ./config.toml or ~/.lark-agent-bot/config.toml)
   --force            Kill any existing instance with the same config before starting
   --version          Print version and exit
   --help             Show this help message

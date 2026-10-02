@@ -97,6 +97,7 @@ type preflight struct {
 }
 
 func newPreflight(configFlag string) *preflight {
+	configFlag = configFlagOrRoot(configFlag)
 	path := resolveConfigPath(configFlag)
 	return &preflight{
 		configPath:  path,
