@@ -61,19 +61,19 @@ func (r *routeRecorder) serveHTTP(w http.ResponseWriter, req *http.Request) {
 	const messages = "/open-apis/im/v1/messages"
 	switch {
 	case path == "/open-apis/auth/v3/tenant_access_token/internal":
-		fmt.Fprint(w, `{"code":0,"msg":"success","expire":7200,"tenant_access_token":"routing-token"}`)
+		_, _ = fmt.Fprint(w, `{"code":0,"msg":"success","expire":7200,"tenant_access_token":"routing-token"}`)
 	case strings.HasPrefix(path, "/open-apis/contact/v3/users/"),
 		strings.HasPrefix(path, "/open-apis/im/v1/chats/"):
-		fmt.Fprint(w, `{"code":0,"msg":"success"}`)
+		_, _ = fmt.Fprint(w, `{"code":0,"msg":"success"}`)
 	case req.Method == http.MethodPost && path == "/open-apis/im/v1/images":
-		fmt.Fprint(w, `{"code":0,"msg":"success","data":{"image_key":"img_routing"}}`)
+		_, _ = fmt.Fprint(w, `{"code":0,"msg":"success","data":{"image_key":"img_routing"}}`)
 	case req.Method == http.MethodPost && path == messages:
 		var body struct {
 			ReceiveID string `json:"receive_id"`
 		}
 		_ = json.NewDecoder(req.Body).Decode(&body)
 		r.record("create " + req.URL.Query().Get("receive_id_type") + ":" + body.ReceiveID)
-		fmt.Fprint(w, `{"code":0,"msg":"success","data":{"message_id":"om_sent"}}`)
+		_, _ = fmt.Fprint(w, `{"code":0,"msg":"success","data":{"message_id":"om_sent"}}`)
 	case req.Method == http.MethodPost && strings.HasPrefix(path, messages+"/") && strings.HasSuffix(path, "/reply"):
 		var body struct {
 			ReplyInThread *bool `json:"reply_in_thread"`
@@ -84,10 +84,10 @@ func (r *routeRecorder) serveHTTP(w http.ResponseWriter, req *http.Request) {
 			call += " in_thread"
 		}
 		r.record(call)
-		fmt.Fprint(w, `{"code":0,"msg":"success","data":{"message_id":"om_sent"}}`)
+		_, _ = fmt.Fprint(w, `{"code":0,"msg":"success","data":{"message_id":"om_sent"}}`)
 	case req.Method == http.MethodGet && strings.HasPrefix(path, messages+"/"):
 		r.record("fetch " + strings.TrimPrefix(path, messages+"/"))
-		fmt.Fprint(w, `{"code":0,"msg":"success","data":{"items":[]}}`)
+		_, _ = fmt.Fprint(w, `{"code":0,"msg":"success","data":{"items":[]}}`)
 	default:
 		r.record("unexpected " + req.Method + " " + path)
 		w.WriteHeader(http.StatusNotFound)
