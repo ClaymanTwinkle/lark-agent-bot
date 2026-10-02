@@ -307,6 +307,8 @@ func main() {
 		slog.Warn("restart: this scheduled task's launcher predates supervised restarts; " +
 			"a restart will leave the task. Reinstall it with `lark-agent-bot daemon install --force`.")
 	}
+	// The log file is open; keep its settings from the agents' environment.
+	daemonLogEnv := takeDaemonLogEnv()
 
 	core.VersionInfo = fmt.Sprintf("lark-agent-bot %s\ncommit: %s\nbuilt: %s", version, commit, buildTime)
 	core.CurrentVersion = version
@@ -1381,6 +1383,8 @@ func main() {
 			os.Exit(1)
 		}
 		slog.Info("restarting...", "path", execPath, "args", os.Args)
+		// The new process logs where this one did.
+		restoreEnv(daemonLogEnv)
 		if err := restartProcess(execPath); err != nil {
 			slog.Error("restart: failed", "error", err)
 			os.Exit(1)
