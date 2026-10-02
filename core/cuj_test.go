@@ -306,22 +306,19 @@ type cujEnv struct {
 	tempDir string
 }
 
-func newCUJEnv(t *testing.T) *cujEnv {
+// cujTempDir replaces t.TempDir for tests that run an engine: message
+// goroutines can still save sessions.json after the test body returns, which
+// made t.TempDir's single RemoveAll fail with "directory not empty" (seen in
+// the v0.2.5 release run and on the Windows CI runner). Its removal retries
+// until late writes have settled. Register the engine's Stop with
+// stopAtCleanup after calling it, so the engine stops first.
+func cujTempDir(t *testing.T) string {
 	t.Helper()
-	// Not t.TempDir(): message goroutines can still save sessions.json after
-	// the test body returns, which made t.TempDir's single RemoveAll fail with
-	// "directory not empty" (seen in the v0.2.5 release run). Stop the engine
-	// first, then retry the removal until late writes have settled.
 	dir, err := os.MkdirTemp("", "lark-agent-bot-cuj-*")
 	if err != nil {
 		t.Fatal(err)
 	}
-	plat := &stubPlatformEngine{n: "test"}
-	agent := &cujAgent{}
-	storePath := dir + "/sessions.json"
-	e := NewEngine("test", agent, []Platform{plat}, storePath, LangEnglish)
 	t.Cleanup(func() {
-		_ = e.Stop()
 		var rmErr error
 		for i := 0; i < 50; i++ {
 			if rmErr = os.RemoveAll(dir); rmErr == nil {
@@ -331,6 +328,22 @@ func newCUJEnv(t *testing.T) *cujEnv {
 		}
 		t.Logf("cuj temp dir not removed: %v", rmErr)
 	})
+	return dir
+}
+
+// stopAtCleanup stops e when the test ends, before cujTempDir's removal.
+func stopAtCleanup(t *testing.T, e *Engine) {
+	t.Cleanup(func() { _ = e.Stop() })
+}
+
+func newCUJEnv(t *testing.T) *cujEnv {
+	t.Helper()
+	dir := cujTempDir(t)
+	plat := &stubPlatformEngine{n: "test"}
+	agent := &cujAgent{}
+	storePath := dir + "/sessions.json"
+	e := NewEngine("test", agent, []Platform{plat}, storePath, LangEnglish)
+	stopAtCleanup(t, e)
 	return &cujEnv{
 		t:       t,
 		engine:  e,
@@ -738,8 +751,9 @@ func TestCUJ_G1_LLMFailureSurfacesErrorToUser(t *testing.T) {
 	plat := &stubPlatformEngine{n: "test"}
 	agent := &failingAgent{}
 	agent.failNext.Set(true)
-	dir := t.TempDir()
+	dir := cujTempDir(t)
 	e := NewEngine("test", agent, []Platform{plat}, dir+"/sessions.json", LangEnglish)
+	stopAtCleanup(t, e)
 
 	msg := &Message{
 		SessionKey: "test:fred",
@@ -910,7 +924,7 @@ func TestCUJ_E5_TimerDisappearsAfterFiring(t *testing.T) {
 // ===========================================================================
 
 func TestCUJ_B12_RestartRestoresEverything(t *testing.T) {
-	dir := t.TempDir()
+	dir := cujTempDir(t)
 	storePath := dir + "/sessions.json"
 	cronDir := dir + "/cron"
 	if err := mkAll(cronDir); err != nil {
@@ -973,6 +987,7 @@ func TestCUJ_B12_RestartRestoresEverything(t *testing.T) {
 		plat := &stubPlatformEngine{n: "test"}
 		agent := &cujAgent{}
 		e2 := NewEngine("test", agent, []Platform{plat}, storePath, LangEnglish)
+		stopAtCleanup(t, e2)
 		store, err := NewCronStore(cronDir)
 		if err != nil {
 			t.Fatalf("run2 NewCronStore: %v", err)
@@ -1210,8 +1225,9 @@ func TestCUJ_A3_ImageReachesAgent(t *testing.T) {
 func TestCUJ_A4_VoiceMessageWithoutSTTSurfacesClearMessage(t *testing.T) {
 	plat := &stubPlatformEngine{n: "test"}
 	agent := &cujAgent{}
-	dir := t.TempDir()
+	dir := cujTempDir(t)
 	e := NewEngine("test", agent, []Platform{plat}, dir+"/sessions.json", LangEnglish)
+	stopAtCleanup(t, e)
 
 	msg := &Message{
 		SessionKey: "test:voice", Platform: "test", MessageID: "v1",
@@ -1237,10 +1253,11 @@ func TestCUJ_A4_VoiceMessageWithoutSTTSurfacesClearMessage(t *testing.T) {
 
 // CUJ-A5 · User uploads file → engine routes it to the agent.
 func TestCUJ_A5_FileReachesAgent(t *testing.T) {
-	plat := &stubPlatformEngine{n: "test"}
-	agent := &cujAgent{}
-	dir := t.TempDir()
-	e := NewEngine("test", agent, []Platform{plat}, dir+"/sessions.json", LangEnglish)
+	// newCUJEnv stops the engine and waits for late session writes before
+	// removing its directory; with t.TempDir the turn still running after
+	// the test returned made the cleanup fail on Windows.
+	env := newCUJEnv(t)
+	plat, agent, e := env.plat, env.agent, env.engine
 
 	msg := &Message{
 		SessionKey: "test:file", Platform: "test", MessageID: "f1",
@@ -2062,11 +2079,12 @@ func TestCUJ_I4_StreamingToggleLinkedToIntegration(t *testing.T) {
 // ===========================================================================
 
 func TestCUJ_H2_TwoPlatformsConcurrentNoBleed(t *testing.T) {
-	dir := t.TempDir()
+	dir := cujTempDir(t)
 	pA := &stubPlatformEngine{n: "platA"}
 	pB := &stubPlatformEngine{n: "platB"}
 	agent := &cujAgent{}
 	e := NewEngine("test", agent, []Platform{pA, pB}, dir+"/sessions.json", LangEnglish)
+	stopAtCleanup(t, e)
 
 	// Fire 5 messages on each platform concurrently.
 	var wg sync.WaitGroup
@@ -2212,11 +2230,12 @@ func (p *cujStreamingPlatform) getPreviewUpdates() []cujStreamingUpdate {
 
 func newCUJStreamingEnv(t *testing.T) *cujEnv {
 	t.Helper()
-	dir := t.TempDir()
+	dir := cujTempDir(t)
 	plat := &cujStreamingPlatform{stubPlatformEngine: stubPlatformEngine{n: "test"}}
 	agent := &cujAgent{}
 	storePath := dir + "/sessions.json"
 	e := NewEngine("test", agent, []Platform{plat}, storePath, LangEnglish)
+	stopAtCleanup(t, e)
 	// env.plat is typed *stubPlatformEngine so that userSends (which
 	// calls plat(env.plat) to bridge into a Platform interface) works.
 	// We point it at the same embedded instance the engine holds, so
