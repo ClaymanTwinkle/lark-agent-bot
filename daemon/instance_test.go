@@ -144,4 +144,18 @@ func TestResolveUsesConfigPathAndInstanceLog(t *testing.T) {
 	if want := filepath.Join(workDir, "config.toml"); cfg.ConfigPath != want {
 		t.Errorf("default ConfigPath = %q, want %q", cfg.ConfigPath, want)
 	}
+
+	// `daemon install --config bot.toml` gives a relative work dir; the
+	// service must not depend on the directory it is started in.
+	t.Chdir(workDir)
+	cfg = Config{BinaryPath: "/bin/true", WorkDir: ".", LogFile: filepath.Join("logs", "bot.log"), ConfigPath: configPath}
+	if err := Resolve(&cfg); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if cfg.WorkDir != workDir {
+		t.Errorf("relative WorkDir resolved to %q, want %q", cfg.WorkDir, workDir)
+	}
+	if want := filepath.Join(workDir, "logs", "bot.log"); cfg.LogFile != want {
+		t.Errorf("relative LogFile resolved to %q, want %q", cfg.LogFile, want)
+	}
 }

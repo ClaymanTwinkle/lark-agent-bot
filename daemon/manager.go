@@ -246,6 +246,18 @@ func Resolve(cfg *Config) error {
 		}
 		cfg.WorkDir = wd
 	}
+	// The service starts in another directory than the installer, so paths
+	// given relative to where install ran must be made absolute here.
+	for _, p := range []*string{&cfg.WorkDir, &cfg.LogFile} {
+		if *p == "" {
+			continue
+		}
+		abs, err := filepath.Abs(*p)
+		if err != nil {
+			return fmt.Errorf("resolve path %s: %w", *p, err)
+		}
+		*p = abs
+	}
 	if cfg.ConfigPath == "" {
 		cfg.ConfigPath = filepath.Join(cfg.WorkDir, "config.toml")
 	}
