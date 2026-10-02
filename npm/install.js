@@ -601,6 +601,9 @@ async function installBinary(binDir) {
   const binaryName = platform === "windows" ? `${NAME}.exe` : NAME;
   const binaryPath = path.join(binDir, binaryName);
 
+  // The old binary is removed only once the new one has downloaded, so a
+  // failed download leaves it in place.
+  let replace = false;
   if (fs.existsSync(binaryPath)) {
     try {
       const out = execSync(`"${binaryPath}" --version`, { encoding: "utf8", timeout: 5000 });
@@ -616,11 +619,10 @@ async function installBinary(binDir) {
         return;
       }
       console.log(`[lark-agent-bot] Existing binary is outdated, upgrading to ${VERSION}...`);
-      fs.unlinkSync(binaryPath);
     } catch {
       console.log(`[lark-agent-bot] Replacing existing binary with ${VERSION}...`);
-      fs.unlinkSync(binaryPath);
     }
+    replace = true;
   }
 
   const urls = getDownloadURLs(filename);
@@ -638,6 +640,9 @@ async function installBinary(binDir) {
     );
   }
 
+  if (replace) {
+    fs.unlinkSync(binaryPath);
+  }
   if (ext === ".tar.gz") {
     extractTarGz(data, binDir, binaryName);
   } else {
