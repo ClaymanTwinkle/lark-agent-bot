@@ -356,6 +356,10 @@ func main() {
 
 	setupLogger(cfg.Log.Level, logWriter)
 
+	// The presets list serves /provider in chat as well as the web admin, so
+	// the configured URL applies whether or not [management] is enabled.
+	core.SetPresetsURL(cfg.ProviderPresetsURL)
+
 	// run_as_user preflight + isolation audit. MUST run before any engine
 	// or agent is constructed. If any project fails, abort startup
 	// entirely — never half-spawn. See core/runas_check.go and
@@ -1234,9 +1238,6 @@ func main() {
 		})
 		mgmtSrv.SetFetchPresets(core.FetchProviderPresets)
 		mgmtSrv.SetFetchSkillPresets(core.FetchSkillPresets)
-		if cfg.ProviderPresetsURL != "" {
-			core.SetPresetsURL(cfg.ProviderPresetsURL)
-		}
 		mgmtSrv.SetListCCSwitchProviders(listCCSwitchProvidersForWeb)
 		mgmtSrv.Start()
 	}
@@ -1739,6 +1740,7 @@ func reloadConfig(configPath, projName string, engine *core.Engine) (*core.Confi
 	if globalAPIServer != nil {
 		globalAPIServer.SetMaxAttachmentSize(resolveMaxAttachmentSize(cfg))
 	}
+	core.SetPresetsURL(cfg.ProviderPresetsURL)
 
 	// Find the matching project
 	var proj *config.ProjectConfig

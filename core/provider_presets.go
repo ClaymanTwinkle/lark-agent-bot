@@ -80,10 +80,15 @@ type presetsCache struct {
 
 var globalPresetsCache = &presetsCache{}
 
-// SetPresetsURL overrides the default presets URL. Call before first fetch.
+// SetPresetsURL sets the URL every later FetchProviderPresets tries first;
+// "" means the default. The fallback mirror always serves the default list.
+// Setting the URL already in use keeps the cached list.
 func SetPresetsURL(url string) {
 	globalPresetsCache.mu.Lock()
 	defer globalPresetsCache.mu.Unlock()
+	if globalPresetsCache.url == url {
+		return
+	}
 	globalPresetsCache.url = url
 	globalPresetsCache.data = nil // invalidate cache on URL change
 }
