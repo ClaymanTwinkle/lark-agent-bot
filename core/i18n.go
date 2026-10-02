@@ -191,20 +191,8 @@ func (i *I18n) SetLang(lang Language) {
 // Message keys
 type MsgKey string
 
-const (
-	MsgSetupModelFlag   MsgKey = "setup_modelflag"
-	MsgSetupModeFlag    MsgKey = "setup_modeflag"
-	MsgSetupDisplayFlag MsgKey = "setup_displayflag"
-)
-
 // Setup workflow messages are shared by CLI frontends.
 const (
-	MsgSetupTemplateFlag         MsgKey = "setup_templateflag"
-	MsgSetupNameFlag             MsgKey = "setup_nameflag"
-	MsgSetupDescriptionFlag      MsgKey = "setup_descriptionflag"
-	MsgSetupAvatarFlag           MsgKey = "setup_avatarflag"
-	MsgSetupAgentFlag            MsgKey = "setup_agentflag"
-	MsgSetupWorkDirFlag          MsgKey = "setup_workdirflag"
 	MsgSetupPrepared             MsgKey = "setup_prepared"
 	MsgSetupIncomplete           MsgKey = "setup_incomplete"
 	MsgSetupMissing              MsgKey = "setup_missing"
@@ -827,69 +815,6 @@ const (
 )
 
 var messages = map[MsgKey]map[Language]string{
-	MsgSetupModelFlag: {
-		LangEnglish:            "Model for a new project",
-		LangChinese:            "新项目使用的模型",
-		LangTraditionalChinese: "新專案使用的模型",
-		LangJapanese:           "新規プロジェクトのモデル",
-		LangSpanish:            "Modelo del proyecto nuevo",
-	},
-	MsgSetupModeFlag: {
-		LangEnglish:            "Agent permission mode for a new project",
-		LangChinese:            "新项目的 agent 权限模式",
-		LangTraditionalChinese: "新專案的 agent 權限模式",
-		LangJapanese:           "新規プロジェクトの権限モード",
-		LangSpanish:            "Modo de permisos del proyecto nuevo",
-	},
-	MsgSetupDisplayFlag: {
-		LangEnglish:            "Display for a new project: quiet, compact, full",
-		LangChinese:            "新项目消息显示：quiet、compact、full",
-		LangTraditionalChinese: "新專案訊息顯示：quiet、compact、full",
-		LangJapanese:           "新規プロジェクトの表示：quiet、compact、full",
-		LangSpanish:            "Mensajes del proyecto nuevo: quiet, compact, full",
-	},
-	MsgSetupTemplateFlag: {
-		LangEnglish:            "Registration addons JSON (default: shared template)",
-		LangChinese:            "创建配置 JSON（默认：统一模板）",
-		LangTraditionalChinese: "建立設定 JSON（預設：統一範本）",
-		LangJapanese:           "登録設定 JSON（既定：共通テンプレート）",
-		LangSpanish:            "JSON de configuración (predeterminado: plantilla común)",
-	},
-	MsgSetupNameFlag: {
-		LangEnglish:            "App name (default: project name)",
-		LangChinese:            "应用名称（默认：项目名）",
-		LangTraditionalChinese: "應用名稱（預設：專案名）",
-		LangJapanese:           "アプリ名（既定：プロジェクト名）",
-		LangSpanish:            "Nombre de aplicación (predeterminado: proyecto)",
-	},
-	MsgSetupDescriptionFlag: {
-		LangEnglish:            "App description",
-		LangChinese:            "应用描述",
-		LangTraditionalChinese: "應用描述",
-		LangJapanese:           "アプリの説明",
-		LangSpanish:            "Descripción de la aplicación",
-	},
-	MsgSetupAvatarFlag: {
-		LangEnglish:            "App avatar HTTPS URL",
-		LangChinese:            "应用头像 HTTPS 地址",
-		LangTraditionalChinese: "應用頭像 HTTPS 位址",
-		LangJapanese:           "アプリ画像の HTTPS URL",
-		LangSpanish:            "URL HTTPS del avatar",
-	},
-	MsgSetupAgentFlag: {
-		LangEnglish:            "Agent type for a new project",
-		LangChinese:            "新项目的 agent 类型",
-		LangTraditionalChinese: "新專案的 agent 類型",
-		LangJapanese:           "新規プロジェクトの agent 種類",
-		LangSpanish:            "Tipo de agente para el proyecto nuevo",
-	},
-	MsgSetupWorkDirFlag: {
-		LangEnglish:            "Working directory for a new project",
-		LangChinese:            "新项目的工作目录",
-		LangTraditionalChinese: "新專案的工作目錄",
-		LangJapanese:           "新規プロジェクトの作業ディレクトリ",
-		LangSpanish:            "Directorio del proyecto nuevo",
-	},
 	MsgSetupPrepared: {
 		LangEnglish:            "Shared template: %d app scopes, %d user scopes, plus events and card callbacks. Review and confirm on the scan page.",
 		LangChinese:            "统一模板：%d 项应用权限、%d 项用户权限，以及事件和卡片回调；扫码后统一确认。",
@@ -3787,11 +3712,11 @@ var messages = map[MsgKey]map[Language]string{
 		LangSpanish:            "⚠️ Compilación de desarrollo — la verificación de versión no está disponible. Compile desde el código fuente o instale una versión publicada.",
 	},
 	MsgWebNotSupported: {
-		LangEnglish:            "⚠️ Web admin is not available in this build. Rebuild without the `no_web` tag to enable it.",
-		LangChinese:            "⚠️ 当前版本未包含 Web 管理后台。请去掉 `no_web` 标签重新编译以启用。",
-		LangTraditionalChinese: "⚠️ 目前版本未包含 Web 管理後台。請移除 `no_web` 標籤重新編譯以啟用。",
-		LangJapanese:           "⚠️ このビルドにはWeb管理画面が含まれていません。`no_web` タグなしで再ビルドしてください。",
-		LangSpanish:            "⚠️ La administración web no está incluida en esta compilación. Recompile sin la etiqueta `no_web`.",
+		LangEnglish:            "⚠️ Web admin is not in this build. Use a release binary or the npm package, or build from source with `make build`.",
+		LangChinese:            "⚠️ 当前程序没有包含 Web 管理后台。请使用 Release 里的程序或 npm 包，或者从源码用 `make build` 构建。",
+		LangTraditionalChinese: "⚠️ 目前程式未包含 Web 管理後台。請使用 Release 裡的程式或 npm 套件，或從原始碼用 `make build` 建置。",
+		LangJapanese:           "⚠️ このビルドにはWeb管理画面が含まれていません。リリース版のバイナリかnpmパッケージを使うか、ソースから `make build` でビルドしてください。",
+		LangSpanish:            "⚠️ La administración web no está incluida en esta compilación. Use un binario de las releases o el paquete npm, o compile desde el código con `make build`.",
 	},
 	MsgWebNotEnabled: {
 		LangEnglish:            "ℹ️ Web admin is not enabled.\n\nUse `/web setup` to configure and enable it.",

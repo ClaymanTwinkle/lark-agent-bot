@@ -427,22 +427,8 @@ func main() {
 		startInitialRefreshIfReady(agent, providerWiring)
 		sessionFile := sessionStorePath(cfg.DataDir, proj.Name, effectiveWorkDir)
 
-		// Parse language setting
-		var lang core.Language
-		switch cfg.Language {
-		case "zh", "chinese":
-			lang = core.LangChinese
-		case "zh-TW", "zh_TW", "zhtw":
-			lang = core.LangTraditionalChinese
-		case "ja", "japanese":
-			lang = core.LangJapanese
-		case "es", "spanish":
-			lang = core.LangSpanish
-		case "en", "english":
-			lang = core.LangEnglish
-		default:
-			lang = core.LangAuto // auto-detect
-		}
+		// Unknown or empty values auto-detect from each message.
+		lang := core.NormalizeLanguageString(strings.TrimSpace(cfg.Language))
 
 		engine := core.NewEngine(proj.Name, agent, platforms, sessionFile, lang)
 		// Wire display settings including show_context_indicator and reply_footer
