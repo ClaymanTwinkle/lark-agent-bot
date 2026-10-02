@@ -14,6 +14,10 @@ func runConfig(args []string) {
 		printConfigUsage()
 		os.Exit(1)
 	}
+	if args[0] == "help" || helpRequested(args) {
+		fmt.Print(configUsage)
+		return
+	}
 	switch args[0] {
 	case "example":
 		fmt.Print(larkagentbot.ConfigExampleTOML)
@@ -26,6 +30,18 @@ func runConfig(args []string) {
 		printConfigUsage()
 		os.Exit(1)
 	}
+}
+
+// runConfigExample is the deprecated `config-example` command.
+func runConfigExample(args []string) {
+	if helpRequested(args) {
+		fmt.Println(`Usage: lark-agent-bot config-example
+
+Deprecated: use 'lark-agent-bot config example', which prints the same
+complete annotated config.toml example.`)
+		return
+	}
+	fmt.Print(larkagentbot.ConfigExampleTOML)
 }
 
 func runConfigFormat(args []string) {
@@ -46,8 +62,7 @@ func runConfigFormat(args []string) {
 	fmt.Printf("Formatted %s\n", path)
 }
 
-func printConfigUsage() {
-	fmt.Fprintf(os.Stderr, `Usage: lark-agent-bot config <subcommand>
+const configUsage = `Usage: lark-agent-bot config <subcommand>
 
 Subcommands:
   example    Print a complete annotated config.toml example
@@ -62,5 +77,9 @@ Examples:
   lark-agent-bot config example > config.toml  Save example config
   lark-agent-bot config format               Format default config file
   lark-agent-bot config fmt --config /path/to/config.toml
-`)
+`
+
+// printConfigUsage prints the usage after a mistake.
+func printConfigUsage() {
+	fmt.Fprint(os.Stderr, configUsage)
 }

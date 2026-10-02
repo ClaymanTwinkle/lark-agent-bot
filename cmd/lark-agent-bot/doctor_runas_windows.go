@@ -2,8 +2,18 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
-func runDoctor(args []string) {
-	fmt.Println("doctor command is not supported on Windows")
+// runDoctorUserIsolation stands in for the run_as_user audit, which needs
+// sudo and Unix users.
+func runDoctorUserIsolation(args []string) {
+	if helpRequested(args) {
+		fmt.Print(doctorUsage)
+		return
+	}
+	fmt.Fprintln(os.Stderr, "doctor user-isolation: run_as_user is not supported on Windows")
+	os.Exit(1)
 }

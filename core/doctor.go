@@ -95,6 +95,14 @@ func agentCLIInfo(agent Agent) (bin, label string) {
 	return bin, label
 }
 
+// CheckAgentCLI looks up the agent's CLI and reads its version, the same
+// check /doctor runs, for `lark-agent-bot doctor` before the bot starts. The
+// binary comes from AgentDoctorInfo when the agent implements it, else the
+// agent's name.
+func CheckAgentCLI(ctx context.Context, agent Agent) DoctorCheckResult {
+	return checkAgentBinary(ctx, agent)[0]
+}
+
 func checkAgentBinary(ctx context.Context, agent Agent) []DoctorCheckResult {
 	bin, _ := agentCLIInfo(agent)
 

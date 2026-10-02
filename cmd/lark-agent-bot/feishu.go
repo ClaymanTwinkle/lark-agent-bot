@@ -105,7 +105,7 @@ func runFeishu(args []string) {
 		runFeishuSetup(args[1:], feishuSetupModeBind)
 	case "check":
 		runFeishuSetup(args[1:], "check")
-	case "help", "--help", "-h":
+	case "help", "--help", "-h", "-help":
 		printFeishuUsage()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown feishu subcommand: %s\n\n", args[0])
@@ -114,29 +114,42 @@ func runFeishu(args []string) {
 	}
 }
 
+// feishuSubcommandName is the subcommand the user types for a setup mode.
+func feishuSubcommandName(mode string) string {
+	if mode == feishuSetupModeAuto {
+		return "setup"
+	}
+	return mode
+}
+
 func runFeishuSetup(args []string, requestedMode string) {
-	fs := flag.NewFlagSet("feishu "+requestedMode, flag.ExitOnError)
-	configFile := fs.String("config", "", "path to config file")
-	project := fs.String("project", "", "project name (optional if only one project)")
-	platformIndex := fs.Int("platform-index", 0, "1-based index among feishu/lark platforms in the project (0 = first)")
-	platformType := fs.String("platform-type", "", "force platform type: feishu or lark")
-	app := fs.String("app", "", "existing bot credentials in app_id:app_secret format")
-	appID := fs.String("app-id", "", "existing bot app_id")
-	appSecret := fs.String("app-secret", "", "existing bot app_secret")
+	// Flag descriptions match feishuUsage, which -h / --help prints.
+	fs := flag.NewFlagSet("feishu "+feishuSubcommandName(requestedMode), flag.ContinueOnError)
+	configFile := fs.String("config", "", "Path to config file")
+	project := fs.String("project", "", "Target project (auto-created if missing)")
+	platformIndex := fs.Int("platform-index", 0, "1-based Feishu/Lark platform index in the project (default: first)")
+	platformType := fs.String("platform-type", "", "Force platform type: feishu or lark")
+	app := fs.String("app", "", "Existing credentials as app_id:app_secret")
+	appID := fs.String("app-id", "", "Existing app_id")
+	appSecret := fs.String("app-secret", "", "Existing app_secret")
 	timeout := fs.Int("timeout", 600, "QR onboarding timeout in seconds")
-	qrImage := fs.String("qr-image", "", "save QR code as PNG image to this path (e.g. qr.png)")
-	setAllowFromEmpty := fs.Bool("set-allow-from-empty", false, "merge owner open_id into allow_from when onboarding returns it (preserves *)")
-	debug := fs.Bool("debug", false, "print debug logs for onboarding requests")
-	templatePath := fs.String("template", "", setupText(core.MsgSetupTemplateFlag))
-	name := fs.String("name", "", setupText(core.MsgSetupNameFlag))
-	description := fs.String("description", "", setupText(core.MsgSetupDescriptionFlag))
-	avatar := fs.String("avatar", "", setupText(core.MsgSetupAvatarFlag))
-	agentType := fs.String("agent", "", setupText(core.MsgSetupAgentFlag))
-	workDirFlag := fs.String("work-dir", "", setupText(core.MsgSetupWorkDirFlag))
-	model := fs.String("model", "", setupText(core.MsgSetupModelFlag))
-	mode := fs.String("mode", "", setupText(core.MsgSetupModeFlag))
-	display := fs.String("display", "quiet", setupText(core.MsgSetupDisplayFlag))
-	_ = fs.Parse(args)
+	qrImage := fs.String("qr-image", "", "Save QR code as PNG image file")
+	setAllowFromEmpty := fs.Bool("set-allow-from-empty", false, "Merge owner open_id into allow_from when available")
+	debug := fs.Bool("debug", false, "Print onboarding debug logs")
+	templatePath := fs.String("template", "", "Custom registration addons JSON (default: built-in shared template)")
+	name := fs.String("name", "", "App name (default: project name)")
+	description := fs.String("description", "", "App description")
+	avatar := fs.String("avatar", "", "App avatar HTTPS URL")
+	agentType := fs.String("agent", "", "Agent type for a new project")
+	workDirFlag := fs.String("work-dir", "", "Working directory for a new project")
+	model := fs.String("model", "", "Model for a new project")
+	mode := fs.String("mode", "", "Agent permission mode for a new project")
+	display := fs.String("display", "quiet", "Display for a new project: quiet, compact, full")
+	err := parseCommandFlags(fs, args)
+	if code, done := flagParseExit(err, feishuUsage); done {
+		exitWith(code)
+		return
+	}
 
 	initConfigPath(*configFile)
 
@@ -430,7 +443,10 @@ func printBotMenuGuidance(platformType string) {
 }
 
 func printFeishuUsage() {
-	fmt.Println(`Usage: lark-agent-bot feishu <command> [options]
+	fmt.Print(feishuUsage)
+}
+
+const feishuUsage = `Usage: lark-agent-bot feishu <command> [options]
 
 Commands:
   setup   Unified entry: no credentials => NEW flow; with --app/--app-id => BIND flow
@@ -459,6 +475,7 @@ Options:
   --model <name>              Model for a new project
   --mode <mode>               Agent permission mode for a new project
   --display <mode>            Display for a new project: quiet (default), compact, full
+  -h, --help                  Show this help
 
 Examples:
   # Recommended: one command for both flows
@@ -469,8 +486,8 @@ Examples:
   lark-agent-bot feishu bind --project my-project --app cli_xxx:sec_xxx
 
   # Use only when you must force QR onboarding
-  lark-agent-bot feishu new --project my-project --platform-type lark`)
-}
+  lark-agent-bot feishu new --project my-project --platform-type lark
+`
 
 func resolveFeishuSetupInputs(mode, app, appID, appSecret string) (effectiveMode, resolvedAppID, resolvedAppSecret string, err error) {
 	app = strings.TrimSpace(app)
@@ -677,7 +694,7 @@ func runRegistrationFlowWithClient(opts registrationFlowOptions, client *registr
 		return nil, err
 	}
 
-	fmt.Println("请使用飞书/Lark 手机 App 扫码完成机器人创建与授权：")
+	fmt.Println(setupText(core.MsgSetupScanQR))
 	fmt.Printf("URL: %s\n\n", registrationURL)
 	tryPrintTerminalQRCode(registrationURL)
 	if opts.QRImagePath != "" {

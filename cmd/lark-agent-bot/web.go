@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net/url"
 	"os"
@@ -12,11 +13,59 @@ import (
 	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
+// webAssetsAvailable and openWebBrowser are replaced in tests.
+var (
+	webAssetsAvailable = core.WebAssetsAvailable
+	openWebBrowser     = openBrowser
+)
+
+const webUsage = `Usage: lark-agent-bot web [--config <path>] [--no-browser]
+
+Turn on the web admin in the config file if it is off, then open it in a
+browser. The running bot serves the web admin: restart lark-agent-bot after
+it is turned on.
+
+Flags:
+  --config <path>    Config file (default: ./config.toml, then
+                     ~/.lark-agent-bot/config.toml)
+  -n, --no-browser   Print the URL and token instead of opening a browser
+  -h, --help         Show this help
+`
+
+type webOptions struct {
+	configPath string
+	noBrowser  bool
+}
+
+func parseWebArgs(args []string) (webOptions, error) {
+	var opts webOptions
+	fs := flag.NewFlagSet("web", flag.ContinueOnError)
+	fs.StringVar(&opts.configPath, "config", "", "config file")
+	fs.BoolVar(&opts.noBrowser, "no-browser", false, "print the URL and token instead of opening a browser")
+	fs.BoolVar(&opts.noBrowser, "n", false, "alias of --no-browser")
+	err := parseCommandFlags(fs, args)
+	return opts, err
+}
+
 func runWeb(args []string) {
-	configPath := resolveConfigPath("")
+	exitWith(webCommand(args))
+}
+
+// webCommand runs `lark-agent-bot web` and returns its exit code.
+func webCommand(args []string) int {
+	opts, err := parseWebArgs(args)
+	if code, done := flagParseExit(err, webUsage); done {
+		return code
+	}
+
+	configPath := resolveConfigPath(opts.configPath)
+	if !webAssetsAvailable() {
+		fmt.Fprintln(os.Stderr, cliText(configPath, core.MsgCLIWebNotBuilt))
+		return 1
+	}
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "Config file not found: %s\nRun lark-agent-bot first to create a default config.\n", configPath)
-		os.Exit(1)
+		return 1
 	}
 
 	// Use LoadPermissive so `lark-agent-bot web` works even before any platforms
@@ -24,7 +73,7 @@ func runWeb(args []string) {
 	cfg, err := config.LoadPermissive(configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	config.ConfigPath = configPath
 
@@ -43,39 +92,33 @@ func runWeb(args []string) {
 		result, err := config.EnableWebAdmin(mgmtToken, bridgeToken)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error enabling web admin: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 		port = result.ManagementPort
 		token = result.ManagementToken
-		fmt.Printf("Web admin configured on port %d.\n", port)
+		fmt.Printf("Web admin configured on port %d in %s.\n", port, configPath)
 		fmt.Println("Restart lark-agent-bot for the changes to take effect.")
 	}
 
 	baseURL := fmt.Sprintf("http://localhost:%d", port)
 
-	noBrowser := false
-	for _, a := range args {
-		if a == "--no-browser" || a == "-n" {
-			noBrowser = true
-		}
-	}
-
-	if noBrowser {
+	if opts.noBrowser {
 		fmt.Printf("URL:   %s\n", baseURL)
 		fmt.Printf("Token: %s\n", token)
-		return
+		return 0
 	}
 
 	loginURL := fmt.Sprintf("%s/login?token=%s",
 		baseURL, url.QueryEscape(token))
 
 	fmt.Printf("Opening: %s\n", baseURL)
-	if err := openBrowser(loginURL); err != nil {
+	if err := openWebBrowser(loginURL); err != nil {
 		fmt.Printf("\nCould not open browser automatically.\n")
 		fmt.Printf("Open this URL in your browser:\n")
 		fmt.Printf("  %s/login?token=%s\n", baseURL, token)
 		fmt.Printf("\nNote: make sure lark-agent-bot is running (it hosts the web admin on port %d).\n", port)
 	}
+	return 0
 }
 
 func openBrowser(rawURL string) error {

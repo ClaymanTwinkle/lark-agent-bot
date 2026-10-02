@@ -13,32 +13,41 @@ import (
 	"github.com/ClaymanTwinkle/lark-agent-bot/daemon"
 )
 
+// daemonCommands are the daemon subcommands. Tests replace entries to check
+// what runDaemon calls.
+var daemonCommands = map[string]func([]string){
+	"install":   daemonInstall,
+	"uninstall": daemonUninstall,
+	"start":     daemonStart,
+	"stop":      daemonStop,
+	"restart":   daemonRestart,
+	"status":    daemonStatus,
+	"logs":      daemonLogs,
+}
+
 func runDaemon(args []string) {
 	if len(args) == 0 {
 		printDaemonUsage()
 		os.Exit(1)
 	}
+	if args[0] == "help" || isHelpArg(args[0]) {
+		printDaemonUsage()
+		return
+	}
 
-	switch args[0] {
-	case "install":
-		daemonInstall(args[1:])
-	case "uninstall":
-		daemonUninstall(args[1:])
-	case "start":
-		daemonStart(args[1:])
-	case "stop":
-		daemonStop(args[1:])
-	case "restart":
-		daemonRestart(args[1:])
-	case "status":
-		daemonStatus(args[1:])
-	case "logs":
-		daemonLogs(args[1:])
-	default:
+	run, ok := daemonCommands[args[0]]
+	if !ok {
 		fmt.Fprintf(os.Stderr, "Unknown daemon command: %s\n\n", args[0])
 		printDaemonUsage()
 		os.Exit(1)
 	}
+	// Every subcommand touches the service; with --help it only prints
+	// the usage, which lists the flags of each.
+	if helpRequested(args[1:]) {
+		printDaemonUsage()
+		return
+	}
+	run(args[1:])
 }
 
 // ── install ─────────────────────────────────────────────────

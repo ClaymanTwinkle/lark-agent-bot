@@ -19,35 +19,20 @@ import (
 	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
-// runDoctor dispatches `lark-agent-bot doctor ...`. Today the only subcommand
-// is `user-isolation`, but this function is the growth point for future
-// diagnostics.
-func runDoctor(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: lark-agent-bot doctor <subcommand>")
-		fmt.Fprintln(os.Stderr, "subcommands:")
-		fmt.Fprintln(os.Stderr, "  user-isolation   audit run_as_user projects and emit an isolation report")
-		os.Exit(2)
-	}
-	switch args[0] {
-	case "user-isolation":
-		runDoctorUserIsolation(args[1:])
-	default:
-		fmt.Fprintf(os.Stderr, "unknown doctor subcommand %q\n", args[0])
-		os.Exit(2)
-	}
-}
-
 // runDoctorUserIsolation runs preflight + isolation probe for one or all
 // projects that have run_as_user set, writes a JSON report per project,
 // and exits 0 on full clean, 1 otherwise.
 func runDoctorUserIsolation(args []string) {
-	fs := flag.NewFlagSet("doctor user-isolation", flag.ExitOnError)
+	fs := flag.NewFlagSet("doctor user-isolation", flag.ContinueOnError)
 	configPath := fs.String("config", "", "path to config file (default: auto-discover)")
 	projectFilter := fs.String("project", "", "limit audit to a single project name")
 	outPath := fs.String("out", "", "path to write JSON report (default: ~/.lark-agent-bot/audits/<timestamp>-<project>.json per project)")
 	printScript := fs.Bool("print-script", false, "print the embedded probe script and exit")
-	_ = fs.Parse(args)
+	err := parseCommandFlags(fs, args)
+	if code, done := flagParseExit(err, doctorUsage); done {
+		exitWith(code)
+		return
+	}
 
 	if *printScript {
 		os.Stdout.Write(core.ProbeScript())

@@ -194,6 +194,10 @@ func runTimerAdd(args []string) {
 }
 
 func runTimerList(args []string) {
+	if helpRequested(args) {
+		printTimerUsage()
+		return
+	}
 	var project, dataDir string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -284,6 +288,10 @@ func runTimerList(args []string) {
 }
 
 func runTimerDel(args []string) {
+	if helpRequested(args) {
+		printTimerUsage()
+		return
+	}
 	var dataDir string
 	var id string
 
@@ -328,6 +336,10 @@ func runTimerDel(args []string) {
 }
 
 func runTimerInfo(args []string) {
+	if helpRequested(args) {
+		printTimerUsage()
+		return
+	}
 	var dataDir, id string
 
 	for i := 0; i < len(args); i++ {

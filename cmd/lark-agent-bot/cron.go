@@ -205,6 +205,10 @@ func runCronAdd(args []string) {
 }
 
 func runCronList(args []string) {
+	if helpRequested(args) {
+		printCronUsage()
+		return
+	}
 	var project, dataDir string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -343,6 +347,10 @@ func runCronExec(args []string) {
 }
 
 func runCronDel(args []string) {
+	if helpRequested(args) {
+		printCronUsage()
+		return
+	}
 	var dataDir string
 	var id string
 
@@ -387,6 +395,10 @@ func runCronDel(args []string) {
 }
 
 func runCronInfo(args []string) {
+	if helpRequested(args) {
+		printCronUsage()
+		return
+	}
 	var dataDir, id, field string
 
 	for i := 0; i < len(args); i++ {

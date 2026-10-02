@@ -294,15 +294,6 @@ func (a *setupAPI) checkApplication(appID, botID string, template *setupAddons, 
 	return nil
 }
 
-func setupText(key core.MsgKey, args ...any) string {
-	lang := core.LangChinese
-	if value := os.Getenv("LANG"); value != "" {
-		value, _, _ = strings.Cut(value, ".")
-		lang = core.NormalizeLanguageString(strings.ReplaceAll(value, "_", "-"))
-	}
-	return core.NewI18n(lang).Tf(key, args...)
-}
-
 func inspectSetup(appID, secret, platform string, template *setupAddons) (*setupCheck, error) {
 	base := openFeishuBaseURL
 	if platform == "lark" {

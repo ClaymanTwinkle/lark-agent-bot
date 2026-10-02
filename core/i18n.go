@@ -222,6 +222,32 @@ const (
 	MsgSetupNoProjects           MsgKey = "setup_noprojects"
 )
 
+// Messages of the `lark-agent-bot feishu`, `doctor` and `web` commands.
+const (
+	MsgSetupScanQR                     MsgKey = "setup_scan_qr"
+	MsgCLIWebNotBuilt                  MsgKey = "cli_web_not_built"
+	MsgCLIDoctorConfigMissing          MsgKey = "cli_doctor_config_missing"
+	MsgCLIDoctorConfigInvalid          MsgKey = "cli_doctor_config_invalid"
+	MsgCLIDoctorConfigOK               MsgKey = "cli_doctor_config_ok"
+	MsgCLIDoctorNoProjects             MsgKey = "cli_doctor_no_projects"
+	MsgCLIDoctorProjects               MsgKey = "cli_doctor_projects"
+	MsgCLIDoctorWorkDirOK              MsgKey = "cli_doctor_work_dir_ok"
+	MsgCLIDoctorWorkDirUnset           MsgKey = "cli_doctor_work_dir_unset"
+	MsgCLIDoctorWorkDirPlaceholder     MsgKey = "cli_doctor_work_dir_placeholder"
+	MsgCLIDoctorWorkDirMissing         MsgKey = "cli_doctor_work_dir_missing"
+	MsgCLIDoctorAgentOK                MsgKey = "cli_doctor_agent_ok"
+	MsgCLIDoctorAgentUnknown           MsgKey = "cli_doctor_agent_unknown"
+	MsgCLIDoctorAgentFailed            MsgKey = "cli_doctor_agent_failed"
+	MsgCLIDoctorAgentCLIOK             MsgKey = "cli_doctor_agent_cli_ok"
+	MsgCLIDoctorAgentCLIMissing        MsgKey = "cli_doctor_agent_cli_missing"
+	MsgCLIDoctorAgentCLIFound          MsgKey = "cli_doctor_agent_cli_found"
+	MsgCLIDoctorAgentCLIRunAs          MsgKey = "cli_doctor_agent_cli_run_as"
+	MsgCLIDoctorPlatformUnknown        MsgKey = "cli_doctor_platform_unknown"
+	MsgCLIDoctorCredentialsEmpty       MsgKey = "cli_doctor_credentials_empty"
+	MsgCLIDoctorCredentialsPlaceholder MsgKey = "cli_doctor_credentials_placeholder"
+	MsgCLIDoctorCredentialsOK          MsgKey = "cli_doctor_credentials_ok"
+)
+
 const (
 	// Permission presets and validation.
 	MsgModeInvalid                MsgKey = "mode_invalid"
@@ -968,6 +994,160 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "選單待完成：註冊不會建立選單項目，請在開發者後台完成以下步驟：\n1. 開啟 %s，選擇應用 → 機器人 → 機器人自訂選單。\n2. 啟用懸浮選單，新增三個主選單，回應動作均選擇「推送事件」：\n   查看說明 → event_key: help\n   目前狀態 → event_key: status\n   升級服務 → event_key: upgrade\n3. 在事件與回呼中確認已訂閱 application.bot.menu_v6 和 im.message.recalled_v1。\n4. 建立版本並發布，選單顯示可能需要約 5 分鐘。\n",
 		LangJapanese:           "メニュー設定は開発者コンソールで完了してください（登録ではメニュー項目は作成されません）：\n1. %s でアプリ → ボット → カスタムメニューを開きます。\n2. フローティングメニューを有効にし、次の3項目を追加します。すべて「イベントを送信」を選択してください：\n   ヘルプ → event_key: help\n   現在の状態 → event_key: status\n   サービスを更新 → event_key: upgrade\n3. イベントとコールバックで application.bot.menu_v6 と im.message.recalled_v1 の購読を確認します。\n4. バージョンを作成して公開します。表示には約5分かかる場合があります。\n",
 		LangSpanish:            "Falta configurar el menú en la consola de desarrolladores (el registro no crea sus elementos):\n1. Abre %s y selecciona tu aplicación → Bot → Menú personalizado.\n2. Activa el menú flotante y añade estos tres elementos principales, todos con la acción Enviar evento:\n   Ver ayuda → event_key: help\n   Estado actual → event_key: status\n   Actualizar servicio → event_key: upgrade\n3. Confirma las suscripciones a application.bot.menu_v6 e im.message.recalled_v1 en Eventos y callbacks.\n4. Crea y publica una versión. El menú puede tardar unos 5 minutos en aparecer.\n",
+	},
+	MsgSetupScanQR: {
+		LangEnglish:            "Scan this QR code with the Feishu/Lark mobile app to create and authorize the bot:",
+		LangChinese:            "请使用飞书/Lark 手机 App 扫码完成机器人创建与授权：",
+		LangTraditionalChinese: "請使用飛書/Lark 手機 App 掃碼完成機器人建立與授權：",
+		LangJapanese:           "Feishu/Lark のモバイルアプリでこの QR コードをスキャンし、ボットの作成と承認を完了してください：",
+		LangSpanish:            "Escanea este código QR con la aplicación móvil de Feishu/Lark para crear y autorizar el bot:",
+	},
+	MsgCLIWebNotBuilt: {
+		LangEnglish:            "The web admin is not in this build of lark-agent-bot. Use a release binary, or build with `make build`, which builds the web admin first.",
+		LangChinese:            "当前 lark-agent-bot 构建不包含 Web 管理后台。请使用发布版二进制，或用 `make build` 构建（会先构建 Web 管理后台）。",
+		LangTraditionalChinese: "目前的 lark-agent-bot 建置不包含 Web 管理後台。請使用正式發佈的執行檔，或用 `make build` 建置（會先建置 Web 管理後台）。",
+		LangJapanese:           "この lark-agent-bot のビルドには Web 管理画面が含まれていません。リリース版のバイナリを使うか、`make build` でビルドしてください（先に Web 管理画面をビルドします）。",
+		LangSpanish:            "Esta compilación de lark-agent-bot no incluye la administración web. Usa un binario publicado o compila con `make build`, que compila antes la administración web.",
+	},
+	MsgCLIDoctorConfigMissing: {
+		LangEnglish:            "Config file %s not found. Run lark-agent-bot once to create a starter config, or create a bot with: %s",
+		LangChinese:            "未找到配置文件 %s。运行一次 lark-agent-bot 生成初始配置，或用以下命令创建机器人：%s",
+		LangTraditionalChinese: "找不到設定檔 %s。執行一次 lark-agent-bot 產生初始設定，或用以下指令建立機器人：%s",
+		LangJapanese:           "設定ファイル %s が見つかりません。lark-agent-bot を一度実行して初期設定を作成するか、次のコマンドでボットを作成してください：%s",
+		LangSpanish:            "No se encontró el archivo de configuración %s. Ejecuta lark-agent-bot una vez para crear una configuración inicial, o crea un bot con: %s",
+	},
+	MsgCLIDoctorConfigInvalid: {
+		LangEnglish:            "Config file %s cannot be loaded: %v",
+		LangChinese:            "配置文件 %s 无法加载：%v",
+		LangTraditionalChinese: "設定檔 %s 無法載入：%v",
+		LangJapanese:           "設定ファイル %s を読み込めません：%v",
+		LangSpanish:            "No se puede cargar el archivo de configuración %s: %v",
+	},
+	MsgCLIDoctorConfigOK: {
+		LangEnglish:            "Config file: %s",
+		LangChinese:            "配置文件：%s",
+		LangTraditionalChinese: "設定檔：%s",
+		LangJapanese:           "設定ファイル：%s",
+		LangSpanish:            "Archivo de configuración: %s",
+	},
+	MsgCLIDoctorNoProjects: {
+		LangEnglish:            "The config has no [[projects]]. Add one, or create a bot with: %s",
+		LangChinese:            "配置中没有任何 [[projects]]。请添加一个，或用以下命令创建机器人：%s",
+		LangTraditionalChinese: "設定中沒有任何 [[projects]]。請新增一個，或用以下指令建立機器人：%s",
+		LangJapanese:           "設定に [[projects]] がありません。追加するか、次のコマンドでボットを作成してください：%s",
+		LangSpanish:            "La configuración no tiene [[projects]]. Añade uno o crea un bot con: %s",
+	},
+	MsgCLIDoctorProjects: {
+		LangEnglish:            "Projects (%d): %s",
+		LangChinese:            "项目（%d 个）：%s",
+		LangTraditionalChinese: "專案（%d 個）：%s",
+		LangJapanese:           "プロジェクト（%d 件）：%s",
+		LangSpanish:            "Proyectos (%d): %s",
+	},
+	MsgCLIDoctorWorkDirOK: {
+		LangEnglish:            "work_dir: %s",
+		LangChinese:            "work_dir：%s",
+		LangTraditionalChinese: "work_dir：%s",
+		LangJapanese:           "work_dir：%s",
+		LangSpanish:            "work_dir: %s",
+	},
+	MsgCLIDoctorWorkDirUnset: {
+		LangEnglish:            "work_dir is not set: the agent works in the folder lark-agent-bot starts in.",
+		LangChinese:            "未设置 work_dir：agent 将在 lark-agent-bot 启动时所在的目录中工作。",
+		LangTraditionalChinese: "未設定 work_dir：agent 會在 lark-agent-bot 啟動時所在的目錄中工作。",
+		LangJapanese:           "work_dir が未設定です：agent は lark-agent-bot を起動したフォルダで作業します。",
+		LangSpanish:            "work_dir no está definido: el agente trabaja en la carpeta donde se inicia lark-agent-bot.",
+	},
+	MsgCLIDoctorWorkDirPlaceholder: {
+		LangEnglish:            "work_dir is still the placeholder %s. Set it under [projects.agent.options] to the folder the agent should work in.",
+		LangChinese:            "work_dir 仍是占位值 %s。请在 [projects.agent.options] 中把它设为 agent 要工作的目录。",
+		LangTraditionalChinese: "work_dir 仍是預留值 %s。請在 [projects.agent.options] 中把它設為 agent 要工作的目錄。",
+		LangJapanese:           "work_dir がプレースホルダー %s のままです。[projects.agent.options] で agent が作業するフォルダを指定してください。",
+		LangSpanish:            "work_dir sigue siendo el marcador %s. Defínelo en [projects.agent.options] con la carpeta donde debe trabajar el agente.",
+	},
+	MsgCLIDoctorWorkDirMissing: {
+		LangEnglish:            "work_dir %s does not exist or is not a folder. Set it under [projects.agent.options] to the folder the agent should work in.",
+		LangChinese:            "work_dir %s 不存在或不是目录。请在 [projects.agent.options] 中把它设为 agent 要工作的目录。",
+		LangTraditionalChinese: "work_dir %s 不存在或不是目錄。請在 [projects.agent.options] 中把它設為 agent 要工作的目錄。",
+		LangJapanese:           "work_dir %s が存在しないか、フォルダではありません。[projects.agent.options] で agent が作業するフォルダを指定してください。",
+		LangSpanish:            "work_dir %s no existe o no es una carpeta. Defínelo en [projects.agent.options] con la carpeta donde debe trabajar el agente.",
+	},
+	MsgCLIDoctorAgentOK: {
+		LangEnglish:            "Agent type: %s",
+		LangChinese:            "Agent 类型：%s",
+		LangTraditionalChinese: "Agent 類型：%s",
+		LangJapanese:           "Agent の種類：%s",
+		LangSpanish:            "Tipo de agente: %s",
+	},
+	MsgCLIDoctorAgentUnknown: {
+		LangEnglish:            "Agent type %q is not in this build (available: %s).",
+		LangChinese:            "当前构建不包含 agent 类型 %q（可用：%s）。",
+		LangTraditionalChinese: "目前建置不包含 agent 類型 %q（可用：%s）。",
+		LangJapanese:           "agent の種類 %q はこのビルドに含まれていません（利用可能：%s）。",
+		LangSpanish:            "El tipo de agente %q no está en esta compilación (disponibles: %s).",
+	},
+	MsgCLIDoctorAgentFailed: {
+		LangEnglish:            "Agent %s cannot start: %v",
+		LangChinese:            "Agent %s 无法启动：%v",
+		LangTraditionalChinese: "Agent %s 無法啟動：%v",
+		LangJapanese:           "Agent %s を起動できません：%v",
+		LangSpanish:            "El agente %s no puede iniciarse: %v",
+	},
+	MsgCLIDoctorAgentCLIOK: {
+		LangEnglish:            "Agent CLI %s: %s",
+		LangChinese:            "Agent 命令行 %s：%s",
+		LangTraditionalChinese: "Agent 命令列 %s：%s",
+		LangJapanese:           "Agent CLI %s：%s",
+		LangSpanish:            "CLI del agente %s: %s",
+	},
+	MsgCLIDoctorAgentCLIMissing: {
+		LangEnglish:            "Agent CLI %s not found in PATH. Install it, or set cmd under [projects.agent.options] to its path.",
+		LangChinese:            "PATH 中找不到 agent 命令行 %s。请安装它，或在 [projects.agent.options] 中把 cmd 设为它的路径。",
+		LangTraditionalChinese: "PATH 中找不到 agent 命令列 %s。請安裝它，或在 [projects.agent.options] 中把 cmd 設為它的路徑。",
+		LangJapanese:           "PATH に agent CLI %s が見つかりません。インストールするか、[projects.agent.options] の cmd にそのパスを指定してください。",
+		LangSpanish:            "No se encontró la CLI del agente %s en el PATH. Instálala o define cmd en [projects.agent.options] con su ruta.",
+	},
+	MsgCLIDoctorAgentCLIFound: {
+		LangEnglish:            "Agent CLI: found by the %s agent.",
+		LangChinese:            "Agent 命令行：%s agent 已找到。",
+		LangTraditionalChinese: "Agent 命令列：%s agent 已找到。",
+		LangJapanese:           "Agent CLI：%s agent により検出されました。",
+		LangSpanish:            "CLI del agente: encontrada por el agente %s.",
+	},
+	MsgCLIDoctorAgentCLIRunAs: {
+		LangEnglish:            "The agent runs as user %s, so its CLI is not looked up here. Check it with: %s",
+		LangChinese:            "Agent 以用户 %s 运行，这里不检查它的命令行。请用以下命令检查：%s",
+		LangTraditionalChinese: "Agent 以使用者 %s 執行，這裡不檢查它的命令列。請用以下指令檢查：%s",
+		LangJapanese:           "agent はユーザー %s として実行されるため、ここでは CLI を確認しません。次のコマンドで確認してください：%s",
+		LangSpanish:            "El agente se ejecuta como el usuario %s, así que aquí no se busca su CLI. Compruébala con: %s",
+	},
+	MsgCLIDoctorPlatformUnknown: {
+		LangEnglish:            "Platform type %q is not in this build (available: %s).",
+		LangChinese:            "当前构建不包含平台类型 %q（可用：%s）。",
+		LangTraditionalChinese: "目前建置不包含平台類型 %q（可用：%s）。",
+		LangJapanese:           "プラットフォームの種類 %q はこのビルドに含まれていません（利用可能：%s）。",
+		LangSpanish:            "El tipo de plataforma %q no está en esta compilación (disponibles: %s).",
+	},
+	MsgCLIDoctorCredentialsEmpty: {
+		LangEnglish:            "%s app_id or app_secret is empty. Fill them in, or create a bot with: %s",
+		LangChinese:            "%s 的 app_id 或 app_secret 为空。请填写，或用以下命令创建机器人：%s",
+		LangTraditionalChinese: "%s 的 app_id 或 app_secret 為空。請填寫，或用以下指令建立機器人：%s",
+		LangJapanese:           "%s の app_id または app_secret が空です。記入するか、次のコマンドでボットを作成してください：%s",
+		LangSpanish:            "app_id o app_secret de %s está vacío. Rellénalos o crea un bot con: %s",
+	},
+	MsgCLIDoctorCredentialsPlaceholder: {
+		LangEnglish:            "%s app_id / app_secret are still the starter placeholders. Fill them in, or create a bot with: %s",
+		LangChinese:            "%s 的 app_id / app_secret 仍是初始配置的占位值。请填写，或用以下命令创建机器人：%s",
+		LangTraditionalChinese: "%s 的 app_id / app_secret 仍是初始設定的預留值。請填寫，或用以下指令建立機器人：%s",
+		LangJapanese:           "%s の app_id / app_secret が初期設定のプレースホルダーのままです。記入するか、次のコマンドでボットを作成してください：%s",
+		LangSpanish:            "app_id / app_secret de %s siguen siendo los marcadores de la configuración inicial. Rellénalos o crea un bot con: %s",
+	},
+	MsgCLIDoctorCredentialsOK: {
+		LangEnglish:            "%s app_id %s. Check the app's permissions with: %s",
+		LangChinese:            "%s app_id %s。可用以下命令检查应用权限：%s",
+		LangTraditionalChinese: "%s app_id %s。可用以下指令檢查應用權限：%s",
+		LangJapanese:           "%s app_id %s。次のコマンドでアプリの権限を確認できます：%s",
+		LangSpanish:            "%s app_id %s. Comprueba los permisos de la aplicación con: %s",
 	},
 	MsgStarting: {
 		LangEnglish:            "⏳ Processing...",

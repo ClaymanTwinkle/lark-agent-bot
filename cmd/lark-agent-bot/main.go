@@ -19,7 +19,6 @@ import (
 	"syscall"
 	"time"
 
-	larkagentbot "github.com/ClaymanTwinkle/lark-agent-bot"
 	"github.com/ClaymanTwinkle/lark-agent-bot/config"
 	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 	"github.com/ClaymanTwinkle/lark-agent-bot/daemon"
@@ -213,15 +212,12 @@ type providerWiringResult struct {
 }
 
 var topLevelCommandHandlers = map[string]func([]string){
-	"config-example": func(_ []string) {
-		fmt.Print(larkagentbot.ConfigExampleTOML)
-	},
-	"config": runConfig,
-	"update": func(_ []string) {
-		runUpdate()
-	},
-	"check-update": func(_ []string) {
-		checkUpdate()
+	"config-example": runConfigExample,
+	"config":         runConfig,
+	"update":         runUpdate,
+	"check-update":   checkUpdate,
+	"help": func(_ []string) {
+		printUsage()
 	},
 	"provider":  runProviderCommand,
 	"send":      runSend,
@@ -336,14 +332,14 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error creating config: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Println(setupText(core.MsgSetupConfigCreated, configPath))
+		fmt.Println(cliText(configPath, core.MsgSetupConfigCreated, configPath))
 		os.Exit(0)
 	}
 
 	cfg, err := config.Load(configPath)
 	if errors.Is(err, config.ErrNoProjects) {
 		// e.g. the empty file left behind when QR setup was cancelled.
-		fmt.Fprintln(os.Stderr, setupText(core.MsgSetupNoProjects, configPath))
+		fmt.Fprintln(os.Stderr, cliText(configPath, core.MsgSetupNoProjects, configPath))
 		os.Exit(1)
 	}
 	if err != nil {
@@ -1671,23 +1667,29 @@ Commands:
     bind             Bind existing app_id/app_secret
     check            Check an existing bot's permissions (read-only)
 
-  web                Enable the web admin and open it in a browser (--no-browser)
+  web                Enable the web admin and open it in a browser
+                     (--config <path>, --no-browser)
 
   config             Manage configuration
     example          Print a complete annotated config.toml example
     format           Format the config file (alias: fmt)
     path             Print the resolved config file path
 
-  doctor             Diagnostics
+  doctor             Check the setup before starting: config, agent CLIs,
+                     work_dir, Feishu/Lark credentials (--config <path>)
     user-isolation   Audit run_as_user projects (Linux / macOS)
 
   update             Check for updates and upgrade the binary (--pre for beta)
   check-update       Check if a newer version is available
   config-example     (deprecated: use 'config example' instead)
+  help               Show this help message
+
+  Run 'lark-agent-bot <command> --help' for the flags of a command.
 
 Examples:
   lark-agent-bot                          Start with default config
   lark-agent-bot --config /path/to.toml   Start with a specific config file
+  lark-agent-bot doctor                   Check the setup before starting
   lark-agent-bot daemon install           Install as a system service
   lark-agent-bot daemon logs -f           Follow daemon logs
   lark-agent-bot send -m "hello"          Send a message to the active session

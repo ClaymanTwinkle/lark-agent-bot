@@ -98,6 +98,9 @@ func TestSetupTemplate_RejectsMissingMenuOrRecallSubscription(t *testing.T) {
 }
 
 func TestBotMenuGuidance_UsesThreeEventActions(t *testing.T) {
+	isolateHome(t) // no config, so LANG decides the language
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LC_MESSAGES", "")
 	t.Setenv("LANG", "zh")
 	file, err := os.CreateTemp(t.TempDir(), "menu-output")
 	if err != nil {

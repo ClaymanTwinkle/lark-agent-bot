@@ -596,17 +596,20 @@ func runProviderPresets(args []string) {
 // ── Global provider management ─────────────────────────────────
 
 func runProviderGlobal(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, `Usage: lark-agent-bot provider global <command>
+	const usage = `Usage: lark-agent-bot provider global <command>
 
 Commands:
   list     List global providers
   add      Add a global provider
-  remove   Remove a global provider`)
+  remove   Remove a global provider`
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(1)
 	}
 
 	switch args[0] {
+	case "help", "--help", "-h", "-help":
+		fmt.Println(usage)
 	case "list":
 		runGlobalProviderList(args[1:])
 	case "add":

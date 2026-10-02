@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -109,12 +110,41 @@ func getUpdateHintIfAvailable() string {
 	return ""
 }
 
-func runUpdate() {
-	pre := false
-	for _, arg := range os.Args[2:] {
-		if arg == "--pre" || arg == "--beta" {
-			pre = true
-		}
+// parseUpdateArgs parses the flags of update and check-update: --pre (alias
+// --beta) includes pre-releases. -h / --help gives flag.ErrHelp.
+func parseUpdateArgs(command string, args []string) (pre bool, err error) {
+	fs := flag.NewFlagSet(command, flag.ContinueOnError)
+	fs.BoolVar(&pre, "pre", false, "include pre-releases")
+	fs.BoolVar(&pre, "beta", false, "include pre-releases (alias of --pre)")
+	err = parseCommandFlags(fs, args)
+	return pre, err
+}
+
+const updateUsage = `Usage: lark-agent-bot update [--pre]
+
+Download the latest release from GitHub and replace the installed binary.
+Restart lark-agent-bot afterwards to run the new version.
+
+Flags:
+  --pre, --beta   Include pre-releases
+  -h, --help      Show this help
+`
+
+const checkUpdateUsage = `Usage: lark-agent-bot check-update [--pre]
+
+Print a notice on stderr when GitHub has a newer release. Prints nothing
+when this is the latest version or GitHub cannot be reached.
+
+Flags:
+  --pre, --beta   Include pre-releases
+  -h, --help      Show this help
+`
+
+func runUpdate(args []string) {
+	pre, err := parseUpdateArgs("update", args)
+	if code, done := flagParseExit(err, updateUsage); done {
+		exitWith(code)
+		return
 	}
 
 	fmt.Printf("lark-agent-bot %s\n", version)
@@ -418,12 +448,11 @@ func downloadToTemp(url string) (string, error) {
 	return tmp.Name(), nil
 }
 
-func checkUpdate() {
-	pre := false
-	for _, arg := range os.Args[2:] {
-		if arg == "--pre" || arg == "--beta" {
-			pre = true
-		}
+func checkUpdate(args []string) {
+	pre, err := parseUpdateArgs("check-update", args)
+	if code, done := flagParseExit(err, checkUpdateUsage); done {
+		exitWith(code)
+		return
 	}
 
 	release, err := fetchRelease(pre)
