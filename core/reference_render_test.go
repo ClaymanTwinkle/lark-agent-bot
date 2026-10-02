@@ -36,6 +36,30 @@ func TestTransformLocalReferences_UsesAllScopes(t *testing.T) {
 	}
 }
 
+// Regression (#12): a project of type "lark" runs its platform under the name
+// "lark", which neither "all" nor an explicit render_platforms entry covered.
+func TestTransformLocalReferences_RendersForLark(t *testing.T) {
+	for _, platforms := range [][]string{{"all"}, {"lark"}} {
+		cfg := ReferenceRenderCfg{
+			NormalizeAgents: []string{"codex"},
+			RenderPlatforms: platforms,
+			DisplayPath:     "basename",
+			MarkerStyle:     "none",
+			EnclosureStyle:  "code",
+		}
+		got := TransformLocalReferences("See /root/code/demo/src/app.ts:42", cfg, "codex", "lark", "/root/code/demo")
+		if want := "See `app.ts:42`"; got != want {
+			t.Errorf("render_platforms %v: TransformLocalReferences() = %q, want %q", platforms, got, want)
+		}
+	}
+
+	cfg := ReferenceRenderCfg{NormalizeAgents: []string{"codex"}, RenderPlatforms: []string{"feishu"}}
+	input := "See /root/code/demo/src/app.ts:42"
+	if got := TransformLocalReferences(input, cfg, "codex", "lark", "/root/code/demo"); got != input {
+		t.Errorf("render_platforms [feishu] on lark: TransformLocalReferences() = %q, want unchanged", got)
+	}
+}
+
 func TestTransformLocalReferences_PreservesWebMarkdownLinks(t *testing.T) {
 	cfg := ReferenceRenderCfg{
 		NormalizeAgents: []string{"codex"},

@@ -1172,6 +1172,7 @@ var supportedReferenceAgents = map[string]struct{}{
 var supportedReferencePlatforms = map[string]struct{}{
 	"all":    {},
 	"feishu": {},
+	"lark":   {},
 }
 
 var supportedReferenceDisplayPaths = map[string]struct{}{

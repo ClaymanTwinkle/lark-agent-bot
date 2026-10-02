@@ -57,7 +57,11 @@ func normalizeReferenceRenderCfg(cfg ReferenceRenderCfg) ReferenceRenderCfg {
 }
 
 var supportedReferenceNormalizeAgents = []string{"codex", "claudecode"}
-var supportedReferenceRenderPlatforms = []string{"feishu"}
+
+// supportedReferenceRenderPlatforms are the Platform.Name() values local
+// references are re-rendered for. A project of type "lark" runs the Feishu
+// adapter under the name "lark".
+var supportedReferenceRenderPlatforms = []string{"feishu", "lark"}
 
 func normalizeReferenceScope(values []string, supported []string) []string {
 	if len(values) == 0 {

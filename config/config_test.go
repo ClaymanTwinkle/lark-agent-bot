@@ -124,6 +124,21 @@ func TestConfigValidate(t *testing.T) {
 			},
 		},
 		{
+			// Regression (#12): a project of type "lark" could not enable
+			// reference rendering for its platform.
+			name: "accepts lark reference platform",
+			cfg: Config{
+				Projects: []ProjectConfig{
+					func() ProjectConfig {
+						p := validProject("demo")
+						p.References.NormalizeAgents = []string{"codex"}
+						p.References.RenderPlatforms = []string{"lark"}
+						return p
+					}(),
+				},
+			},
+		},
+		{
 			name: "rejects unsupported reference agent",
 			cfg: Config{
 				Projects: []ProjectConfig{
