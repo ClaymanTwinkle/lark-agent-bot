@@ -425,6 +425,8 @@ lark-agent-bot update --pre    # include pre-releases
 
 `lark-agent-bot update` downloads the `lark-agent-bot-<tag>-<os>-<arch>` archive for your platform from GitHub Releases and replaces the running binary.
 
+Update checks use GitHub's releases API, which allows 60 requests an hour per IP without a token. When it is over that limit, `update` and `/upgrade` still find the latest release but show no release notes and skip pre-releases; set `GH_TOKEN` or `GITHUB_TOKEN` in the bot's environment to use your account's limit. The token is only sent to api.github.com.
+
 ### npm users
 
 ```bash

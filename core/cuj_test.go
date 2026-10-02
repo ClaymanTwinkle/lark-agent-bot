@@ -25,7 +25,7 @@
 //     these are the user-facing surfaces.
 //  5. Keep each test self-contained (own t.TempDir(), own engine).
 //
-// Full inventory: projects/lark-agent-bot/agents/qa-cursor/release-gate/CUJ-INVENTORY.md
+// The tests in this file are the inventory; AGENTS.md lists the groups.
 package core
 
 import (

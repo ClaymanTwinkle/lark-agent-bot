@@ -314,7 +314,7 @@ enclosure_style = "code"
 
 - `render_platforms`
   - 控制在哪些平台发送前应用展示重写
-  - 当前初始支持：`feishu`、`all`
+  - 支持：`feishu`、`lark`、`all`
 
 - `display_path`
   - 控制路径主体的显示层级

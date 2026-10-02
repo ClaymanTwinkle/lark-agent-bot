@@ -318,7 +318,7 @@ enclosure_style = "code"
 
 - `render_platforms`
   - On which platforms the display rewrite is applied before sending
-  - Supported: `feishu`, `all`
+  - Supported: `feishu`, `lark`, `all`
 
 - `display_path`
   - How much of the path is shown

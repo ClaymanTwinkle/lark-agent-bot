@@ -1137,7 +1137,7 @@ mode = "auto" # "auto" (default when unset) | "default" (manual) | "acceptEdits"
 #
 # Supported today / 当前已支持:
 #   normalize_agents: codex | claudecode | all
-#   render_platforms: feishu | all
+#   render_platforms: feishu | lark | all
 # Note: render depends on normalize. If normalize_agents is empty, render_platforms
 # alone has no effect.
 # 注意：render 依赖 normalize。若 normalize_agents 为空，仅设置 render_platforms 不生效。

@@ -54,6 +54,7 @@ The reviewer will use the checklist at the bottom to gate merge.
 - [ ] G — error handling & robustness (LLM failure, ws reconnect, agent crash)
 - [ ] H — multi-platform / multi-project isolation
 - [ ] I — UI rendering correctness (cards, streaming, display modes)
+- [ ] STREAM — streaming across permission prompts
 
 If any CUJ group is touched, confirm:
 

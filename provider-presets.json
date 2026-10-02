@@ -29,7 +29,7 @@
       "name": "kimi-cn",
       "display_name": "Kimi (中国站)",
       "invite_url": "https://platform.kimi.com",
-      "description": "Kimi K3 — Moonshot AI 迄今能力最强的模型，也是全球首个开源 3T 级模型。K3 拥有 2.8T 参数、原生视觉能力与 100 万 Token 上下文。",
+      "description": "Kimi K3 — Moonshot AI's most capable model so far and the first open-source 3T-class model: 2.8T parameters, native vision and a 1M-token context.",
       "description_zh": "Kimi K3 — Moonshot AI 迄今能力最强的模型，也是全球首个开源 3T 级模型。K3 拥有 2.8T 参数、原生视觉能力与 100 万 Token 上下文。",
       "features": ["K3", "Open Source"],
       "tier": 1,
