@@ -143,3 +143,16 @@ func KillExistingInstance(configPath string) bool {
 	// Note: we can't use proc.Wait() as we're not the parent
 	return true
 }
+
+// runningInstancePID returns the PID recorded in the instance lock of
+// configPath when that process is still alive, otherwise 0.
+func runningInstancePID(configPath string) int {
+	pid := readPIDFromLockFile(instanceLockPath(configPath))
+	if pid <= 0 {
+		return 0
+	}
+	if err := syscall.Kill(pid, 0); err != nil && err != syscall.EPERM {
+		return 0
+	}
+	return pid
+}

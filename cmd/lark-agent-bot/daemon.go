@@ -23,15 +23,15 @@ func runDaemon(args []string) {
 	case "install":
 		daemonInstall(args[1:])
 	case "uninstall":
-		daemonUninstall()
+		daemonUninstall(args[1:])
 	case "start":
-		daemonStart()
+		daemonStart(args[1:])
 	case "stop":
-		daemonStop()
+		daemonStop(args[1:])
 	case "restart":
 		daemonRestart(args[1:])
 	case "status":
-		daemonStatus()
+		daemonStatus(args[1:])
 	case "logs":
 		daemonLogs(args[1:])
 	default:
@@ -50,35 +50,21 @@ func daemonInstall(args []string) {
 		os.Exit(1)
 	}
 
-	// Fall back to the standard ~/.lark-agent-bot location before resolving,
-	// so that daemon.Resolve's env capture (including ${ENV} placeholder
-	// scanning of the config file) and the installed service's
-	// WorkingDirectory are consistent with the config actually in use.
-	// This matches the lookup behavior of other subcommands (see main.go
-	// config resolution: ./config.toml first, then ~/.lark-agent-bot/config.toml).
-	workDir := cfg.WorkDir
-	if workDir == "" {
-		if wd, gerr := os.Getwd(); gerr == nil {
-			workDir = wd
-		}
+	// Settle the config file before resolving, so that daemon.Resolve's env
+	// capture (including ${ENV} placeholder scanning of the config file) and
+	// the installed service's --config and working directory all use the
+	// config actually in use.
+	if err := resolveDaemonConfigPath(&cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
-	configPath := filepath.Join(workDir, "config.toml")
-	if _, err := os.Stat(configPath); err != nil {
-		if home, herr := os.UserHomeDir(); herr == nil {
-			homeConfig := filepath.Join(home, ".lark-agent-bot", "config.toml")
-			if _, serr := os.Stat(homeConfig); serr == nil {
-				configPath = homeConfig
-				if cfg.WorkDir == "" {
-					cfg.WorkDir = filepath.Join(home, ".lark-agent-bot")
-				}
-				fmt.Fprintf(os.Stderr, "Note: using config from %s\n", homeConfig)
-			}
-		}
-		if _, err := os.Stat(configPath); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: config.toml not found in %s\n", workDir)
-			fmt.Fprintf(os.Stderr, "  Use --work-dir to specify the config directory or --config to point to the config file\n")
-			os.Exit(1)
-		}
+	if cfg.Instance == "" {
+		cfg.Instance = daemon.InstanceFromConfigPath(cfg.ConfigPath)
+	}
+	if other := instanceUsingConfig(daemon.ListMeta(), cfg.ConfigPath, cfg.Instance); other != nil && !force {
+		fmt.Fprintf(os.Stderr, "%s is already installed as %s. Uninstall that one first, or use --force to install it twice.\n",
+			cfg.ConfigPath, instanceLabel(other.Instance))
+		os.Exit(1)
 	}
 
 	if err := daemon.Resolve(&cfg); err != nil {
@@ -86,16 +72,24 @@ func daemonInstall(args []string) {
 		os.Exit(1)
 	}
 
-	mgr, err := daemon.NewManager()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
+	mgr := mustManager(cfg.Instance)
 
 	st, _ := mgr.Status()
 	if st != nil && st.Installed && !force {
-		fmt.Fprintf(os.Stderr, "Service already installed. Use --force to reinstall.\n")
+		fmt.Fprintf(os.Stderr, "Service %s already installed. Use --force to reinstall.\n", daemon.ServiceNameFor(cfg.Instance))
 		os.Exit(1)
+	}
+
+	// A bot already running with this config outside the service holds the
+	// instance lock, and the service would retry until it exits.
+	if pid := runningInstancePID(cfg.ConfigPath); pid > 0 {
+		if force {
+			fmt.Printf("Stopping lark-agent-bot (PID %d), already running with %s...\n", pid, cfg.ConfigPath)
+			KillExistingInstance(cfg.ConfigPath)
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: lark-agent-bot (PID %d) is already running with %s outside the service.\n", pid, cfg.ConfigPath)
+			fmt.Fprintln(os.Stderr, "  The service will keep retrying until it exits. Use --force to stop it first.")
+		}
 	}
 
 	if err := mgr.Install(cfg); err != nil {
@@ -104,29 +98,35 @@ func daemonInstall(args []string) {
 	}
 
 	if err := daemon.SaveMeta(&daemon.Meta{
-		LogFile:     cfg.LogFile,
-		LogMaxSize:  cfg.LogMaxSize,
-		WorkDir:     cfg.WorkDir,
-		BinaryPath:  cfg.BinaryPath,
-		InstalledAt: daemon.NowISO(),
+		LogFile:       cfg.LogFile,
+		LogMaxSize:    cfg.LogMaxSize,
+		LogMaxBackups: cfg.LogMaxBackups,
+		WorkDir:       cfg.WorkDir,
+		BinaryPath:    cfg.BinaryPath,
+		InstalledAt:   daemon.NowISO(),
+		ConfigPath:    cfg.ConfigPath,
+		Instance:      cfg.Instance,
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save metadata: %v\n", err)
 	}
 
+	sel := instanceSelectorFlag(cfg.Instance)
 	fmt.Println("lark-agent-bot daemon installed and started.")
 	fmt.Println()
+	fmt.Printf("  Service:   %s\n", daemon.ServiceNameFor(cfg.Instance))
 	fmt.Printf("  Platform:  %s\n", mgr.Platform())
 	fmt.Printf("  Binary:    %s\n", cfg.BinaryPath)
+	fmt.Printf("  Config:    %s\n", cfg.ConfigPath)
 	fmt.Printf("  WorkDir:   %s\n", cfg.WorkDir)
 	fmt.Printf("  Log:       %s\n", cfg.LogFile)
 	fmt.Printf("  LogMax:    %d MB\n", cfg.LogMaxSize/1024/1024)
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  lark-agent-bot daemon status    - Check status")
-	fmt.Println("  lark-agent-bot daemon logs -f   - Follow logs")
-	fmt.Println("  lark-agent-bot daemon restart   - Restart")
-	fmt.Println("  lark-agent-bot daemon stop      - Stop")
-	fmt.Println("  lark-agent-bot daemon uninstall - Remove")
+	fmt.Printf("  lark-agent-bot daemon status%s    - Check status\n", sel)
+	fmt.Printf("  lark-agent-bot daemon logs -f%s   - Follow logs\n", sel)
+	fmt.Printf("  lark-agent-bot daemon restart%s   - Restart\n", sel)
+	fmt.Printf("  lark-agent-bot daemon stop%s      - Stop\n", sel)
+	fmt.Printf("  lark-agent-bot daemon uninstall%s - Remove\n", sel)
 
 	// Check linger for user-mode systemd
 	if strings.Contains(mgr.Platform(), "user") {
@@ -141,9 +141,71 @@ func daemonInstall(args []string) {
 	}
 }
 
+// resolveDaemonConfigPath settles the absolute config file the service runs
+// with. An explicit --config must exist. Otherwise it is config.toml in the
+// work dir (default: the current dir), then ~/.lark-agent-bot/config.toml,
+// the order the bot itself uses.
+func resolveDaemonConfigPath(cfg *daemon.Config) error {
+	if cfg.ConfigPath != "" {
+		abs, err := filepath.Abs(cfg.ConfigPath)
+		if err != nil {
+			return fmt.Errorf("config path %s: %w", cfg.ConfigPath, err)
+		}
+		if _, err := os.Stat(abs); err != nil {
+			return fmt.Errorf("config file not found: %s", abs)
+		}
+		cfg.ConfigPath = abs
+		return nil
+	}
+
+	workDir := cfg.WorkDir
+	if workDir == "" {
+		if wd, err := os.Getwd(); err == nil {
+			workDir = wd
+		}
+	}
+	if abs, err := filepath.Abs(filepath.Join(workDir, "config.toml")); err == nil {
+		if _, err := os.Stat(abs); err == nil {
+			cfg.ConfigPath = abs
+			return nil
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		homeConfig := filepath.Join(home, ".lark-agent-bot", "config.toml")
+		if _, err := os.Stat(homeConfig); err == nil {
+			cfg.ConfigPath = homeConfig
+			if cfg.WorkDir == "" {
+				cfg.WorkDir = filepath.Dir(homeConfig)
+			}
+			fmt.Fprintf(os.Stderr, "Note: using config from %s\n", homeConfig)
+			return nil
+		}
+	}
+	return fmt.Errorf("config.toml not found in %s\n  Use --work-dir to specify the config directory or --config to point to the config file", workDir)
+}
+
+// instanceUsingConfig returns another installed instance that runs with
+// configPath, or nil.
+func instanceUsingConfig(metas []*daemon.Meta, configPath, instance string) *daemon.Meta {
+	for _, m := range metas {
+		if m.Instance != instance && m.ConfigPath != "" && sameFilePath(m.ConfigPath, configPath) {
+			return m
+		}
+	}
+	return nil
+}
+
+func sameFilePath(a, b string) bool {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	if filepath.Separator == '\\' {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
 func parseDaemonInstallArgs(args []string) (daemon.Config, bool, error) {
 	var cfg daemon.Config
-	var force bool
+	var force, workDirSet bool
 
 	// Env-based opt-out: CC_DAEMON_NO_CAPTURE_SECRETS=1 / true / yes / on
 	// triggers --no-capture-secrets without the CLI flag, for CI / container
@@ -192,25 +254,45 @@ func parseDaemonInstallArgs(args []string) (daemon.Config, bool, error) {
 				return daemon.Config{}, false, err
 			}
 			cfg.WorkDir = value
+			workDirSet = true
 			i = next
 		case strings.HasPrefix(arg, "--work-dir="):
 			cfg.WorkDir = strings.TrimPrefix(arg, "--work-dir=")
+			workDirSet = true
 		case arg == "--config" || arg == "-config":
 			value, next, err := daemonInstallFlagValue(args, i, arg)
 			if err != nil {
 				return daemon.Config{}, false, err
 			}
-			cfg.WorkDir = filepath.Dir(value)
+			cfg.ConfigPath = value
 			i = next
 		case strings.HasPrefix(arg, "--config="):
-			cfg.WorkDir = filepath.Dir(strings.TrimPrefix(arg, "--config="))
+			cfg.ConfigPath = strings.TrimPrefix(arg, "--config=")
 		case strings.HasPrefix(arg, "-config="):
-			cfg.WorkDir = filepath.Dir(strings.TrimPrefix(arg, "-config="))
+			cfg.ConfigPath = strings.TrimPrefix(arg, "-config=")
+		case arg == "--name" || strings.HasPrefix(arg, "--name="):
+			value := strings.TrimPrefix(arg, "--name=")
+			if arg == "--name" {
+				v, next, err := daemonInstallFlagValue(args, i, "--name")
+				if err != nil {
+					return daemon.Config{}, false, err
+				}
+				value, i = v, next
+			}
+			instance, err := daemon.SanitizeInstance(value)
+			if err != nil {
+				return daemon.Config{}, false, err
+			}
+			cfg.Instance = instance
 		default:
 			return daemon.Config{}, false, fmt.Errorf("unknown flag: %s", arg)
 		}
 	}
 
+	// The service runs where its config lives unless --work-dir says otherwise.
+	if cfg.ConfigPath != "" && !workDirSet {
+		cfg.WorkDir = filepath.Dir(cfg.ConfigPath)
+	}
 	return cfg, force, nil
 }
 
@@ -232,18 +314,93 @@ func isTruthyEnv(v string) bool {
 	return false
 }
 
-// ── uninstall ───────────────────────────────────────────────
+// ── instance selection ──────────────────────────────────────
 
-func daemonUninstall() {
-	mgr, err := daemon.NewManager()
+// parseInstanceSelector takes --name N or --config PATH out of args and
+// returns the instance they select ("" is the default instance) together
+// with the remaining args.
+func parseInstanceSelector(args []string) (string, []string, error) {
+	instance := ""
+	var rest []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		flagName, value, hasValue := strings.Cut(arg, "=")
+		switch flagName {
+		case "--name", "--config", "-config":
+		default:
+			rest = append(rest, arg)
+			continue
+		}
+		if !hasValue {
+			v, next, err := daemonInstallFlagValue(args, i, flagName)
+			if err != nil {
+				return "", nil, err
+			}
+			value, i = v, next
+		}
+		if flagName == "--name" {
+			name, err := daemon.SanitizeInstance(value)
+			if err != nil {
+				return "", nil, err
+			}
+			instance = name
+		} else {
+			instance = instanceForConfig(value)
+		}
+	}
+	return instance, rest, nil
+}
+
+// instanceForConfig is the instance installed with configPath, or the
+// instance its file name gives when none is.
+func instanceForConfig(configPath string) string {
+	if abs, err := filepath.Abs(configPath); err == nil {
+		for _, m := range daemon.ListMeta() {
+			if m.ConfigPath != "" && sameFilePath(m.ConfigPath, abs) {
+				return m.Instance
+			}
+		}
+	}
+	return daemon.InstanceFromConfigPath(configPath)
+}
+
+// selectedInstance parses the instance selector of a subcommand that takes
+// no other flags.
+func selectedInstance(args []string) string {
+	instance, rest, err := parseInstanceSelector(args)
+	if err == nil && len(rest) > 0 {
+		err = fmt.Errorf("unknown flag: %s", rest[0])
+	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	return instance
+}
+
+func instanceLabel(instance string) string {
+	if instance == "" {
+		return "the default instance"
+	}
+	return "instance " + instance
+}
+
+func instanceSelectorFlag(instance string) string {
+	if instance == "" {
+		return ""
+	}
+	return " --name " + instance
+}
+
+// ── uninstall ───────────────────────────────────────────────
+
+func daemonUninstall(args []string) {
+	instance := selectedInstance(args)
+	mgr := mustManager(instance)
 
 	st, _ := mgr.Status()
 	if st != nil && !st.Installed {
-		fmt.Println("Service is not installed.")
+		fmt.Printf("Service %s is not installed.\n", daemon.ServiceNameFor(instance))
 		return
 	}
 
@@ -252,47 +409,55 @@ func daemonUninstall() {
 		os.Exit(1)
 	}
 
-	daemon.RemoveMeta()
-	fmt.Println("lark-agent-bot daemon uninstalled.")
+	daemon.RemoveMeta(instance)
+	fmt.Printf("lark-agent-bot daemon %s uninstalled.\n", daemon.ServiceNameFor(instance))
 }
 
 // ── start / stop / restart ──────────────────────────────────
 
-func daemonStart() {
-	mgr := mustManager()
-	requireInstalled(mgr)
+func daemonStart(args []string) {
+	instance := selectedInstance(args)
+	mgr := mustManager(instance)
+	requireInstalled(mgr, instance)
 	if err := mgr.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "Start failed: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("lark-agent-bot daemon started.")
+	fmt.Printf("lark-agent-bot daemon %s started.\n", daemon.ServiceNameFor(instance))
 }
 
-func daemonStop() {
-	mgr := mustManager()
-	requireInstalled(mgr)
+func daemonStop(args []string) {
+	instance := selectedInstance(args)
+	mgr := mustManager(instance)
+	requireInstalled(mgr, instance)
 	if err := mgr.Stop(); err != nil {
 		fmt.Fprintf(os.Stderr, "Stop failed: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("lark-agent-bot daemon stopped.")
+	fmt.Printf("lark-agent-bot daemon %s stopped.\n", daemon.ServiceNameFor(instance))
 }
 
 func daemonRestart(args []string) {
+	instance, rest, err := parseInstanceSelector(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	force := false
-	for _, a := range args {
-		if a == "--force" {
-			force = true
+	for _, a := range rest {
+		if a != "--force" {
+			fmt.Fprintf(os.Stderr, "unknown flag: %s\n", a)
+			os.Exit(1)
 		}
+		force = true
 	}
 
-	mgr := mustManager()
-	requireInstalled(mgr)
+	mgr := mustManager(instance)
+	requireInstalled(mgr, instance)
 
 	if force {
-		if meta, err := daemon.LoadMeta(); err == nil {
-			configPath := meta.WorkDir + "/config.toml"
-			KillExistingInstance(configPath)
+		if meta, err := daemon.LoadMeta(instance); err == nil {
+			KillExistingInstance(metaConfigPath(meta))
 		}
 	}
 
@@ -300,50 +465,91 @@ func daemonRestart(args []string) {
 		fmt.Fprintf(os.Stderr, "Restart failed: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("lark-agent-bot daemon restarted.")
+	fmt.Printf("lark-agent-bot daemon %s restarted.\n", daemon.ServiceNameFor(instance))
 }
 
-func requireInstalled(mgr daemon.Manager) {
+// metaConfigPath is the config an instance runs with. Installs from before
+// config_path was recorded used config.toml in their work dir.
+func metaConfigPath(meta *daemon.Meta) string {
+	if meta.ConfigPath != "" {
+		return meta.ConfigPath
+	}
+	return filepath.Join(meta.WorkDir, "config.toml")
+}
+
+func requireInstalled(mgr daemon.Manager, instance string) {
 	st, _ := mgr.Status()
 	if st == nil || !st.Installed {
-		fmt.Fprintln(os.Stderr, "Service is not installed. Run first:")
-		fmt.Fprintln(os.Stderr, "  lark-agent-bot daemon install --work-dir /path/to/config-dir")
+		fmt.Fprintf(os.Stderr, "Service %s is not installed. Run first:\n", daemon.ServiceNameFor(instance))
+		fmt.Fprintln(os.Stderr, "  lark-agent-bot daemon install --config /path/to/config.toml")
 		os.Exit(1)
 	}
 }
 
 // ── status ──────────────────────────────────────────────────
 
-func daemonStatus() {
-	mgr := mustManager()
+func daemonStatus(args []string) {
+	instances := []string{selectedInstance(args)}
+	if len(args) == 0 {
+		// Without a selector, report every installed instance.
+		instances = nil
+		for _, m := range daemon.ListMeta() {
+			instances = append(instances, m.Instance)
+		}
+		if len(instances) == 0 {
+			instances = []string{""}
+		}
+	}
+
+	fmt.Println("lark-agent-bot daemon status")
+	for _, instance := range instances {
+		fmt.Println()
+		printInstanceStatus(instance)
+	}
+}
+
+func printInstanceStatus(instance string) {
+	mgr := mustManager(instance)
 	st, err := mgr.Status()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("lark-agent-bot daemon status")
-	fmt.Println()
-
+	fmt.Printf("  Service:   %s\n", daemon.ServiceNameFor(instance))
 	if !st.Installed {
 		fmt.Println("  Status:    Not installed")
 		fmt.Printf("  Platform:  %s\n", st.Platform)
 		fmt.Println()
-		fmt.Println("  Run: lark-agent-bot daemon install")
+		fmt.Println("  Run: lark-agent-bot daemon install --config /path/to/config.toml")
 		return
 	}
 
+	meta, metaErr := daemon.LoadMeta(instance)
+	botPID := 0
+	if metaErr == nil {
+		botPID = runningInstancePID(metaConfigPath(meta))
+	}
+
 	statusStr := "Stopped"
-	if st.Running {
+	switch {
+	case st.Running:
 		statusStr = "Running"
+	case botPID > 0:
+		// The bot runs but the service does not track it, e.g. after a
+		// restart by a version that started the new process itself.
+		statusStr = fmt.Sprintf("Stopped, but lark-agent-bot (PID %d) runs outside the service", botPID)
 	}
 	fmt.Printf("  Status:    %s\n", statusStr)
 	fmt.Printf("  Platform:  %s\n", st.Platform)
 	if st.PID > 0 {
 		fmt.Printf("  PID:       %d\n", st.PID)
+	} else if st.Running && botPID > 0 {
+		fmt.Printf("  PID:       %d\n", botPID)
 	}
 
-	if meta, err := daemon.LoadMeta(); err == nil {
+	if metaErr == nil {
+		fmt.Printf("  Config:    %s\n", metaConfigPath(meta))
 		fmt.Printf("  Log:       %s\n", meta.LogFile)
 		fmt.Printf("  WorkDir:   %s\n", meta.WorkDir)
 		if t, err := time.Parse(time.RFC3339, meta.InstalledAt); err == nil {
@@ -355,34 +561,39 @@ func daemonStatus() {
 // ── logs ────────────────────────────────────────────────────
 
 func daemonLogs(args []string) {
+	instance, rest, err := parseInstanceSelector(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	follow := false
 	lines := 100
 	logFile := ""
 
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
+	for i := 0; i < len(rest); i++ {
+		switch rest[i] {
 		case "-f", "--follow":
 			follow = true
 		case "-n":
 			i++
-			if i < len(args) {
-				if n, err := strconv.Atoi(args[i]); err == nil && n > 0 {
+			if i < len(rest) {
+				if n, err := strconv.Atoi(rest[i]); err == nil && n > 0 {
 					lines = n
 				}
 			}
 		case "--log-file":
 			i++
-			if i < len(args) {
-				logFile = args[i]
+			if i < len(rest) {
+				logFile = rest[i]
 			}
 		}
 	}
 
 	if logFile == "" {
-		if meta, err := daemon.LoadMeta(); err == nil {
+		if meta, err := daemon.LoadMeta(instance); err == nil {
 			logFile = meta.LogFile
 		} else {
-			logFile = daemon.DefaultLogFile()
+			logFile = daemon.DefaultLogFileFor(instance)
 		}
 	}
 
@@ -447,8 +658,8 @@ func followFile(path string) {
 
 // ── helpers ─────────────────────────────────────────────────
 
-func mustManager() daemon.Manager {
-	mgr, err := daemon.NewManager()
+func mustManager(instance string) daemon.Manager {
+	mgr, err := daemon.NewManager(instance)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -465,15 +676,25 @@ Commands:
   start       Start the service
   stop        Stop the service
   restart     Restart the service
-  status      Show service status
+  status      Show service status (every instance unless one is selected)
   logs        View log output
 
+Instances:
+  Each config file is installed as its own service, so several bots can run
+  on one machine. The instance is named after the config file (claude.toml
+  gives lark-agent-bot-claude); config.toml is the default instance
+  (lark-agent-bot). Every command takes --name NAME or --config PATH to
+  select an instance; without either it acts on the default instance.
+
 Install flags:
-  --config PATH         Path to config.toml (uses its parent as work dir)
-  --log-file PATH       Log file path (default: ~/.lark-agent-bot/logs/lark-agent-bot.log)
+  --config PATH         Config file to run with (default: config.toml in the
+                        work dir, then ~/.lark-agent-bot/config.toml)
+  --name NAME           Instance name (default: from the config file name)
+  --log-file PATH       Log file path (default: ~/.lark-agent-bot/logs/<service>.log)
   --log-max-size N      Max log file size in MB (default: 10)
-  --work-dir DIR        Directory containing config.toml (default: current dir)
-  --force               Overwrite existing installation
+  --work-dir DIR        Working directory (default: the config file's directory)
+  --force               Overwrite an existing installation, and stop a bot
+                        already running with the same config
   --no-capture-secrets  Do not capture config.toml ${ENV} placeholders into
                         the service file. Also enabled by setting
                         CC_DAEMON_NO_CAPTURE_SECRETS=1 in the environment.

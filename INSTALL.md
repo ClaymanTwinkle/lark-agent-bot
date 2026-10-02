@@ -457,7 +457,27 @@ You can also point the daemon at the directory that contains `config.toml`:
 lark-agent-bot daemon install --work-dir ~/.lark-agent-bot
 ```
 
-Optional flags: `--config PATH`, `--log-file PATH`, `--log-max-size N` (MB), `--work-dir DIR`, `--force` (overwrite existing unit). `--config` points to a config file, while `--work-dir` points to the directory containing `config.toml`.
+Optional flags: `--config PATH`, `--name NAME`, `--log-file PATH`, `--log-max-size N` (MB), `--work-dir DIR`, `--force` (overwrite existing unit). `--config` points to a config file, while `--work-dir` points to the directory containing `config.toml`.
+
+### Several bots on one machine
+
+Each config file is installed as its own service, named after the file:
+`claude-bot.toml` becomes `lark-agent-bot-claude-bot`, while `config.toml` keeps
+the plain `lark-agent-bot` name. Pass `--name` to choose the name yourself:
+
+```bash
+lark-agent-bot daemon install --config ~/bots/claude-bot.toml --name claude
+lark-agent-bot daemon install --config ~/bots/codex-bot.toml --name codex
+lark-agent-bot daemon status                 # every installed bot
+lark-agent-bot daemon restart --name claude  # one bot
+lark-agent-bot daemon logs -f --name codex
+```
+
+Every `daemon` command takes `--name NAME` or `--config PATH`; without either it
+acts on the default `lark-agent-bot` service. Each bot gets its own log file
+(`~/.lark-agent-bot/logs/lark-agent-bot-<name>.log`) unless `--log-file` says
+otherwise. If a bot is already running with the same config outside the
+service, `install --force` stops it first.
 
 ### Linux systemd: Keep service running after SSH disconnect
 
@@ -499,10 +519,11 @@ lark-agent-bot daemon logs --log-file /path/to/log  # custom log file
 
 Logs auto-rotate at the configured max size and keep one backup.
 
-On Windows, `daemon install` creates a native Task Scheduler task named `lark-agent-bot`.
-The task runs at user logon and is also started immediately after installation. The
-installer writes a small PowerShell launcher under `~/.lark-agent-bot` so the scheduled
-task uses the selected config directory, log file, PATH, and proxy environment.
+On Windows, `daemon install` creates a native Task Scheduler task named `lark-agent-bot`
+(`lark-agent-bot-<name>` for a named instance). The task runs at user logon and is also
+started immediately after installation. It has no run-time limit and keeps running on
+battery power. The installer writes a small PowerShell launcher under `~/.lark-agent-bot`
+so the scheduled task uses the selected config file, log file, PATH, and proxy environment.
 
 ### Uninstall
 

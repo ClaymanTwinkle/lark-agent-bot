@@ -72,8 +72,8 @@ func TestLaunchdStatusUsesUserDomainWhenGUIDomainUnavailable(t *testing.T) {
 
 	guiDomain := launchdGUIDomain()
 	userDomain := launchdUserDomain()
-	guiTarget := launchdTarget(guiDomain)
-	userTarget := launchdTarget(userDomain)
+	guiTarget := launchdTarget(guiDomain, launchdLabel)
+	userTarget := launchdTarget(userDomain, launchdLabel)
 	runLaunchctl = func(args ...string) (string, error) {
 		if len(args) < 2 || args[0] != "print" {
 			return "", nil
@@ -113,7 +113,7 @@ func TestRestartPrefersGUIDomainWhenAvailable(t *testing.T) {
 	if origHome != "" {
 		t.Cleanup(func() { _ = os.Setenv("HOME", origHome) })
 	}
-	plistPath := launchdPlistPath()
+	plistPath := launchdPlistPath(launchdLabel)
 	if err := os.MkdirAll(filepath.Dir(plistPath), 0755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
@@ -123,8 +123,8 @@ func TestRestartPrefersGUIDomainWhenAvailable(t *testing.T) {
 
 	guiDomain := launchdGUIDomain()
 	userDomain := launchdUserDomain()
-	guiTarget := launchdTarget(guiDomain)
-	userTarget := launchdTarget(userDomain)
+	guiTarget := launchdTarget(guiDomain, launchdLabel)
+	userTarget := launchdTarget(userDomain, launchdLabel)
 
 	var calls []string
 	runLaunchctl = func(args ...string) (string, error) {
@@ -184,7 +184,7 @@ func TestRestartKeepsUserDomainWhenGUIDomainUnavailable(t *testing.T) {
 	if origHome != "" {
 		t.Cleanup(func() { _ = os.Setenv("HOME", origHome) })
 	}
-	plistPath := launchdPlistPath()
+	plistPath := launchdPlistPath(launchdLabel)
 	if err := os.MkdirAll(filepath.Dir(plistPath), 0755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
@@ -194,7 +194,7 @@ func TestRestartKeepsUserDomainWhenGUIDomainUnavailable(t *testing.T) {
 
 	guiDomain := launchdGUIDomain()
 	userDomain := launchdUserDomain()
-	userTarget := launchdTarget(userDomain)
+	userTarget := launchdTarget(userDomain, launchdLabel)
 
 	var calls []string
 	runLaunchctl = func(args ...string) (string, error) {
@@ -459,7 +459,7 @@ func TestInstallLaunchd_WritesPlistAt0600(t *testing.T) {
 	if err := mgr.Install(cfg); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
-	info, err := os.Stat(launchdPlistPath())
+	info, err := os.Stat(launchdPlistPath(launchdLabel))
 	if err != nil {
 		t.Fatalf("stat plist: %v", err)
 	}
@@ -481,7 +481,7 @@ func TestInstallLaunchd_TightensExistingPlistFrom0644(t *testing.T) {
 	t.Cleanup(func() { runLaunchctl = orig })
 	runLaunchctl = func(args ...string) (string, error) { return "", nil }
 
-	plistPath := launchdPlistPath()
+	plistPath := launchdPlistPath(launchdLabel)
 	if err := os.MkdirAll(filepath.Dir(plistPath), 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -510,5 +510,31 @@ func TestInstallLaunchd_TightensExistingPlistFrom0644(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Errorf("plist mode after reinstall = %o, want 0600", info.Mode().Perm())
+	}
+}
+
+func TestBuildPlist_NamedInstancePassesConfig(t *testing.T) {
+	out := buildPlist(Config{
+		BinaryPath: "/opt/lark-agent-bot/lark-agent-bot",
+		ConfigPath: "/Users/me/bots/claude & co.toml",
+		Instance:   "claude",
+		WorkDir:    "/tmp/wd",
+		LogFile:    "/tmp/log",
+		LogMaxSize: 1024,
+		EnvPATH:    "/usr/bin",
+	})
+	for _, want := range []string{
+		"<string>com.lark-agent-bot.claude.service</string>",
+		"<string>/opt/lark-agent-bot/lark-agent-bot</string>\n\t\t<string>--config</string>\n\t\t<string>/Users/me/bots/claude &amp; co.toml</string>\n\t</array>",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("plist missing %q:\n%s", want, out)
+		}
+	}
+	if err := xml.Unmarshal([]byte(out), new(struct{ XMLName xml.Name })); err != nil {
+		t.Fatalf("plist is not valid XML: %v", err)
+	}
+	if got := launchdLabelFor(""); got != "com.lark-agent-bot.service" {
+		t.Fatalf("default label = %q", got)
 	}
 }

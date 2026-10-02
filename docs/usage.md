@@ -948,6 +948,11 @@ lark-agent-bot daemon logs [-f]
 lark-agent-bot daemon uninstall
 ```
 
+Each config file is its own service, so several bots can run on one machine:
+`daemon install --config ~/bots/codex-bot.toml --name codex` installs
+`lark-agent-bot-codex`. Every `daemon` command takes `--name NAME` or
+`--config PATH` to pick the bot; `daemon status` without either lists them all.
+
 ---
 
 ## Multi-Workspace Mode

@@ -61,7 +61,7 @@ func TestMetaSaveLoad(t *testing.T) {
 		t.Fatalf("SaveMeta: %v", err)
 	}
 
-	loaded, err := LoadMeta()
+	loaded, err := LoadMeta("")
 	if err != nil {
 		t.Fatalf("LoadMeta: %v", err)
 	}

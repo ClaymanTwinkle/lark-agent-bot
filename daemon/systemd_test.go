@@ -136,3 +136,23 @@ func TestUnitFileMode_Is0600(t *testing.T) {
 		t.Errorf("mode = %o, want 0600", info.Mode().Perm())
 	}
 }
+
+func TestBuildUnit_NamedInstancePassesQuotedConfig(t *testing.T) {
+	mgr := &systemdManager{system: false, instance: "claude"}
+	if got := mgr.serviceName(); got != "lark-agent-bot-claude.service" {
+		t.Fatalf("serviceName() = %q, want lark-agent-bot-claude.service", got)
+	}
+	if got := (&systemdManager{}).serviceName(); got != "lark-agent-bot.service" {
+		t.Fatalf("default serviceName() = %q, want lark-agent-bot.service", got)
+	}
+	out := mgr.buildUnit(Config{
+		BinaryPath: "/opt/lark agent/lark-agent-bot",
+		ConfigPath: "/etc/bots/claude%1.toml",
+		WorkDir:    "/tmp",
+		LogFile:    "/tmp/log",
+		LogMaxSize: 1024,
+	})
+	if want := `ExecStart="/opt/lark agent/lark-agent-bot" --config /etc/bots/claude%%1.toml`; !strings.Contains(out, want+"\n") {
+		t.Errorf("unit missing %q:\n%s", want, out)
+	}
+}

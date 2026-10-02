@@ -25,7 +25,20 @@ var runLaunchctl = func(args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
-type launchdManager struct{}
+type launchdManager struct {
+	instance string
+}
+
+// launchdLabelFor is the job label of an instance. The default instance keeps
+// the historical label.
+func launchdLabelFor(instance string) string {
+	if instance == "" {
+		return launchdLabel
+	}
+	return "com.lark-agent-bot." + instance + ".service"
+}
+
+func (m *launchdManager) label() string { return launchdLabelFor(m.instance) }
 
 // CheckLinger always returns true on macOS: launchd user agents persist
 // independently of login sessions, so no "linger" warning is needed.
@@ -33,14 +46,14 @@ func CheckLinger() (enabled bool, user string) {
 	return true, ""
 }
 
-func newPlatformManager() (Manager, error) {
-	return &launchdManager{}, nil
+func newPlatformManager(instance string) (Manager, error) {
+	return &launchdManager{instance: instance}, nil
 }
 
 func (*launchdManager) Platform() string { return "launchd" }
 
 func (m *launchdManager) Install(cfg Config) error {
-	plistPath := launchdPlistPath()
+	plistPath := launchdPlistPath(m.label())
 
 	if err := os.MkdirAll(filepath.Dir(plistPath), 0755); err != nil {
 		return fmt.Errorf("create LaunchAgents dir: %w", err)
@@ -51,7 +64,7 @@ func (m *launchdManager) Install(cfg Config) error {
 
 	// Unload existing service first (ignore errors) so we do not leave a stale
 	// job behind when switching between GUI and headless sessions.
-	bootoutLaunchdTargets()
+	bootoutLaunchdTargets(m.label())
 
 	plist := buildPlist(cfg)
 	// 0600: plist may contain captured secret values (config.toml ${ENV}
@@ -72,24 +85,24 @@ func (m *launchdManager) Install(cfg Config) error {
 		return fmt.Errorf("launchctl bootstrap: %s (%w)", out, err)
 	}
 
-	if _, err := runLaunchctl("kickstart", "-kp", launchdTarget(domain)); err != nil {
+	if _, err := runLaunchctl("kickstart", "-kp", launchdTarget(domain, m.label())); err != nil {
 		return fmt.Errorf("launchctl kickstart: %w", err)
 	}
 	return nil
 }
 
 func (m *launchdManager) Uninstall() error {
-	bootoutLaunchdTargets()
+	bootoutLaunchdTargets(m.label())
 
-	plistPath := launchdPlistPath()
+	plistPath := launchdPlistPath(m.label())
 	if err := os.Remove(plistPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove plist: %w", err)
 	}
 	return nil
 }
 
-func (*launchdManager) Start() error {
-	if _, target, _, ok := loadedLaunchdTarget(); ok {
+func (m *launchdManager) Start() error {
+	if _, target, _, ok := loadedLaunchdTarget(m.label()); ok {
 		out, err := runLaunchctl("kickstart", "-kp", target)
 		if err != nil {
 			return fmt.Errorf("start: %s (%w)", out, err)
@@ -98,11 +111,11 @@ func (*launchdManager) Start() error {
 	}
 
 	domain := preferredLaunchdDomain()
-	plistPath := launchdPlistPath()
+	plistPath := launchdPlistPath(m.label())
 	var out string
 	if _, err := runLaunchctl("bootstrap", domain, plistPath); err != nil {
 		// already bootstrapped — try kickstart
-		out, err = runLaunchctl("kickstart", "-kp", launchdTarget(domain))
+		out, err = runLaunchctl("kickstart", "-kp", launchdTarget(domain, m.label()))
 		if err != nil {
 			return fmt.Errorf("start: %s (%w)", out, err)
 		}
@@ -110,10 +123,10 @@ func (*launchdManager) Start() error {
 	return nil
 }
 
-func (*launchdManager) Stop() error {
+func (m *launchdManager) Stop() error {
 	var lastOut string
 	var lastErr error
-	for _, target := range launchdTargets() {
+	for _, target := range launchdTargets(m.label()) {
 		out, err := runLaunchctl("bootout", target)
 		if err == nil {
 			return nil
@@ -127,15 +140,15 @@ func (*launchdManager) Stop() error {
 	return nil
 }
 
-func (*launchdManager) Restart() error {
+func (m *launchdManager) Restart() error {
 	domain := preferredLaunchdDomain()
-	if loadedDomain, _, _, ok := loadedLaunchdTarget(); ok && domain != launchdGUIDomain() {
+	if loadedDomain, _, _, ok := loadedLaunchdTarget(m.label()); ok && domain != launchdGUIDomain() {
 		domain = loadedDomain
 	}
-	target := launchdTarget(domain)
-	bootoutLaunchdTargets()
+	target := launchdTarget(domain, m.label())
+	bootoutLaunchdTargets(m.label())
 
-	plistPath := launchdPlistPath()
+	plistPath := launchdPlistPath(m.label())
 
 	// launchd bootout is asynchronous; retry bootstrap with backoff
 	// to avoid "Bootstrap failed: 5" race condition.
@@ -159,16 +172,16 @@ func (*launchdManager) Restart() error {
 	return nil
 }
 
-func (*launchdManager) Status() (*Status, error) {
+func (m *launchdManager) Status() (*Status, error) {
 	st := &Status{Platform: "launchd"}
 
-	plistPath := launchdPlistPath()
+	plistPath := launchdPlistPath(m.label())
 	if _, err := os.Stat(plistPath); err != nil {
 		return st, nil
 	}
 	st.Installed = true
 
-	_, _, out, ok := loadedLaunchdTarget()
+	_, _, out, ok := loadedLaunchdTarget(m.label())
 	if !ok {
 		return st, nil
 	}
@@ -190,9 +203,9 @@ func (*launchdManager) Status() (*Status, error) {
 
 // ── helpers ─────────────────────────────────────────────────
 
-func launchdPlistPath() string {
+func launchdPlistPath(label string) string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "LaunchAgents", launchdLabel+".plist")
+	return filepath.Join(home, "Library", "LaunchAgents", label+".plist")
 }
 
 func launchdUserDomain() string {
@@ -221,22 +234,22 @@ func launchdDomains() []string {
 	return []string{userDomain, guiDomain}
 }
 
-func launchdTarget(domain string) string {
-	return fmt.Sprintf("%s/%s", domain, launchdLabel)
+func launchdTarget(domain, label string) string {
+	return fmt.Sprintf("%s/%s", domain, label)
 }
 
-func launchdTargets() []string {
+func launchdTargets(label string) []string {
 	domains := launchdDomains()
 	targets := make([]string, 0, len(domains))
 	for _, domain := range domains {
-		targets = append(targets, launchdTarget(domain))
+		targets = append(targets, launchdTarget(domain, label))
 	}
 	return targets
 }
 
-func loadedLaunchdTarget() (string, string, string, bool) {
+func loadedLaunchdTarget(label string) (string, string, string, bool) {
 	for _, domain := range launchdDomains() {
-		target := launchdTarget(domain)
+		target := launchdTarget(domain, label)
 		out, err := runLaunchctl("print", target)
 		if err == nil {
 			return domain, target, out, true
@@ -245,8 +258,8 @@ func loadedLaunchdTarget() (string, string, string, bool) {
 	return "", "", "", false
 }
 
-func bootoutLaunchdTargets() {
-	for _, target := range launchdTargets() {
+func bootoutLaunchdTargets(label string) {
+	for _, target := range launchdTargets(label) {
 		_, _ = runLaunchctl("bootout", target)
 	}
 }
@@ -305,8 +318,12 @@ func buildPlist(cfg Config) string {
 	// User-supplied paths can legitimately contain XML-special characters
 	// ('&', '<', '>', '"', '\''). Without escaping, `launchctl bootstrap`
 	// rejects the plist with a parse error and daemon install fails. The
-	// label is a hard-coded constant; LogMaxSize is an int; envExtra is
-	// escaped by renderEnvExtraPlist.
+	// label is built from a sanitized instance name; LogMaxSize is an int;
+	// envExtra is escaped by renderEnvExtraPlist.
+	programArgs := "\t\t<string>" + xmlEscape(cfg.BinaryPath) + "</string>\n"
+	if cfg.ConfigPath != "" {
+		programArgs += "\t\t<string>--config</string>\n\t\t<string>" + xmlEscape(cfg.ConfigPath) + "</string>\n"
+	}
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -315,8 +332,7 @@ func buildPlist(cfg Config) string {
 	<string>%s</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>%s</string>
-	</array>
+%s	</array>
 	<key>WorkingDirectory</key>
 	<string>%s</string>
 	<key>RunAtLoad</key>
@@ -348,5 +364,5 @@ func buildPlist(cfg Config) string {
 	<string>/dev/null</string>
 </dict>
 </plist>
-`, launchdLabel, xmlEscape(cfg.BinaryPath), xmlEscape(cfg.WorkDir), xmlEscape(cfg.LogFile), cfg.LogMaxSize, cfg.LogMaxBackups, xmlEscape(envPATH), envExtra)
+`, launchdLabelFor(cfg.Instance), programArgs, xmlEscape(cfg.WorkDir), xmlEscape(cfg.LogFile), cfg.LogMaxSize, cfg.LogMaxBackups, xmlEscape(envPATH), envExtra)
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -35,6 +36,13 @@ type Config struct {
 	// keychain / `secret-tool` / EnvironmentFile= set this to keep token
 	// values out of the service manager files on disk.
 	NoCaptureSecrets bool
+	// ConfigPath is the absolute path of the config file the service runs
+	// with. It is passed to lark-agent-bot as --config.
+	ConfigPath string
+	// Instance names the service when several bots run on one machine,
+	// each with its own config. Empty is the default instance, which keeps
+	// the historical service, metadata and log names.
+	Instance string
 }
 
 type Status struct {
@@ -54,14 +62,74 @@ type Manager interface {
 	Platform() string
 }
 
-// NewManager returns a platform-specific daemon manager.
-func NewManager() (Manager, error) {
-	return newPlatformManager()
+// NewManager returns a platform-specific daemon manager for the named
+// instance; "" is the default instance.
+func NewManager(instance string) (Manager, error) {
+	return newPlatformManager(instance)
+}
+
+// ServiceNameFor is the service name of an instance: "lark-agent-bot" for the
+// default instance, "lark-agent-bot-<instance>" otherwise.
+func ServiceNameFor(instance string) string {
+	if instance == "" {
+		return ServiceName
+	}
+	return ServiceName + "-" + instance
+}
+
+const maxInstanceLen = 48
+
+// SanitizeInstance turns a user-supplied instance name into one that is safe
+// in task, unit and file names: ASCII letters, digits and "_", with every
+// other run of characters replaced by a single "-".
+func SanitizeInstance(raw string) (string, error) {
+	var sb strings.Builder
+	dash := false
+	for _, r := range strings.TrimSpace(raw) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_':
+			sb.WriteRune(r)
+			dash = false
+		case !dash:
+			sb.WriteByte('-')
+			dash = true
+		}
+	}
+	name := strings.Trim(sb.String(), "-")
+	if len(name) > maxInstanceLen {
+		name = strings.TrimRight(name[:maxInstanceLen], "-")
+	}
+	if name == "" && strings.TrimSpace(raw) != "" {
+		return "", fmt.Errorf("invalid instance name %q: use letters, digits, - or _", raw)
+	}
+	return name, nil
+}
+
+// InstanceFromConfigPath derives an instance name from a config file name:
+// "claude-bot.toml" gives "claude-bot". The usual "config.toml" gives the
+// default instance, so installs that use it keep their names.
+func InstanceFromConfigPath(path string) string {
+	base := filepath.Base(path)
+	name := strings.TrimSuffix(base, filepath.Ext(base))
+	if strings.EqualFold(name, "config") {
+		return ""
+	}
+	instance, err := SanitizeInstance(name)
+	if err != nil {
+		return ""
+	}
+	return instance
 }
 
 func DefaultLogFile() string {
+	return DefaultLogFileFor("")
+}
+
+// DefaultLogFileFor is the default log file of an instance. Instances never
+// share a log file: each process rotates its own.
+func DefaultLogFileFor(instance string) string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".lark-agent-bot", "logs", "lark-agent-bot.log")
+	return filepath.Join(home, ".lark-agent-bot", "logs", ServiceNameFor(instance)+".log")
 }
 
 func DefaultDataDir() string {
@@ -70,8 +138,9 @@ func DefaultDataDir() string {
 }
 
 // ── Metadata ────────────────────────────────────────────────
-// Stored at ~/.lark-agent-bot/daemon.json so that `logs`, `status`,
-// etc. can locate the log file without parsing service definitions.
+// Stored at ~/.lark-agent-bot/daemon.json (daemon-<instance>.json for a
+// named instance) so that `logs`, `status`, etc. can locate the log file
+// without parsing service definitions.
 
 type Meta struct {
 	LogFile       string `json:"log_file"`
@@ -80,25 +149,38 @@ type Meta struct {
 	WorkDir       string `json:"work_dir"`
 	BinaryPath    string `json:"binary_path"`
 	InstalledAt   string `json:"installed_at"`
+	ConfigPath    string `json:"config_path,omitempty"`
+	Instance      string `json:"instance,omitempty"`
 }
 
-func metaPath() string {
-	return filepath.Join(DefaultDataDir(), "daemon.json")
+const (
+	metaFilePrefix = "daemon"
+	metaFileExt    = ".json"
+)
+
+func metaPathFor(instance string) string {
+	name := metaFilePrefix + metaFileExt
+	if instance != "" {
+		name = metaFilePrefix + "-" + instance + metaFileExt
+	}
+	return filepath.Join(DefaultDataDir(), name)
 }
 
 func SaveMeta(m *Meta) error {
-	if err := os.MkdirAll(filepath.Dir(metaPath()), 0755); err != nil {
+	path := metaPathFor(m.Instance)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(metaPath(), data, 0644)
+	return os.WriteFile(path, data, 0644)
 }
 
-func LoadMeta() (*Meta, error) {
-	data, err := os.ReadFile(metaPath())
+// LoadMeta reads the metadata of an instance; "" is the default instance.
+func LoadMeta(instance string) (*Meta, error) {
+	data, err := os.ReadFile(metaPathFor(instance))
 	if err != nil {
 		return nil, err
 	}
@@ -106,11 +188,30 @@ func LoadMeta() (*Meta, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, err
 	}
+	m.Instance = instance
 	return &m, nil
 }
 
-func RemoveMeta() {
-	os.Remove(metaPath())
+func RemoveMeta(instance string) {
+	_ = os.Remove(metaPathFor(instance))
+}
+
+// ListMeta returns the metadata of every installed instance, the default
+// instance first. Unreadable files are skipped.
+func ListMeta() []*Meta {
+	var metas []*Meta
+	if m, err := LoadMeta(""); err == nil {
+		metas = append(metas, m)
+	}
+	matches, _ := filepath.Glob(filepath.Join(DefaultDataDir(), metaFilePrefix+"-*"+metaFileExt))
+	sort.Strings(matches)
+	for _, path := range matches {
+		instance := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), metaFilePrefix+"-"), metaFileExt)
+		if m, err := LoadMeta(instance); err == nil {
+			metas = append(metas, m)
+		}
+	}
+	return metas
 }
 
 func NowISO() string {
@@ -136,8 +237,11 @@ func Resolve(cfg *Config) error {
 		}
 		cfg.WorkDir = wd
 	}
+	if cfg.ConfigPath == "" {
+		cfg.ConfigPath = filepath.Join(cfg.WorkDir, "config.toml")
+	}
 	if cfg.LogFile == "" {
-		cfg.LogFile = DefaultLogFile()
+		cfg.LogFile = DefaultLogFileFor(cfg.Instance)
 	}
 	if cfg.LogMaxSize <= 0 {
 		cfg.LogMaxSize = DefaultLogMaxSize
@@ -151,7 +255,7 @@ func Resolve(cfg *Config) error {
 	if len(cfg.EnvExtra) == 0 {
 		cfg.EnvExtra = captureDaemonEnv(cfg.NoCaptureSecrets)
 		if !cfg.NoCaptureSecrets {
-			captureConfigEnvPlaceholders(filepath.Join(cfg.WorkDir, "config.toml"), cfg.EnvExtra)
+			captureConfigEnvPlaceholders(cfg.ConfigPath, cfg.EnvExtra)
 		}
 	}
 	return nil

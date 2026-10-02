@@ -842,6 +842,10 @@ lark-agent-bot daemon logs [-f]
 lark-agent-bot daemon uninstall
 ```
 
+每个配置文件安装成一个独立的服务，一台机器可以跑多个 bot：
+`daemon install --config ~/bots/codex-bot.toml --name codex` 会安装 `lark-agent-bot-codex`。
+所有 `daemon` 命令都可以用 `--name 名称` 或 `--config 路径` 指定 bot；`daemon status` 不带参数时列出全部。
+
 ---
 
 ## 多工作区模式

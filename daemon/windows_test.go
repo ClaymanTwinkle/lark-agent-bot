@@ -3,10 +3,12 @@
 package daemon
 
 import (
-	"golang.org/x/sys/windows"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestStrictPowerShellStopsOnCmdletErrors(t *testing.T) {
@@ -23,6 +25,7 @@ func TestBuildWindowsTaskScript(t *testing.T) {
 	cfg := Config{
 		BinaryPath: `C:\Program Files\lark-agent-bot\lark-agent-bot.exe`,
 		WorkDir:    `C:\Users\me\.lark-agent-bot`,
+		ConfigPath: `C:\Users\me\.lark-agent-bot\config.toml`,
 		LogFile:    `C:\Users\me\.lark-agent-bot\logs\lark-agent-bot.log`,
 		LogMaxSize: 10 * 1024 * 1024,
 		EnvPATH:    `C:\Program Files\nodejs;C:\Users\me\AppData\Local\Programs`,
@@ -41,7 +44,7 @@ func TestBuildWindowsTaskScript(t *testing.T) {
 		`$env:http_proxy = 'http://127.0.0.1:7890'`,
 		`Set-Location -LiteralPath 'C:\Users\me\.lark-agent-bot'`,
 		`while ($true) {`,
-		`& 'C:\Program Files\lark-agent-bot\lark-agent-bot.exe'`,
+		`& 'C:\Program Files\lark-agent-bot\lark-agent-bot.exe' --config 'C:\Users\me\.lark-agent-bot\config.toml'`,
 		`if ($exitCode -eq 0) { exit 0 }`,
 		`Start-Sleep -Seconds 10`,
 	} {
@@ -98,15 +101,21 @@ func TestWindowsTaskCreateUsesLimitedInteractivePrincipal(t *testing.T) {
 		return "", nil
 	}
 
-	if err := createWindowsTask(`C:\Users\me\.lark-agent-bot\lark-agent-bot-daemon.ps1`); err != nil {
+	if err := createWindowsTask("lark-agent-bot-claude", `C:\Users\me\.lark-agent-bot\lark-agent-bot-claude-daemon.ps1`, `D:\bots\claude.toml`); err != nil {
 		t.Fatalf("createWindowsTask() error = %v", err)
 	}
 	for _, want := range []string{
 		`New-ScheduledTaskAction -Execute 'conhost.exe' -Argument '--headless powershell.exe -WindowStyle Hidden`,
-		`Register-ScheduledTask`,
+		`Register-ScheduledTask -TaskName 'lark-agent-bot-claude' -Description 'lark-agent-bot: D:\bots\claude.toml'`,
 		`-LogonType Interactive`,
 		`-RunLevel Limited`,
-		`C:\Users\me\.lark-agent-bot\lark-agent-bot-daemon.ps1`,
+		`C:\Users\me\.lark-agent-bot\lark-agent-bot-claude-daemon.ps1`,
+		// Defaults that stop a service: a 72-hour run limit and battery rules.
+		`-ExecutionTimeLimit ([TimeSpan]::Zero)`,
+		`-AllowStartIfOnBatteries`,
+		`-DontStopIfGoingOnBatteries`,
+		`-MultipleInstances IgnoreNew`,
+		`-Settings $settings`,
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("create script missing %q:\n%s", want, script)
@@ -125,7 +134,7 @@ func TestWindowsTaskMatchesActionRequiresExactAction(t *testing.T) {
 		return "true", nil
 	}
 
-	if !windowsTaskMatchesAction(`C:\Users\me\.lark-agent-bot\lark-agent-bot-daemon.ps1`) {
+	if !windowsTaskMatchesAction("lark-agent-bot", `C:\Users\me\.lark-agent-bot\lark-agent-bot-daemon.ps1`) {
 		t.Fatal("windowsTaskMatchesAction() = false, want true")
 	}
 	for _, want := range []string{
@@ -137,6 +146,48 @@ func TestWindowsTaskMatchesActionRequiresExactAction(t *testing.T) {
 		if !strings.Contains(script, want) {
 			t.Fatalf("reuse check script missing %q:\n%s", want, script)
 		}
+	}
+}
+
+func TestSchtasksInstancesUseTheirOwnTaskAndScript(t *testing.T) {
+	setTestHome(t)
+	withHeadlessConsole(t, true)
+
+	def := &schtasksManager{}
+	if def.taskName() != "lark-agent-bot" || filepath.Base(def.scriptPath()) != "lark-agent-bot-daemon.ps1" {
+		t.Fatalf("default instance names = %q, %q; want the historical ones", def.taskName(), def.scriptPath())
+	}
+
+	orig := runPowerShell
+	t.Cleanup(func() { runPowerShell = orig })
+	var scripts []string
+	runPowerShell = func(s string) (string, error) {
+		scripts = append(scripts, s)
+		return "", nil
+	}
+
+	claude := &schtasksManager{instance: "claude"}
+	cfg := Config{
+		BinaryPath: `C:\bots\lark-agent-bot.exe`,
+		WorkDir:    t.TempDir(),
+		ConfigPath: `D:\bots\claude.toml`,
+		LogFile:    filepath.Join(t.TempDir(), "claude.log"),
+		LogMaxSize: 1024,
+	}
+	if err := claude.Install(cfg); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	for _, s := range scripts {
+		if strings.Contains(s, "'lark-agent-bot'") {
+			t.Fatalf("installing the claude instance touched the default task:\n%s", s)
+		}
+	}
+	content, err := os.ReadFile(filepath.Join(DefaultDataDir(), "lark-agent-bot-claude-daemon.ps1"))
+	if err != nil {
+		t.Fatalf("instance script: %v", err)
+	}
+	if !strings.Contains(string(content), `--config 'D:\bots\claude.toml'`) {
+		t.Fatalf("instance script does not pass its config:\n%s", content)
 	}
 }
 
@@ -185,7 +236,7 @@ func TestSchtasksInstall_TightensExistingScriptACL(t *testing.T) {
 	if err := os.MkdirAll(DefaultDataDir(), 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	scriptPath := windowsTaskScriptPath()
+	scriptPath := (&schtasksManager{}).scriptPath()
 	if err := os.WriteFile(scriptPath, []byte("$env:OLD = 'leftover'\r\n"), 0o644); err != nil {
 		t.Fatalf("seed legacy script: %v", err)
 	}

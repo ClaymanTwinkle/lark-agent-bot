@@ -128,3 +128,26 @@ func readPIDFromLockFile(path string) int {
 	}
 	return pid
 }
+
+// stillActive is the exit code GetExitCodeProcess reports for a process
+// that has not exited (STILL_ACTIVE).
+const stillActive = 259
+
+// runningInstancePID returns the PID recorded in the instance lock of
+// configPath when that process is still alive, otherwise 0.
+func runningInstancePID(configPath string) int {
+	pid := readPIDFromLockFile(instanceLockPath(configPath))
+	if pid <= 0 {
+		return 0
+	}
+	handle, err := syscall.OpenProcess(processQueryLimitedInformation, false, uint32(pid))
+	if err != nil {
+		return 0
+	}
+	defer func() { _ = syscall.CloseHandle(handle) }()
+	var code uint32
+	if err := syscall.GetExitCodeProcess(handle, &code); err != nil || code != stillActive {
+		return 0
+	}
+	return pid
+}
