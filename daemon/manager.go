@@ -21,6 +21,15 @@ const (
 	ServiceName          = "lark-agent-bot"
 )
 
+// A service launcher that starts the bot again when it exits with
+// RestartExitCode sets RestartExitCodeEnv to that code. The bot then
+// restarts by exiting with it instead of starting the new process itself,
+// which would leave the service tracking a process that has exited.
+const (
+	RestartExitCode    = 75 // EX_TEMPFAIL
+	RestartExitCodeEnv = "CC_RESTART_EXIT_CODE"
+)
+
 type Config struct {
 	BinaryPath    string
 	WorkDir       string

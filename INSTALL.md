@@ -525,6 +525,13 @@ started immediately after installation. It has no run-time limit and keeps runni
 battery power. The installer writes a small PowerShell launcher under `~/.lark-agent-bot`
 so the scheduled task uses the selected config file, log file, PATH, and proxy environment.
 
+`/restart` and `/upgrade` restart the bot inside the task: the bot exits with code 75 and
+the launcher starts it again at once, so the task keeps running and `daemon stop`,
+`daemon restart` and `daemon status` keep working. Tasks installed by an older version
+lose track of the bot after a restart; run `daemon install --force` once to update them.
+A hand-written launcher can do the same: set `CC_RESTART_EXIT_CODE=75` for the bot and
+start it again whenever it exits with 75.
+
 ### Uninstall
 
 ```bash

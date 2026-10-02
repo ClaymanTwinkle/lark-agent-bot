@@ -255,15 +255,27 @@ func buildWindowsTaskScript(cfg Config) string {
 			writePowerShellEnv(&sb, key, value)
 		}
 	}
+	// The bot restarts (after /upgrade or /restart) by exiting with
+	// RestartExitCode; the loop starts it again at once, so the new process
+	// stays a child of this task. Any other non-zero exit waits 10s first.
+	writePowerShellEnv(&sb, RestartExitCodeEnv, strconv.Itoa(RestartExitCode))
 	fmt.Fprintf(&sb, "Set-Location -LiteralPath %s\r\n", powerShellLiteral(cfg.WorkDir))
+	// An update installs the new version as lark-agent-bot.exe next to the
+	// old binary (see core.InstalledBinaryPath) and may rename the binary
+	// the task was installed with, so prefer that name when it exists.
+	fmt.Fprintf(&sb, "$bin = %s\r\n", powerShellLiteral(cfg.BinaryPath))
+	fmt.Fprintf(&sb, "$std = %s\r\n", powerShellLiteral(filepath.Join(filepath.Dir(cfg.BinaryPath), ServiceName+".exe")))
 	sb.WriteString("while ($true) {\r\n")
+	sb.WriteString("  $exe = $bin\r\n")
+	sb.WriteString("  if (Test-Path -LiteralPath $std) { $exe = $std }\r\n")
 	if cfg.ConfigPath != "" {
-		fmt.Fprintf(&sb, "  & %s --config %s\r\n", powerShellLiteral(cfg.BinaryPath), powerShellLiteral(cfg.ConfigPath))
+		fmt.Fprintf(&sb, "  & $exe --config %s\r\n", powerShellLiteral(cfg.ConfigPath))
 	} else {
-		fmt.Fprintf(&sb, "  & %s\r\n", powerShellLiteral(cfg.BinaryPath))
+		sb.WriteString("  & $exe\r\n")
 	}
 	sb.WriteString("  $exitCode = $LASTEXITCODE\r\n")
 	sb.WriteString("  if ($exitCode -eq 0) { exit 0 }\r\n")
+	fmt.Fprintf(&sb, "  if ($exitCode -eq %d) { continue }\r\n", RestartExitCode)
 	sb.WriteString("  Start-Sleep -Seconds 10\r\n")
 	sb.WriteString("}\r\n")
 	return sb.String()

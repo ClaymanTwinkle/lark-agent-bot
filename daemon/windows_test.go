@@ -4,9 +4,11 @@ package daemon
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/windows"
 )
@@ -44,8 +46,11 @@ func TestBuildWindowsTaskScript(t *testing.T) {
 		`$env:http_proxy = 'http://127.0.0.1:7890'`,
 		`Set-Location -LiteralPath 'C:\Users\me\.lark-agent-bot'`,
 		`while ($true) {`,
-		`& 'C:\Program Files\lark-agent-bot\lark-agent-bot.exe' --config 'C:\Users\me\.lark-agent-bot\config.toml'`,
+		`$env:CC_RESTART_EXIT_CODE = '75'`,
+		`$bin = 'C:\Program Files\lark-agent-bot\lark-agent-bot.exe'`,
+		`& $exe --config 'C:\Users\me\.lark-agent-bot\config.toml'`,
 		`if ($exitCode -eq 0) { exit 0 }`,
+		`if ($exitCode -eq 75) { continue }`,
 		`Start-Sleep -Seconds 10`,
 	} {
 		if !strings.Contains(script, want) {
@@ -196,6 +201,60 @@ func TestPowerShellLiteralEscapesSingleQuotes(t *testing.T) {
 	want := `'C:\Users\O''Brien\.lark-agent-bot'`
 	if got != want {
 		t.Fatalf("powerShellLiteral() = %q, want %q", got, want)
+	}
+}
+
+// Runs the generated launcher under the real PowerShell with a stub bot
+// that writes to stderr and exits with RestartExitCode once, then 0: the
+// launcher must start it again at once and then stop.
+func TestWindowsTaskScriptRestartsOnRestartExitCode(t *testing.T) {
+	if testing.Short() {
+		t.Skip("starts PowerShell")
+	}
+	dir := t.TempDir()
+	stub := filepath.Join(dir, "bot.cmd")
+	if err := os.WriteFile(stub, []byte(strings.Join([]string{
+		"@echo off",
+		`echo run %* CC_RESTART_EXIT_CODE=%CC_RESTART_EXIT_CODE%>>"%~dp0runs.txt"`,
+		"echo restarting 1>&2",
+		`if exist "%~dp0ran-once" exit /b 0`,
+		`type nul > "%~dp0ran-once"`,
+		"exit /b 75",
+	}, "\r\n")+"\r\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(dir, "my bot.toml")
+	script := filepath.Join(dir, "launcher.ps1")
+	if err := os.WriteFile(script, []byte(buildWindowsTaskScript(Config{
+		BinaryPath: stub,
+		WorkDir:    dir,
+		ConfigPath: configPath,
+		LogFile:    filepath.Join(dir, "bot.log"),
+		LogMaxSize: 1024,
+	})), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("launcher failed: %v\n%s", err, out)
+	}
+	if elapsed := time.Since(start); elapsed > 8*time.Second {
+		t.Errorf("launcher took %s; the restart exit code must not wait the 10s crash delay", elapsed)
+	}
+	runs, err := os.ReadFile(filepath.Join(dir, "runs.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(runs)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("bot ran %d times, want 2:\n%s", len(lines), runs)
+	}
+	for _, line := range lines {
+		if !strings.Contains(line, `--config "`+configPath+`"`) || !strings.Contains(line, "CC_RESTART_EXIT_CODE=75") {
+			t.Errorf("run line = %q, want --config %q and CC_RESTART_EXIT_CODE=75", line, configPath)
+		}
 	}
 }
 

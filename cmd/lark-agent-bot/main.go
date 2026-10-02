@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -294,6 +295,16 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n\n", err)
 		printUsage()
 		os.Exit(1)
+	}
+
+	// A service launcher that starts the bot again after a restart exit sets
+	// this (see daemon.RestartExitCodeEnv). Unset it so agents and the
+	// commands they run do not inherit it.
+	restartExitCode, supervised := supervisorRestartExitCode(os.Getenv(daemon.RestartExitCodeEnv))
+	_ = os.Unsetenv(daemon.RestartExitCodeEnv)
+	if !supervised && os.Getenv("CC_LOG_FILE") != "" && runtime.GOOS == "windows" {
+		slog.Warn("restart: this scheduled task's launcher predates supervised restarts; " +
+			"a restart will leave the task. Reinstall it with `lark-agent-bot daemon install --force`.")
 	}
 
 	core.VersionInfo = fmt.Sprintf("lark-agent-bot %s\ncommit: %s\nbuilt: %s", version, commit, buildTime)
@@ -1352,6 +1363,13 @@ func main() {
 	if restartReq != nil {
 		if err := core.SaveRestartNotify(cfg.DataDir, *restartReq); err != nil {
 			slog.Error("restart: save notify failed", "error", err)
+		}
+		if supervised {
+			// The launcher starts the installed binary again and keeps
+			// tracking it; starting it here would leave the launcher
+			// tracking this exited process (Windows scheduled tasks).
+			slog.Info("restart: exiting for the service to start the bot again", "exit_code", restartExitCode)
+			os.Exit(restartExitCode)
 		}
 		// Restart into the installed binary: after an update it is the
 		// standard-named lark-agent-bot[.exe], which may differ from the name
