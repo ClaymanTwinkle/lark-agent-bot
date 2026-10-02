@@ -11392,26 +11392,26 @@ func TestCmdShell_MultiWorkspaceUsesSharedBindingWorkDir(t *testing.T) {
 	normalizedWsDir := normalizeWorkspacePath(wsDir)
 	e.workspaceBindings.Bind(sharedWorkspaceBindingsKey, "ch1", "shared-shell", normalizedWsDir)
 
+	// Core tests register no agent factories, so creating the workspace agent
+	// would fail with a resolution error. Seed the pool with one instead.
+	ws := e.workspacePool.GetOrCreate(normalizedWsDir)
+	ws.agent = &stubAgent{}
+	ws.sessions = NewSessionManager("")
+
+	raw := "/shell " + shellPwdCommand()
 	msg := &Message{
 		SessionKey: "test:ch1:user1",
-		Content:    "/shell pwd",
+		Content:    raw,
 		ReplyCtx:   "ctx",
 	}
-	e.cmdShell(p, msg, "/shell pwd")
+	e.cmdShell(p, msg, raw)
 
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		sent := p.getSent()
-		if len(sent) > 0 {
-			if !strings.Contains(sent[0], normalizedWsDir) {
-				t.Fatalf("expected shell output to contain shared workspace %q, got %q", normalizedWsDir, sent[0])
-			}
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("timed out waiting for shell response")
-		}
-		time.Sleep(10 * time.Millisecond)
+	output := waitForShellResult(t, p)
+	if !strings.HasPrefix(output, "✅") {
+		t.Fatalf("expected shell command to succeed, got %q", output)
+	}
+	if !strings.Contains(output, normalizedWsDir) {
+		t.Fatalf("expected shell output to contain shared workspace %q, got %q", normalizedWsDir, output)
 	}
 }
 
@@ -11427,35 +11427,57 @@ func TestCmdShell_MultiWorkspaceIgnoresMissingSharedBinding(t *testing.T) {
 	missingDir := filepath.Join(baseDir, "missing-shared-workspace")
 	e.workspaceBindings.Bind(sharedWorkspaceBindingsKey, "ch1", "shared-shell", missingDir)
 
+	raw := "/shell " + shellPwdCommand()
 	msg := &Message{
 		SessionKey: "test:ch1:user1",
-		Content:    "/shell pwd",
+		Content:    raw,
 		ReplyCtx:   "ctx",
 	}
-	e.cmdShell(p, msg, "/shell pwd")
+	e.cmdShell(p, msg, raw)
 
-	deadline := time.Now().Add(2 * time.Second)
 	// Normalize both the expected and missing paths to handle macOS symlink
 	// resolution (e.g. /var/folders/ -> /private/var/folders/). Then check
 	// that the shell output contains the resolved expected path and does NOT
 	// contain the resolved missing path.
 	expectedResolved := normalizeWorkspacePath(agent.workDir)
 	missingResolved := normalizeWorkspacePath(missingDir)
+	output := waitForShellResult(t, p)
+	if !strings.HasPrefix(output, "✅") {
+		t.Fatalf("expected shell command to succeed, got %q", output)
+	}
+	if !strings.Contains(output, agent.workDir) && !strings.Contains(output, expectedResolved) {
+		t.Fatalf("expected shell output to fall back to agent work dir %q (resolved %q), got %q", agent.workDir, expectedResolved, output)
+	}
+	if strings.Contains(output, missingDir) || strings.Contains(output, missingResolved) {
+		t.Fatalf("expected shell output to ignore missing shared workspace %q, got %q", missingDir, output)
+	}
+}
+
+// shellPwdCommand prints the working directory as a bare path in the default
+// shell. PowerShell's pwd prints a table that cuts paths longer than 120
+// characters short, and test temp dirs can be that long.
+func shellPwdCommand() string {
+	if runtime.GOOS == "windows" {
+		return "(Get-Location).Path"
+	}
+	return "pwd"
+}
+
+// waitForShellResult returns the first reply from cmdShell that is not the
+// "⏳" progress notice. cmdShell runs the command in the background and sends
+// that notice first when the command outlives quickFinishTimeout, which
+// PowerShell on Windows often does just starting up.
+func waitForShellResult(t *testing.T, p *stubPlatformEngine) string {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
 	for {
-		sent := p.getSent()
-		if len(sent) > 0 {
-			// With streaming progress, the final result is the last sent message
-			output := sent[len(sent)-1]
-			if !strings.Contains(output, agent.workDir) && !strings.Contains(output, expectedResolved) {
-				t.Fatalf("expected shell output to fall back to agent work dir %q (resolved %q), got %q", agent.workDir, expectedResolved, output)
+		for _, s := range p.getSent() {
+			if !strings.HasPrefix(s, "⏳") {
+				return s
 			}
-			if strings.Contains(output, missingDir) || strings.Contains(output, missingResolved) {
-				t.Fatalf("expected shell output to ignore missing shared workspace %q, got %q", missingDir, output)
-			}
-			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("timed out waiting for shell response")
+			t.Fatalf("timed out waiting for shell result, got %q", p.getSent())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
