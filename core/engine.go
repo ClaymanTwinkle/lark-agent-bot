@@ -1588,31 +1588,9 @@ func (e *Engine) ExecuteCronJob(job *CronJob) error {
 		return fmt.Errorf("platform %q does not support proactive messaging (cron)", platformName)
 	}
 
-	runSessionKey := sessionKey
-	var replyCtx any
-	var err error
-	if !job.Mute {
-		if resolver, ok := targetPlatform.(CronReplyTargetResolver); ok {
-			resolvedSessionKey, resolvedReplyCtx, err := resolver.ResolveCronReplyTarget(sessionKey, cronRunTitle(job))
-			if err != nil {
-				if !errors.Is(err, ErrNotSupported) {
-					return fmt.Errorf("resolve cron reply target: %w", err)
-				}
-			} else {
-				if resolvedSessionKey != "" {
-					runSessionKey = resolvedSessionKey
-				}
-				if resolvedReplyCtx != nil {
-					replyCtx = resolvedReplyCtx
-				}
-			}
-		}
-	}
-	if replyCtx == nil {
-		replyCtx, err = rc.ReconstructReplyCtx(runSessionKey)
-		if err != nil {
-			return fmt.Errorf("reconstruct reply context: %w", err)
-		}
+	replyCtx, err := rc.ReconstructReplyCtx(sessionKey)
+	if err != nil {
+		return fmt.Errorf("reconstruct reply context: %w", err)
 	}
 
 	// Wrap platform to discard all outgoing messages when muted
@@ -1710,18 +1688,17 @@ func (e *Engine) ExecuteCronJob(job *CronJob) error {
 	}
 
 	if useNewSession {
-		msg.SessionKey = runSessionKey
-		session := sessions.NewSideSession(runSessionKey, "cron-"+job.ID)
+		session := sessions.NewSideSession(sessionKey, "cron-"+job.ID)
 		lockGen, locked := session.TryLock()
 		if !locked {
-			return fmt.Errorf("session %q is busy", runSessionKey)
+			return fmt.Errorf("session %q is busy", sessionKey)
 		}
-		iKey := fmt.Sprintf("%s#cron:%s", runSessionKey, session.ID)
+		iKey := fmt.Sprintf("%s#cron:%s", sessionKey, session.ID)
 		if workspaceDir != "" {
 			iKey = workspaceDir + ":" + iKey
 		}
 		prevHistLen := session.HistoryLen()
-		e.processInteractiveMessageWith(effectivePlatform, msg, session, agent, sessions, iKey, workspaceDir, runSessionKey, lockGen)
+		e.processInteractiveMessageWith(effectivePlatform, msg, session, agent, sessions, iKey, workspaceDir, sessionKey, lockGen)
 		e.cleanupInteractiveState(iKey)
 		// Empty-response detection via session history delta: processInteractiveMessageWith
 		// always adds a "user" entry (prevHistLen+1), then an "assistant" entry on success
@@ -1798,31 +1775,9 @@ func (e *Engine) ExecuteTimerJob(job *TimerJob) error {
 		return fmt.Errorf("platform %q does not support proactive messaging (timer)", platformName)
 	}
 
-	runSessionKey := sessionKey
-	var replyCtx any
-	var err error
-	if !job.Mute {
-		if resolver, ok := targetPlatform.(CronReplyTargetResolver); ok {
-			resolvedSessionKey, resolvedReplyCtx, err := resolver.ResolveCronReplyTarget(sessionKey, timerRunTitle(job))
-			if err != nil {
-				if !errors.Is(err, ErrNotSupported) {
-					return fmt.Errorf("resolve timer reply target: %w", err)
-				}
-			} else {
-				if resolvedSessionKey != "" {
-					runSessionKey = resolvedSessionKey
-				}
-				if resolvedReplyCtx != nil {
-					replyCtx = resolvedReplyCtx
-				}
-			}
-		}
-	}
-	if replyCtx == nil {
-		replyCtx, err = rc.ReconstructReplyCtx(runSessionKey)
-		if err != nil {
-			return fmt.Errorf("reconstruct reply context: %w", err)
-		}
+	replyCtx, err := rc.ReconstructReplyCtx(sessionKey)
+	if err != nil {
+		return fmt.Errorf("reconstruct reply context: %w", err)
 	}
 
 	effectivePlatform := targetPlatform
@@ -1915,17 +1870,16 @@ func (e *Engine) ExecuteTimerJob(job *TimerJob) error {
 	}
 
 	if useNewSession {
-		msg.SessionKey = runSessionKey
-		session := sessions.NewSideSession(runSessionKey, "timer-"+job.ID)
+		session := sessions.NewSideSession(sessionKey, "timer-"+job.ID)
 		lockGen, locked := session.TryLock()
 		if !locked {
-			return fmt.Errorf("session %q is busy", runSessionKey)
+			return fmt.Errorf("session %q is busy", sessionKey)
 		}
-		iKey := fmt.Sprintf("%s#timer:%s", runSessionKey, session.ID)
+		iKey := fmt.Sprintf("%s#timer:%s", sessionKey, session.ID)
 		if workspaceDir != "" {
 			iKey = workspaceDir + ":" + iKey
 		}
-		e.processInteractiveMessageWith(effectivePlatform, msg, session, agent, sessions, iKey, workspaceDir, runSessionKey, lockGen)
+		e.processInteractiveMessageWith(effectivePlatform, msg, session, agent, sessions, iKey, workspaceDir, sessionKey, lockGen)
 		e.cleanupInteractiveState(iKey)
 		return nil
 	}
@@ -1942,19 +1896,6 @@ func (e *Engine) ExecuteTimerJob(job *TimerJob) error {
 	}
 	e.processInteractiveMessageWith(effectivePlatform, msg, session, agent, sessions, iKey, workspaceDir, sessionKey, lockGen)
 	return nil
-}
-
-func timerRunTitle(job *TimerJob) string {
-	if job == nil {
-		return "timer"
-	}
-	if job.Description != "" {
-		return job.Description
-	}
-	if job.IsShellJob() {
-		return truncateStr(job.Exec, 40)
-	}
-	return truncateStr(job.Prompt, 40)
 }
 
 // executeTimerShell runs a shell command for a timer job and sends the output.
@@ -2114,25 +2055,6 @@ func (e *Engine) executeTimerShell(p Platform, replyCtx any, job *TimerJob) erro
 		}
 		return fmt.Errorf("shell command timed out")
 	}
-}
-
-func cronRunTitle(job *CronJob) string {
-	if job == nil {
-		return "cron"
-	}
-	if desc := strings.TrimSpace(job.Description); desc != "" {
-		return truncateStr(desc, 60)
-	}
-	if job.IsShellJob() {
-		if cmd := strings.TrimSpace(job.Exec); cmd != "" {
-			return truncateStr(cmd, 60)
-		}
-		return "cron"
-	}
-	if prompt := strings.TrimSpace(job.Prompt); prompt != "" {
-		return truncateStr(prompt, 60)
-	}
-	return "cron"
 }
 
 // executeCronShell runs a shell command for a cron job and sends the output.
@@ -16191,21 +16113,14 @@ func relayConversationKey(fromProject, platformName, chatID string) string {
 }
 
 // platformPrompt is the platform-specific part of the agent's system prompt:
-// the platform's formatting instructions plus, when the platform lets the
-// agent @ other bots, how to hand work to them.
+// when the platform lets the agent @ other bots, how to hand work to them.
 func (e *Engine) platformPrompt(p Platform) string {
-	var parts []string
-	if fip, ok := p.(FormattingInstructionProvider); ok {
-		if s := strings.TrimSpace(fip.FormattingInstructions()); s != "" {
-			parts = append(parts, s)
-		}
-	}
 	if pb, ok := p.(PeerBotProvider); ok {
 		if names := pb.PeerBotNames(); len(names) > 0 {
-			parts = append(parts, e.i18n.Tf(MsgAgentPeerBotPrompt, strings.Join(names, ", "), names[0]))
+			return e.i18n.Tf(MsgAgentPeerBotPrompt, strings.Join(names, ", "), names[0])
 		}
 	}
-	return strings.Join(parts, "\n\n")
+	return ""
 }
 
 func (e *Engine) platformForName(name string) Platform {

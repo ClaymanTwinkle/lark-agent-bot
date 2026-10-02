@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"errors"
-	"time"
 )
 
 // i18nT is the free-function form of (*I18n).T used by AgentSystemPromptForLang.
@@ -82,28 +81,10 @@ type MessageRecallNotifier interface {
 	NotifyMessageRecall(ctx context.Context, replyCtx any, content string) error
 }
 
-// CronReplyTargetResolver is an optional interface for platforms that need to
-// map a logical cron session key to the actual reply target used at execution
-// time. This is useful for platforms where proactive replies may need to create
-// or switch to a thread before the cron run starts.
-//
-// Implementations that do not need special handling should return
-// ErrNotSupported so callers can fall back to ReconstructReplyCtx(sessionKey).
-type CronReplyTargetResolver interface {
-	ResolveCronReplyTarget(sessionKey string, title string) (resolvedSessionKey string, replyCtx any, err error)
-}
-
 // SessionEnvInjector is an optional interface for agents that accept
 // per-session environment variables (e.g. CC_PROJECT, CC_SESSION_KEY).
 type SessionEnvInjector interface {
 	SetSessionEnv(env []string)
-}
-
-// FormattingInstructionProvider is an optional interface for platforms that
-// provide platform-specific formatting instructions for the agent system prompt
-// (e.g., Slack mrkdwn vs standard Markdown).
-type FormattingInstructionProvider interface {
-	FormattingInstructions() string
 }
 
 // PeerBotProvider is an optional interface for platforms where the agent can
@@ -294,12 +275,6 @@ type ProgressStyleProvider interface {
 // parse and render structured progress-card payloads.
 type ProgressCardPayloadSupport interface {
 	SupportsProgressCardPayload() bool
-}
-
-// ProgressUpdateThrottler is an optional interface for platforms that need
-// rate-limited progress edits (e.g. Discord's ~5 edits / 5s per channel).
-type ProgressUpdateThrottler interface {
-	ProgressUpdateInterval() time.Duration
 }
 
 // ButtonOption represents a clickable inline button.
@@ -617,17 +592,6 @@ type SessionDeleter interface {
 type WorkDirSwitcher interface {
 	SetWorkDir(dir string)
 	GetWorkDir() string
-}
-
-// AgentOptsProvider is an optional interface for agents that need to carry
-// their full configuration options when the engine clones a per-workspace
-// agent instance in multi-workspace mode. The engine merges the returned map
-// into the workspace opts before calling the agent factory, giving workspace
-// agents access to agent-specific options (e.g. "session" for the tmux agent)
-// that are not covered by the standard GetModel / GetMode accessors.
-// work_dir is always overridden by the engine and must not be returned here.
-type AgentOptsProvider interface {
-	BaseOpts() map[string]any
 }
 
 // ModeSwitcher is an optional interface for agents that support runtime permission mode switching.

@@ -583,7 +583,7 @@ func TestMgmt_CronExecByID(t *testing.T) {
 	cs := NewCronScheduler(store)
 	mgmt.SetCronScheduler(cs)
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "discord"},
 	}
 	agentSession := newResultAgentSession("triggered from management")

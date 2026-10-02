@@ -7,12 +7,10 @@ import (
 
 type peerBotStubPlatform struct {
 	stubPlatformEngine
-	names      []string
-	formatting string
+	names []string
 }
 
-func (p *peerBotStubPlatform) PeerBotNames() []string         { return p.names }
-func (p *peerBotStubPlatform) FormattingInstructions() string { return p.formatting }
+func (p *peerBotStubPlatform) PeerBotNames() []string { return p.names }
 
 func TestPlatformPrompt_TellsAgentWhichBotsItCanHandWorkTo(t *testing.T) {
 	p := &peerBotStubPlatform{stubPlatformEngine: stubPlatformEngine{n: "feishu"}, names: []string{"Codex", "Gemini"}}
@@ -31,17 +29,16 @@ func TestPlatformPrompt_TellsAgentWhichBotsItCanHandWorkTo(t *testing.T) {
 	}
 }
 
-func TestPlatformPrompt_KeepsFormattingAndOmitsEmptyPeerList(t *testing.T) {
-	p := &peerBotStubPlatform{stubPlatformEngine: stubPlatformEngine{n: "feishu"}, formatting: "Use plain text."}
+func TestPlatformPrompt_EmptyWithoutPeerBots(t *testing.T) {
+	p := &peerBotStubPlatform{stubPlatformEngine: stubPlatformEngine{n: "feishu"}}
 	e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
 
-	if got := e.platformPrompt(p); got != "Use plain text." {
-		t.Fatalf("platformPrompt() = %q, want only the formatting instructions", got)
+	if got := e.platformPrompt(p); got != "" {
+		t.Fatalf("platformPrompt() = %q, want empty without peer bots", got)
 	}
 
 	p.names = []string{"Codex"}
-	got := e.platformPrompt(p)
-	if !strings.HasPrefix(got, "Use plain text.\n\n") || !strings.Contains(got, "@Codex") {
-		t.Fatalf("platformPrompt() = %q, want formatting followed by the peer-bot section", got)
+	if got := e.platformPrompt(p); !strings.Contains(got, "@Codex") {
+		t.Fatalf("platformPrompt() = %q, want the peer-bot section", got)
 	}
 }

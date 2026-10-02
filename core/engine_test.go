@@ -110,22 +110,14 @@ func (p *recallCheckingPlatform) checkedReplyCtxs() []any {
 	return out
 }
 
-type stubCronReplyTargetPlatform struct {
+type stubCronPlatform struct {
 	stubPlatformEngine
 	reconstructSessionKey string
-	resolvedSessionKey    string
-	resolveTitle          string
 }
 
-func (p *stubCronReplyTargetPlatform) ReconstructReplyCtx(sessionKey string) (any, error) {
+func (p *stubCronPlatform) ReconstructReplyCtx(sessionKey string) (any, error) {
 	p.reconstructSessionKey = sessionKey
 	return "base-rctx", nil
-}
-
-func (p *stubCronReplyTargetPlatform) ResolveCronReplyTarget(sessionKey string, title string) (string, any, error) {
-	p.resolvedSessionKey = sessionKey
-	p.resolveTitle = title
-	return "discord:thread-fresh", "fresh-rctx", nil
 }
 
 type resultAgent struct {
@@ -8173,7 +8165,7 @@ func TestCmdCronExec_TriggersJob(t *testing.T) {
 
 	for _, subcommand := range []string{"exec", "run", "trigger"} {
 		t.Run(subcommand, func(t *testing.T) {
-			platform := &stubCronReplyTargetPlatform{
+			platform := &stubCronPlatform{
 				stubPlatformEngine: stubPlatformEngine{n: "plain"},
 			}
 			agentSession := newResultAgentSession("manual run complete")
@@ -13625,7 +13617,7 @@ func TestEngine_AddPlatform_Multiple(t *testing.T) {
 	}
 }
 
-func TestExecuteCronJob_ResolvesCronReplyTarget(t *testing.T) {
+func TestExecuteCronJob_RepliesToJobSession(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewCronStore(dir)
 	if err != nil {
@@ -13633,7 +13625,7 @@ func TestExecuteCronJob_ResolvesCronReplyTarget(t *testing.T) {
 	}
 	scheduler := NewCronScheduler(store)
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "discord"},
 	}
 	agentSession := newResultAgentSession("cron complete")
@@ -13656,11 +13648,8 @@ func TestExecuteCronJob_ResolvesCronReplyTarget(t *testing.T) {
 	if err := e.ExecuteCronJob(job); err != nil {
 		t.Fatalf("ExecuteCronJob() error = %v", err)
 	}
-	if platform.resolvedSessionKey != "discord:channel-1:user-1" {
-		t.Fatalf("ResolveCronReplyTarget sessionKey = %q, want base session key", platform.resolvedSessionKey)
-	}
-	if platform.resolveTitle != "Daily summary" {
-		t.Fatalf("ResolveCronReplyTarget title = %q, want Daily summary", platform.resolveTitle)
+	if platform.reconstructSessionKey != "discord:channel-1:user-1" {
+		t.Fatalf("ReconstructReplyCtx sessionKey = %q, want the job's session key", platform.reconstructSessionKey)
 	}
 
 	sent := platform.getSent()
@@ -13674,9 +13663,6 @@ func TestExecuteCronJob_ResolvesCronReplyTarget(t *testing.T) {
 		t.Fatalf("sent[1] = %q, want final result", sent[1])
 	}
 
-	if got := len(e.sessions.ListSessions("discord:thread-fresh")); got != 0 {
-		t.Fatalf("fresh session count = %d, want 0 for reuse mode", got)
-	}
 	if got := len(e.sessions.ListSessions("discord:channel-1:user-1")); got != 1 {
 		t.Fatalf("base session count = %d, want 1", got)
 	}
@@ -13701,7 +13687,7 @@ func TestExecuteCronJob_WorkspacePrefixedSessionKey(t *testing.T) {
 	}
 	scheduler := NewCronScheduler(store)
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "slack"},
 	}
 	agentSession := newResultAgentSession("done")
@@ -13782,7 +13768,7 @@ func TestExecuteCronJob_ExpandsSlashSkillPrompt(t *testing.T) {
 				t.Fatalf("NewCronStore() error = %v", err)
 			}
 
-			platform := &stubCronReplyTargetPlatform{
+			platform := &stubCronPlatform{
 				stubPlatformEngine: stubPlatformEngine{n: "discord"},
 			}
 			agentSession := newResultAgentSession("ok")

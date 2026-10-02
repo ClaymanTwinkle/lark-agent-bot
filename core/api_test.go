@@ -213,7 +213,7 @@ func TestHandleSend_WorkDirStartsSideSession(t *testing.T) {
 		}, nil
 	})
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "test"},
 	}
 	engine := NewEngine(
@@ -299,7 +299,7 @@ func TestHandleSend_WorkDirFollowsDirectParticipantOnInboundSession(t *testing.T
 		}, nil
 	})
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "test"},
 	}
 	engine := NewEngine(
@@ -358,7 +358,7 @@ func TestHandleCronExec_TriggersJob(t *testing.T) {
 	}
 	scheduler := NewCronScheduler(store)
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "discord"},
 	}
 	agentSession := newResultAgentSession("triggered from local api")
@@ -424,7 +424,7 @@ func TestHandleCronExec_RunAliasRouteTriggersJob(t *testing.T) {
 	}
 	scheduler := NewCronScheduler(store)
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "discord"},
 	}
 	agentSession := newResultAgentSession("triggered from local api alias")

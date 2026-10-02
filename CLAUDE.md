@@ -47,7 +47,6 @@ core/     → stdlib only (never agent/ or platform/)
 Optional capability interfaces (implement only when needed):
 - `CardSender` — rich card messages
 - `ProviderSwitcher` — multi-model switching
-- `DoctorChecker` — agent-specific health checks
 - `AgentDoctorInfo` — CLI binary metadata for diagnostics
 
 ## Development Rules

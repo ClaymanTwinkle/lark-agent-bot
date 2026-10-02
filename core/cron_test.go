@@ -378,7 +378,7 @@ func TestCronScheduler_RunJobNow_DisabledJobStillRuns(t *testing.T) {
 	}
 	scheduler := NewCronScheduler(store)
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "discord"},
 	}
 	agentSession := newResultAgentSession("manual run complete")
@@ -483,7 +483,7 @@ func TestCronScheduler_RunJobNow_UsesSnapshot(t *testing.T) {
 	}
 	scheduler := NewCronScheduler(store)
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "discord"},
 	}
 	agentSession := newResultAgentSession("snapshot complete")
@@ -880,7 +880,7 @@ func TestCronScheduler_FiresDueJob(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "discord"},
 	}
 	agentSession := newResultAgentSession("fired")
@@ -950,7 +950,7 @@ func TestCronScheduler_SleepRecovery_PastDueFiresImmediately(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "discord"},
 	}
 	agentSession := newResultAgentSession("recovered")
@@ -1016,7 +1016,7 @@ func TestCronScheduler_AddJobDuringRunWakesLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "discord"},
 	}
 	agentSession := newResultAgentSession("late-add")
@@ -1077,7 +1077,7 @@ func TestCronScheduler_RemoveJobDuringRunPreventsFire(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "discord"},
 	}
 	agentSession := newResultAgentSession("should-not-run")
@@ -1156,7 +1156,7 @@ func TestCronScheduler_DisableJobStopsFiring(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	platform := &stubCronReplyTargetPlatform{
+	platform := &stubCronPlatform{
 		stubPlatformEngine: stubPlatformEngine{n: "discord"},
 	}
 	agentSession := newResultAgentSession("should-not-run")

@@ -39,11 +39,6 @@ type DoctorCheckResult struct {
 	Latency time.Duration
 }
 
-// DoctorChecker is an optional interface for agents to provide specific health checks.
-type DoctorChecker interface {
-	DoctorChecks(ctx context.Context) []DoctorCheckResult
-}
-
 // AgentDoctorInfo is an optional interface agents can implement to provide
 // CLI binary name and display label for doctor checks, avoiding hardcoded
 // agent-specific knowledge in core.
@@ -82,10 +77,6 @@ func RunDoctorChecks(ctx context.Context, agent Agent, platforms []Platform) []D
 	results = append(results, checkSystem(ctx)...)
 	results = append(results, checkDependencies()...)
 	results = append(results, checkNetwork(ctx)...)
-
-	if dc, ok := agent.(DoctorChecker); ok {
-		results = append(results, dc.DoctorChecks(ctx)...)
-	}
 
 	return results
 }

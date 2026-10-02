@@ -187,9 +187,9 @@ func ensureSharedSystemPromptFile(ccDataDir, content string) (string, error) {
 
 // writeTempAppendPromptFile writes the merged prompt content to a
 // per-spawn temp file under ccDataDir/agent-prompts/, returning the
-// path. Used only when the prompt has session-specific bits (platform
-// FormattingInstructions or user-configured append_system_prompt) that
-// the shared file cannot represent. A unique name from CreateTemp
+// path. Used only when the prompt has session-specific bits (the
+// platform's peer-bot section or user-configured append_system_prompt)
+// that the shared file cannot represent. A unique name from CreateTemp
 // avoids two concurrent customised sessions overwriting each other.
 //
 // The caller is responsible for removing the file on session Close.
