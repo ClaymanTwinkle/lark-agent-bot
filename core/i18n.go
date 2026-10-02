@@ -546,6 +546,7 @@ const (
 
 	MsgAgentExitedMidTurn MsgKey = "agent_exited_mid_turn"
 	MsgTurnInterrupted    MsgKey = "turn_interrupted"
+	MsgTimerInterrupted   MsgKey = "timer_interrupted"
 	MsgStallModel         MsgKey = "stall_model"
 	MsgStallTool          MsgKey = "stall_tool"
 
@@ -1356,6 +1357,13 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "⚠️ %s 收到的訊息還沒回覆完，服務就中斷了（重啟或異常退出）。可以重新傳送，或讓它繼續。",
 		LangJapanese:           "⚠️ %s に受信したメッセージへの返信が終わる前に、サービスが停止しました（再起動または異常終了）。再送するか、続きを依頼してください。",
 		LangSpanish:            "⚠️ El servicio se detuvo (reinicio o fallo) antes de terminar la respuesta al mensaje recibido a las %s. Reenvíalo o pide que continúe.",
+	},
+	MsgTimerInterrupted: {
+		LangEnglish:            "⚠️ The service stopped (restart or crash) before the timer task that started at %s had finished. It will not run again; schedule it again if you still need it.",
+		LangChinese:            "⚠️ %s 开始执行的定时任务还没做完，服务就中断了（重启或异常退出）。它不会再自动执行，需要的话重新安排。",
+		LangTraditionalChinese: "⚠️ %s 開始執行的定時任務還沒做完，服務就中斷了（重啟或異常退出）。它不會再自動執行，需要的話重新安排。",
+		LangJapanese:           "⚠️ %s に開始したタイマータスクが終わる前に、サービスが停止しました（再起動または異常終了）。自動では再実行されません。必要なら設定し直してください。",
+		LangSpanish:            "⚠️ El servicio se detuvo (reinicio o fallo) antes de que terminara la tarea programada iniciada a las %s. No se volverá a ejecutar; prográmala de nuevo si aún la necesitas.",
 	},
 	MsgStallModel: {
 		LangEnglish:            "⏳ No new output for %d minutes while waiting on the model, possibly a network or API problem. If it is stuck, send /stop to end it.",

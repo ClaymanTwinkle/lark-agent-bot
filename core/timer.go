@@ -29,6 +29,7 @@ type TimerJob struct {
 	Mode        string    `json:"mode,omitempty"`         // permission mode override; "" = use project default
 	TimeoutMins *int      `json:"timeout_mins,omitempty"` // nil = default 30m; 0 = no limit; >0 = minutes
 	CreatedAt   time.Time `json:"created_at"`
+	StartedAt   time.Time `json:"started_at,omitempty"` // when the run began; set while Fired is false = the run was cut off
 	Fired       bool      `json:"fired"`
 	FiredAt     time.Time `json:"fired_at,omitempty"`
 	LastError   string    `json:"last_error,omitempty"`
@@ -153,6 +154,26 @@ func (s *TimerStore) SetMute(id string, mute bool) bool {
 			j.Mute = mute
 			if err := s.save(); err != nil {
 				slog.Warn("timer: save after mute toggle", "error", err)
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// MarkStarted records that the job's run has begun. It returns false when the
+// job is gone, has fired or has already started, so a job runs at most once.
+func (s *TimerStore) MarkStarted(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, j := range s.jobs {
+		if j.ID == id {
+			if j.Fired || !j.StartedAt.IsZero() {
+				return false
+			}
+			j.StartedAt = time.Now()
+			if err := s.save(); err != nil {
+				slog.Warn("timer: failed to save after mark started", "error", err)
 			}
 			return true
 		}
@@ -295,9 +316,19 @@ func (ts *TimerScheduler) UsesNewSession(job *TimerJob) bool {
 func (ts *TimerScheduler) Start() error {
 	jobs := ts.store.List()
 	now := time.Now()
-	var scheduled, missed, skipped int
+	var scheduled, missed, skipped, interrupted int
 	for _, job := range jobs {
 		if job.Fired {
+			continue
+		}
+		if !job.StartedAt.IsZero() {
+			// The previous process stopped while the job was running. Running
+			// it again could repeat what it already did, so record it as
+			// interrupted and tell the chat instead (#9).
+			slog.Warn("timer: job was interrupted by the previous process exit; not running it again", "id", job.ID, "started_at", job.StartedAt)
+			ts.notifyInterrupted(job)
+			ts.store.MarkFired(job.ID, fmt.Errorf("interrupted: the service stopped while it was running (started %s)", job.StartedAt.Local().Format(time.DateTime)))
+			interrupted++
 			continue
 		}
 		delay := job.ScheduledAt.Sub(now)
@@ -318,8 +349,24 @@ func (ts *TimerScheduler) Start() error {
 			scheduled++
 		}
 	}
-	slog.Info("timer: scheduler started", "scheduled", scheduled, "missed_fired", missed, "skipped_stale", skipped, "total", len(jobs))
+	slog.Info("timer: scheduler started", "scheduled", scheduled, "missed_fired", missed, "skipped_stale", skipped, "interrupted", interrupted, "total", len(jobs))
 	return nil
+}
+
+// notifyInterrupted tells the job's chat that its run was cut off and will
+// not be repeated. Muted jobs stay silent.
+func (ts *TimerScheduler) notifyInterrupted(job *TimerJob) {
+	if job.Mute {
+		return
+	}
+	ts.mu.RLock()
+	engine, ok := ts.engines[job.Project]
+	ts.mu.RUnlock()
+	if !ok {
+		slog.Warn("timer: interrupted job notice skipped: project not found", "id", job.ID, "project", job.Project)
+		return
+	}
+	engine.notifyInterruptedTimer(job)
 }
 
 func (ts *TimerScheduler) Stop() {
@@ -403,6 +450,12 @@ func (ts *TimerScheduler) executeJob(jobID string) {
 	if !ok {
 		slog.Error("timer: project not found", "job", jobID, "project", job.Project)
 		ts.store.MarkFired(jobID, fmt.Errorf("project %q not found", job.Project))
+		return
+	}
+
+	// Record the start before running, so a restart in the middle of the run
+	// is not taken for a missed job and run again (#9).
+	if !ts.store.MarkStarted(jobID) {
 		return
 	}
 

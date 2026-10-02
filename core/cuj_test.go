@@ -1689,14 +1689,6 @@ func TestCUJ_E3_CronSurvivesRestart(t *testing.T) {
 // closes that gap with a real engine + cujAgent + ReplyContextReconstructor
 // platform.
 func TestCUJ_E4_TimerFiresAndDeliversToAgentAndUser(t *testing.T) {
-	// Flaky: the timer fires at 200ms and the test waits 3s for the store
-	// to be marked Fired, but the scheduler tick + JSON store write +
-	// cleanup loses that race both locally and on CI (observed in PR
-	// cc-connect#1348 CI: "timer was not marked as Fired after execution" after
-	// only 0.21s). Skip unconditionally until the race is fixed at the
-	// scheduler layer — TODO(cc-connect#1348-followup): make ExecuteTimerJob mark
-	// Fired synchronously before returning.
-	t.Skip("CUJ-E4: flaky timer scheduler race; tracking for follow-up")
 	// Use cujReplyCtxPlatform because ExecuteTimerJob requires the platform
 	// to implement ReplyContextReconstructor — that's how it rebuilds a
 	// reply target from just a sessionKey at fire-time.
@@ -1782,13 +1774,28 @@ func TestCUJ_E4_TimerFiresAndDeliversToAgentAndUser(t *testing.T) {
 		t.Fatalf("timer fired but prompt never reached the agent. plat.getSent()=%v", plat.getSent())
 	}
 
-	// And the timer should now be marked Fired in the store.
-	stored := store.Get("timer-fire-soon")
-	if stored == nil {
+	// The start is recorded before the prompt goes out, so a restart from
+	// here on does not run the job again (#9).
+	stored, ok := timerJobSnapshot(store, "timer-fire-soon")
+	if !ok {
 		t.Fatalf("timer disappeared from store after firing")
+	}
+	if stored.StartedAt.IsZero() {
+		t.Fatalf("timer start was not recorded before the prompt reached the agent")
+	}
+
+	// Fired is recorded once the turn ends, which can be after the prompt
+	// arrives (#9), so wait for it.
+	deadline = time.Now().Add(3 * time.Second)
+	for !stored.Fired && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+		stored, _ = timerJobSnapshot(store, "timer-fire-soon")
 	}
 	if !stored.Fired {
 		t.Fatalf("timer was not marked as Fired after execution")
+	}
+	if stored.LastError != "" {
+		t.Fatalf("timer LastError = %q, want none", stored.LastError)
 	}
 
 	// The user should also see at least one platform message (the prefire

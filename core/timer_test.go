@@ -3,9 +3,23 @@ package core
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+// timerJobSnapshot copies a job under the store lock, so a test can read it
+// while the scheduler may still be writing it.
+func timerJobSnapshot(s *TimerStore, id string) (TimerJob, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, j := range s.jobs {
+		if j.ID == id {
+			return *j, true
+		}
+	}
+	return TimerJob{}, false
+}
 
 func TestParseDelayOrTime_Relative(t *testing.T) {
 	tests := []struct {
@@ -404,6 +418,122 @@ func TestTimerScheduler_StaleJobSkipped(t *testing.T) {
 	}
 	if got.LastError == "" {
 		t.Error("stale job should have a LastError")
+	}
+}
+
+func TestTimerStore_MarkStartedClaimsOnceAndPersists(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewTimerStore(dir)
+	if err != nil {
+		t.Fatalf("NewTimerStore: %v", err)
+	}
+	for _, id := range []string{"start1", "fired1"} {
+		if err := store.Add(&TimerJob{
+			ID: id, Project: "test", SessionKey: "key1",
+			ScheduledAt: time.Now().Add(time.Hour), Prompt: "hello", CreatedAt: time.Now(),
+		}); err != nil {
+			t.Fatalf("Add %s: %v", id, err)
+		}
+	}
+
+	if !store.MarkStarted("start1") {
+		t.Fatal("first MarkStarted = false, want true")
+	}
+	if store.MarkStarted("start1") {
+		t.Fatal("second MarkStarted = true, want false: a job runs at most once")
+	}
+	store.MarkFired("fired1", nil)
+	if store.MarkStarted("fired1") {
+		t.Fatal("MarkStarted on a fired job = true, want false")
+	}
+	if store.MarkStarted("missing") {
+		t.Fatal("MarkStarted on a missing job = true, want false")
+	}
+
+	reloaded, err := NewTimerStore(dir)
+	if err != nil {
+		t.Fatalf("NewTimerStore reload: %v", err)
+	}
+	got, ok := timerJobSnapshot(reloaded, "start1")
+	if !ok || got.StartedAt.IsZero() || got.Fired {
+		t.Fatalf("reloaded job = %+v (found %v), want StartedAt set and not fired", got, ok)
+	}
+}
+
+// Regression for #9: a job cut off by a restart was taken for a missed job
+// and run again when the restart came within missedJobGracePeriod.
+func TestTimerScheduler_InterruptedJobIsNotRunAgain(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mute bool
+	}{
+		{"chat is told", false},
+		{"muted job stays silent", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, err := NewTimerStore(t.TempDir())
+			if err != nil {
+				t.Fatalf("NewTimerStore: %v", err)
+			}
+			started := time.Now().Add(-30 * time.Second)
+			if err := store.Add(&TimerJob{
+				ID:          "cut1",
+				Project:     "claude-bot",
+				SessionKey:  "feishu:oc_1:ou_1",
+				ScheduledAt: time.Now().Add(-time.Minute),
+				Prompt:      "check the deploy",
+				Description: "deploy check",
+				Mute:        tc.mute,
+				CreatedAt:   time.Now().Add(-time.Hour),
+				StartedAt:   started,
+			}); err != nil {
+				t.Fatalf("Add: %v", err)
+			}
+
+			plat := &keyRecordingStub{restartNotifyStub: restartNotifyStub{name: "feishu"}}
+			e := NewEngine("claude-bot", &stubAgent{}, []Platform{plat}, "", LangEnglish)
+			sched := NewTimerScheduler(store)
+			sched.RegisterEngine("claude-bot", e)
+			if err := sched.Start(); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			defer sched.Stop()
+
+			sched.mu.RLock()
+			_, scheduled := sched.timers["cut1"]
+			sched.mu.RUnlock()
+			if scheduled {
+				t.Fatal("interrupted job was scheduled to run again")
+			}
+			got, _ := timerJobSnapshot(store, "cut1")
+			if !got.Fired || !strings.Contains(got.LastError, "interrupted") {
+				t.Fatalf("job = %+v, want fired with an interrupted error", got)
+			}
+
+			e.onPlatformReady(plat)
+			if tc.mute {
+				time.Sleep(300 * time.Millisecond)
+				if sent := plat.sentTexts(); len(sent) != 0 {
+					t.Fatalf("muted job sent %v, want nothing", sent)
+				}
+				return
+			}
+			sent := plat.waitForSent(t, 1, 3*time.Second)
+			if len(sent) != 1 {
+				t.Fatalf("sent = %v, want 1 notice", sent)
+			}
+			if !strings.Contains(sent[0], "will not run again") ||
+				!strings.Contains(sent[0], started.Format("01-02 15:04")) ||
+				!strings.Contains(sent[0], "\n> deploy check") {
+				t.Fatalf("notice = %q, want the interrupted-timer text, start time and quoted description", sent[0])
+			}
+			plat.keyMu.Lock()
+			keys := append([]string(nil), plat.keys...)
+			plat.keyMu.Unlock()
+			if len(keys) != 1 || keys[0] != "feishu:oc_1:ou_1" {
+				t.Fatalf("reconstructed keys = %v, want the job's session key", keys)
+			}
+		})
 	}
 }
 

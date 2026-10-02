@@ -177,11 +177,36 @@ func (e *Engine) NotifyInterruptedTurns() {
 	for _, t := range turns {
 		slog.Info("interrupted turn from previous run: notifying",
 			"platform", t.Platform, "session", t.SessionKey, "started_at", t.StartedAt)
-		go e.dispatchInterruptedTurn(t)
+		go e.dispatchInterruptedTurn(t, MsgTurnInterrupted)
 	}
 }
 
-func (e *Engine) dispatchInterruptedTurn(t inflightTurn) {
+// notifyInterruptedTimer tells the chat of a timer job that was cut off by the
+// previous process exit that the job will not run again. The notice waits for
+// the platform to become ready.
+func (e *Engine) notifyInterruptedTimer(job *TimerJob) {
+	p, sessionKey := e.platformForSessionKey(job.SessionKey)
+	if p == nil {
+		slog.Warn("interrupted timer notice skipped: platform not found", "id", job.ID, "session", job.SessionKey)
+		return
+	}
+	label := job.Description
+	if label == "" {
+		label = job.Prompt
+		if job.IsShellJob() {
+			label = job.Exec
+		}
+	}
+	t := inflightTurn{
+		Platform:   p.Name(),
+		SessionKey: sessionKey,
+		Preview:    turnPreview(label),
+		StartedAt:  job.StartedAt,
+	}
+	go e.dispatchInterruptedTurn(t, MsgTimerInterrupted)
+}
+
+func (e *Engine) dispatchInterruptedTurn(t inflightTurn, notice MsgKey) {
 	defer func() {
 		if r := recover(); r != nil {
 			stack := make([]byte, 8192)
@@ -190,13 +215,15 @@ func (e *Engine) dispatchInterruptedTurn(t inflightTurn) {
 				"platform", t.Platform, "session", t.SessionKey, "panic", r, "stack", string(stack[:n]))
 		}
 	}()
-	if err := e.sendInterruptedTurnNotice(t); err != nil {
+	if err := e.sendInterruptedTurnNotice(t, notice); err != nil {
 		slog.Warn("interrupted turn notice not delivered",
 			"platform", t.Platform, "session", t.SessionKey, "error", err)
 	}
 }
 
-func (e *Engine) sendInterruptedTurnNotice(t inflightTurn) error {
+// sendInterruptedTurnNotice sends the notice message, filled in with the
+// turn's start time, followed by the quoted preview.
+func (e *Engine) sendInterruptedTurnNotice(t inflightTurn, notice MsgKey) error {
 	deadline := time.Now().Add(interruptedTurnReadyTimeout)
 	p := e.lookupReadyPlatform(t.Platform)
 	for p == nil {
@@ -218,7 +245,7 @@ func (e *Engine) sendInterruptedTurnNotice(t inflightTurn) error {
 		return fmt.Errorf("reconstruct reply ctx: %w", err)
 	}
 
-	text := e.i18n.Tf(MsgTurnInterrupted, t.StartedAt.Local().Format("01-02 15:04"))
+	text := e.i18n.Tf(notice, t.StartedAt.Local().Format("01-02 15:04"))
 	if t.Preview != "" {
 		text += "\n> " + t.Preview
 	}
