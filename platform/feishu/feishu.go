@@ -98,6 +98,28 @@ func (l *sanitizingLogger) Error(ctx context.Context, args ...interface{}) {
 	l.inner.Error(ctx, l.maskURL(args...)...)
 }
 
+// slogLarkLogger sends the Lark SDK's log lines (connects, reconnects,
+// errors) to slog, so they land in the bot's log file. The SDK's own logger
+// writes to stdout, which a service such as the daemon's scheduled task
+// does not keep.
+type slogLarkLogger struct{}
+
+func (slogLarkLogger) Debug(ctx context.Context, args ...interface{}) {
+	slog.DebugContext(ctx, "feishu sdk", "message", fmt.Sprint(args...))
+}
+
+func (slogLarkLogger) Info(ctx context.Context, args ...interface{}) {
+	slog.InfoContext(ctx, "feishu sdk", "message", fmt.Sprint(args...))
+}
+
+func (slogLarkLogger) Warn(ctx context.Context, args ...interface{}) {
+	slog.WarnContext(ctx, "feishu sdk", "message", fmt.Sprint(args...))
+}
+
+func (slogLarkLogger) Error(ctx context.Context, args ...interface{}) {
+	slog.ErrorContext(ctx, "feishu sdk", "message", fmt.Sprint(args...))
+}
+
 func init() {
 	core.RegisterPlatform("feishu", func(opts map[string]any) (core.Platform, error) {
 		return newPlatform("feishu", lark.FeishuBaseUrl, opts)
@@ -710,7 +732,7 @@ func (p *Platform) startWebSocketMode() error {
 	wsOpts := []larkws.ClientOption{
 		larkws.WithEventHandler(p.eventHandler),
 		larkws.WithLogLevel(larkcore.LogLevelInfo),
-		larkws.WithLogger(&sanitizingLogger{inner: larkcore.NewEventLogger()}),
+		larkws.WithLogger(&sanitizingLogger{inner: slogLarkLogger{}}),
 	}
 	if p.domain != lark.FeishuBaseUrl {
 		wsOpts = append(wsOpts, larkws.WithDomain(p.domain))

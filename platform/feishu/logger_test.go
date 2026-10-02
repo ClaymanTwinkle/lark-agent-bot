@@ -1,7 +1,9 @@
 package feishu
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -57,5 +59,26 @@ func TestSanitizingLogger_KeepOtherDebugAndMaskSecrets(t *testing.T) {
 	}
 	if strings.Contains(urlArg, "token=abc") || strings.Contains(urlArg, "conn_id=123") {
 		t.Fatalf("url arg not masked: %q", urlArg)
+	}
+}
+
+func TestSlogLarkLogger_WritesMaskedSDKLinesToSlog(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	logger := &sanitizingLogger{inner: slogLarkLogger{}}
+	logger.Info(context.Background(), "connected to wss://msg-frontier.feishu.cn/ws/v2?ticket=abc&aid=1")
+	logger.Error(context.Background(), "connect failed, err: ", "timeout")
+
+	out := buf.String()
+	for _, want := range []string{
+		`level=INFO msg="feishu sdk" message="connected to wss://msg-frontier.feishu.cn/ws/v2?ticket=***&aid=1"`,
+		`level=ERROR msg="feishu sdk" message="connect failed, err: timeout"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("slog output missing %q:\n%s", want, out)
+		}
 	}
 }
