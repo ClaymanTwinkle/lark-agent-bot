@@ -39,9 +39,6 @@ body:
       options:
         - Claude Code
         - Codex (OpenAI)
-        - Cursor Agent
-        - Gemini CLI
-        - Other
     validations:
       required: true
 

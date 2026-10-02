@@ -15,9 +15,6 @@ import (
 
 	"github.com/ClaymanTwinkle/lark-agent-bot/agent/claudecode"
 	"github.com/ClaymanTwinkle/lark-agent-bot/agent/codex"
-	"github.com/ClaymanTwinkle/lark-agent-bot/agent/cursor"
-	"github.com/ClaymanTwinkle/lark-agent-bot/agent/gemini"
-	"github.com/ClaymanTwinkle/lark-agent-bot/agent/opencode"
 	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
@@ -41,26 +38,11 @@ func skipUnlessAgentReady(t *testing.T, agentType string) {
 		if os.Getenv("OPENAI_API_KEY") == "" {
 			t.Skipf("skip %s: OPENAI_API_KEY not set", agentType)
 		}
-	case "cursor":
-		if os.Getenv("ANTHROPIC_API_KEY") == "" && os.Getenv("CURSOR_API_KEY") == "" {
-			t.Skipf("skip %s: ANTHROPIC_API_KEY or CURSOR_API_KEY not set", agentType)
-		}
-	case "gemini":
-		if os.Getenv("GEMINI_API_KEY") == "" && os.Getenv("GOOGLE_API_KEY") == "" {
-			t.Skipf("skip %s: GEMINI_API_KEY or GOOGLE_API_KEY not set", agentType)
-		}
-	case "opencode":
-		if os.Getenv("OPENAI_API_KEY") == "" && os.Getenv("ANTHROPIC_API_KEY") == "" {
-			t.Skipf("skip %s: OPENAI_API_KEY or ANTHROPIC_API_KEY not set", agentType)
-		}
 	}
 }
 
 var _ = claudecode.New
 var _ = codex.New
-var _ = cursor.New
-var _ = gemini.New
-var _ = opencode.New
 
 // mockPlatform records all messages sent through it for test verification.
 type mockPlatform struct {
@@ -207,16 +189,6 @@ func findAgentBin(agentType string) (string, error) {
 		return "claude", nil
 	case "codex":
 		return "codex", nil
-	case "cursor":
-		return "cursor", nil
-	case "gemini":
-		return "gemini", nil
-	case "opencode":
-		return "opencode", nil
-	case "iflow":
-		return "iflow", nil
-	case "qoder":
-		return "qoder", nil
 	default:
 		return "", fmt.Errorf("unsupported agent type: %s", agentType)
 	}
@@ -568,69 +540,6 @@ func TestAgentCodex(t *testing.T) {
 	t.Logf("codex response: %s", content[:min(100, len(content))])
 }
 
-func TestAgentCursor(t *testing.T) {
-	t.Parallel()
-	e, mp, _, cleanup := setupIntegrationEngine(t, "cursor")
-	defer cleanup()
-
-	msg := &core.Message{
-		SessionKey: sessionKey("user1"),
-		Platform:   "mock",
-		UserID:     "user1",
-		UserName:   "testuser",
-		Content:    "respond with exactly the word 'hello' and nothing else",
-		ReplyCtx:   "ctx1",
-	}
-	e.ReceiveMessage(mp, msg)
-
-	_, ok := waitForMessageContaining(mp, "hello", 30*time.Second)
-	if !ok {
-		t.Fatalf("timeout waiting for response; got: %v", mp.getSent())
-	}
-}
-
-func TestAgentGemini(t *testing.T) {
-	t.Parallel()
-	e, mp, _, cleanup := setupIntegrationEngine(t, "gemini")
-	defer cleanup()
-
-	msg := &core.Message{
-		SessionKey: sessionKey("user1"),
-		Platform:   "mock",
-		UserID:     "user1",
-		UserName:   "testuser",
-		Content:    "say hello world",
-		ReplyCtx:   "ctx1",
-	}
-	e.ReceiveMessage(mp, msg)
-
-	_, ok := waitForMessageContaining(mp, "hello", 30*time.Second)
-	if !ok {
-		t.Fatalf("timeout waiting for response; got: %v", mp.getSent())
-	}
-}
-
-func TestAgentOpencode(t *testing.T) {
-	t.Parallel()
-	e, mp, _, cleanup := setupIntegrationEngine(t, "opencode")
-	defer cleanup()
-
-	msg := &core.Message{
-		SessionKey: sessionKey("user1"),
-		Platform:   "mock",
-		UserID:     "user1",
-		UserName:   "testuser",
-		Content:    "say hello world",
-		ReplyCtx:   "ctx1",
-	}
-	e.ReceiveMessage(mp, msg)
-
-	_, ok := waitForMessageContaining(mp, "hello", 30*time.Second)
-	if !ok {
-		t.Fatalf("timeout waiting for response; got: %v", mp.getSent())
-	}
-}
-
 func min(a, b int) int {
 	if a < b {
 		return a
@@ -653,7 +562,7 @@ var sharedTestCases = []AgentTestCase{
 }
 
 func TestSharedCasesAcrossAgents(t *testing.T) {
-	agents := []string{"claudecode", "codex", "cursor", "gemini", "opencode"}
+	agents := []string{"claudecode", "codex"}
 	for _, agentType := range agents {
 		for _, tc := range sharedTestCases {
 			tc := tc // capture range variable

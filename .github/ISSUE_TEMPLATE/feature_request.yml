@@ -16,7 +16,7 @@ body:
       description: Which part of lark-agent-bot does this relate to?
       options:
         - Core / Engine
-        - Agent (Claude Code, Codex, Cursor, Gemini, etc.)
+        - Agent (Claude Code, Codex)
         - Feishu / Lark integration
         - Session Management
         - API Provider Management

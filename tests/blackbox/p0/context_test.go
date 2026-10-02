@@ -33,16 +33,6 @@ func TestP0_11_ContextRetention_Codex(t *testing.T) {
 	testContextRetention(t, "codex")
 }
 
-func TestP0_11_ContextRetention_Cursor(t *testing.T) {
-	t.Parallel()
-	testContextRetention(t, "cursor")
-}
-
-func TestP0_11_ContextRetention_OpenCode(t *testing.T) {
-	t.Parallel()
-	testContextRetention(t, "opencode")
-}
-
 func testContextRetention(t *testing.T, agentType string) {
 	t.Helper()
 	env := helper.NewEnv(t, agentType)

@@ -26,14 +26,14 @@ PLATFORMS := \
 # By default all agents and platforms are included. To build with only
 # specific agents, set AGENTS (or EXCLUDE):
 #
-#   make build AGENTS=claudecode,codex
+#   make build AGENTS=claudecode
 #
 # You can also exclude specific ones:
 #
-#   make build EXCLUDE=cursor,gemini
+#   make build EXCLUDE=codex
 # ---------------------------------------------------------------------------
 
-ALL_AGENTS    := acp antigravity claudecode codex copilot cursor devin gemini iflow kimi opencode pi qoder reasonix tmux
+ALL_AGENTS    := claudecode codex
 ALL_PLATFORMS := feishu
 ALL_EXTRAS    := web
 

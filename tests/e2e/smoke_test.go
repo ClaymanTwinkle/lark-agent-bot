@@ -121,8 +121,7 @@ func listRegisteredAgents() []string {
 	// This requires access to the internal registry
 	// We'll test via the factory pattern
 	agents := []string{
-		"claudecode", "codex", "cursor", "gemini",
-		"iflow", "opencode", "pi", "qoder",
+		"claudecode", "codex",
 	}
 	return agents
 }
@@ -401,7 +400,7 @@ func TestSmoke_WorkspaceSwitch(t *testing.T) {
 	ws2 := map[string]string{
 		"id":      "workspace-2",
 		"session": "session-B",
-		"agent":   "gemini",
+		"agent":   "codex",
 	}
 
 	assert.Equal(t, "workspace-1", ws1["id"])

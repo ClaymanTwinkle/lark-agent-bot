@@ -1,6 +1,6 @@
 # lark-agent-bot Installation & Configuration Guide
 
-> **This document is designed to be read by AI coding agents (Claude Code, Cursor, Gemini CLI, etc.) to help users install and configure lark-agent-bot.** You can feed this file directly to your AI agent.
+> **This document is designed to be read by AI coding agents (Claude Code, Codex) to help users install and configure lark-agent-bot.** You can feed this file directly to your AI agent.
 
 ## What is lark-agent-bot?
 
@@ -9,7 +9,7 @@ lark-agent-bot bridges local AI coding assistants to **Feishu / Lark** (platform
 GitHub: https://github.com/ClaymanTwinkle/lark-agent-bot
 
 **IMPORTANT: If you are an AI agent helping a user install lark-agent-bot, use interactive tools (like AskUserQuestion) to guide them through configuration choices:**
-- Agent selection (Claude Code, Cursor, Gemini, etc.)
+- Agent selection (Claude Code or Codex)
 - Platform selection (Feishu or Lark)
 - App credentials (App ID / App Secret), API keys and authentication tokens
 - Project paths and preferences
@@ -72,7 +72,7 @@ make build
 
 ## Step 2: Install your AI Agent
 
-lark-agent-bot supports multiple local coding agents. Install at least one:
+lark-agent-bot supports Claude Code and Codex. Install at least one:
 
 ```bash
 # Claude Code
@@ -80,30 +80,13 @@ npm install -g @anthropic-ai/claude-code
 
 # Codex
 npm install -g @openai/codex
-
-# Gemini CLI
-npm install -g @google/gemini-cli
-
-# iFlow CLI
-npm install -g @iflow-ai/iflow-cli
-
-# Qoder CLI
-curl -fsSL https://qoder.com/install | bash
 ```
-
-For **Cursor Agent** and **OpenCode**, follow their official install docs:
-- Cursor Agent: https://docs.cursor.com/agent
-- OpenCode: https://github.com/opencode-ai/opencode
 
 Verify your selected agent works:
 
 ```bash
 claude --version
 codex --version
-gemini --version
-iflow --version
-opencode --version
-qodercli --version
 ```
 
 ## Step 3: Create config.toml
@@ -146,12 +129,12 @@ level = "info"  # debug, info, warn, error
 name = "my-project"
 
 [projects.agent]
-type = "claudecode"  # or "codex", "cursor", "gemini", "qoder", "opencode", "iflow"
+type = "claudecode"  # or "codex"
 
 [projects.agent.options]
 work_dir = "/absolute/path/to/your/project"
-# mode: leave unset for the agent's default (Claude Code: "auto"). Values mean different
-# things per agent — "auto" is full auto-approve for cursor/gemini — so pick from the lists below.
+# mode: leave unset for the agent's default (Claude Code: "auto"). Values differ per agent,
+# so pick from the lists below.
 
 # --- Claude Code mode options ---
 # "auto" (default when unset), "default" (alias: "manual"), "acceptEdits" (alias: "edit"), "plan", "bypassPermissions" (alias: "yolo"), "dontAsk"
@@ -161,14 +144,6 @@ work_dir = "/absolute/path/to/your/project"
 # --- Codex mode options ---
 # "default" (default), "auto-review", "read-only", "full-access"
 # model = "o3"  # optional: specify model
-
-# --- Qoder CLI mode options ---
-# "default", "yolo"
-# model = "auto"  # "auto", "ultimate", "performance", "efficient", "lite"
-
-# --- iFlow CLI mode options ---
-# "default", "auto-edit", "plan", "yolo"
-# model = "Qwen3-Coder"  # optional: specify model
 
 # Add one or more platform sections below
 ```
@@ -310,22 +285,13 @@ During a session, Claude may ask for tool permissions. Reply:
 - `deny` or `拒绝` — reject this request
 - `allow all` or `允许所有` — auto-approve all remaining requests this session
 
-## Step 7: Enable Natural Language Scheduling (Non-Claude-Code Agents)
+## Step 7: Enable Natural Language Scheduling (Codex)
 
 lark-agent-bot supports scheduled tasks (cron jobs). You can always create them via slash commands (`/cron add ...`) or CLI (`lark-agent-bot cron add ...`), but to let the agent **understand natural language** like "every day at 6am, summarize trending repos", the agent needs to know about lark-agent-bot's cron CLI.
 
 **Claude Code** handles this automatically via `--append-system-prompt` — no extra setup needed.
 
-**For Codex, Cursor Agent, Qoder CLI, Gemini CLI, OpenCode, or iFlow CLI**, add the following instructions to the agent's project-level instruction file in your project's `work_dir`:
-
-| Agent | File to create/edit |
-|-------|-------------------|
-| Codex | `AGENTS.md` |
-| Cursor Agent | `.cursorrules` |
-| Qoder CLI | `AGENTS.md` |
-| Gemini CLI | `GEMINI.md` |
-| OpenCode | `OPENCODE.md` |
-| iFlow CLI | `IFLOW.md` |
+**For Codex**, add the following instructions to `AGENTS.md` in your project's `work_dir`:
 
 **Content to add** (copy-paste into the file):
 
@@ -378,7 +344,7 @@ For short single-line messages:
 
 After adding this file, the agent will be able to translate natural language scheduling requests into `lark-agent-bot cron add` commands automatically.
 
-> **Tip:** You may want to add `AGENTS.md` / `.cursorrules` / `GEMINI.md` to your `.gitignore` if you don't want lark-agent-bot instructions committed to version control.
+> **Tip:** You may want to add `AGENTS.md` to your `.gitignore` if you don't want lark-agent-bot instructions committed to version control.
 
 ## Multi-Project Setup
 
@@ -420,78 +386,21 @@ type = "feishu"
 app_id = "cli_frontend_xxx"
 app_secret = "xxx"
 
-# Third project — using Cursor Agent
+# Third project — Claude Code on a Lark (international) bot
 [[projects]]
 name = "design-system"
 
 [projects.agent]
-type = "cursor"
+type = "claudecode"
 
 [projects.agent.options]
 work_dir = "/path/to/design-system"
-mode = "force"
 
 [[projects.platforms]]
 type = "lark"    # Lark international
 
 [projects.platforms.options]
 app_id = "cli_design_xxx"
-app_secret = "xxx"
-
-# Fourth project — using Gemini CLI
-[[projects]]
-name = "my-gemini-project"
-
-[projects.agent]
-type = "gemini"
-
-[projects.agent.options]
-work_dir = "/path/to/gemini-project"
-mode = "yolo"    # "default" | "auto_edit" | "yolo" | "plan"
-
-[[projects.platforms]]
-type = "feishu"
-
-[projects.platforms.options]
-app_id = "cli_gemini_xxx"
-app_secret = "xxx"
-
-# Fifth project — using Qoder CLI
-[[projects]]
-name = "my-qoder-project"
-
-[projects.agent]
-type = "qoder"
-
-[projects.agent.options]
-work_dir = "/path/to/qoder-project"
-mode = "default"    # "default" | "yolo"
-# model = "auto"    # "auto" | "ultimate" | "performance" | "efficient" | "lite"
-
-[[projects.platforms]]
-type = "feishu"
-
-[projects.platforms.options]
-app_id = "cli_qoder_xxx"
-app_secret = "xxx"
-
-# Sixth project — using iFlow CLI
-[[projects]]
-name = "my-iflow-project"
-
-[projects.agent]
-type = "iflow"
-
-[projects.agent.options]
-work_dir = "/path/to/iflow-project"
-mode = "default"    # "default" | "auto-edit" | "plan" | "yolo"
-# model = "Qwen3-Coder"
-
-[[projects.platforms]]
-type = "feishu"
-
-[projects.platforms.options]
-app_id = "cli_iflow_xxx"
 app_secret = "xxx"
 ```
 
@@ -606,11 +515,6 @@ lark-agent-bot daemon uninstall
 The following additional features are available:
 
 - **Codex Agent**: OpenAI Codex CLI integration (`codex exec --json`)
-- **Cursor Agent**: Cursor Agent CLI integration (`agent --print --output-format stream-json`)
-- **Gemini CLI**: Google Gemini CLI integration (`gemini -p --output-format stream-json`)
-- **Qoder CLI**: Qoder CLI integration (`qodercli -p -f stream-json`)
-- **OpenCode**: OpenCode CLI integration (`opencode run --format json`)
-- **iFlow CLI**: iFlow CLI integration (`iflow -i -r -o`)
 - **Voice Messages (STT)**: Speech-to-text via Whisper API (OpenAI / Groq / SiliconFlow). Requires `ffmpeg` and `[speech]` config.
 - **Voice Reply (TTS)**: Text-to-speech via Qwen / OpenAI / MiniMax / MiMo / local providers. Requires `ffmpeg` and `[tts]` config.
 - **Video Messages**: `lark-agent-bot send --video` sends a native video bubble with its duration; the cover frame requires `ffmpeg`.

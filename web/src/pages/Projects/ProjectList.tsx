@@ -11,15 +11,6 @@ import { platformMeta } from '@/lib/platformMeta';
 const AGENT_OPTIONS = [
   { key: 'claudecode', label: 'Claude Code' },
   { key: 'codex', label: 'Codex' },
-  { key: 'gemini', label: 'Gemini CLI' },
-  { key: 'antigravity', label: 'Antigravity CLI' },
-  { key: 'cursor', label: 'Cursor' },
-  { key: 'devin', label: 'Devin' },
-  { key: 'copilot', label: 'Copilot (GitHub)' },
-  { key: 'acp', label: 'ACP (Generic)' },
-  { key: 'acp:openclaw', label: 'OpenClaw (ACP)' },
-  { key: 'opencode', label: 'OpenCode' },
-  { key: 'qoder', label: 'Qoder' },
 ];
 
 const PLATFORM_OPTIONS: { key: string; label: string; color: string; qr?: boolean }[] = [

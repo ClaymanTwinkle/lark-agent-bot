@@ -1,6 +1,6 @@
 # lark-agent-bot
 
-Bridge local AI coding agents (Claude Code, Codex, Cursor, Gemini CLI, and more) to Feishu / Lark.
+Bridge local Claude Code and Codex to Feishu / Lark.
 Chat with your coding agent from the Feishu / Lark app — no public IP required.
 
 ## Install

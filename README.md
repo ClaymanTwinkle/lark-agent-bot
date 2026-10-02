@@ -19,9 +19,9 @@ Drive the AI coding agent on your own machine from Feishu / Lark.
 
 > Formerly `lark-connect`. Renamed to `lark-agent-bot` in v0.3.0; the command, npm package, config directory (`~/.lark-agent-bot`) and environment variables (`LARK_AGENT_BOT_*`) all changed with it.
 
-lark-agent-bot bridges locally running agents — Claude Code, Codex, Cursor, Gemini CLI and more — to a Feishu / Lark bot. It talks to Feishu over a WebSocket long connection, so **no public IP is needed**. Review code, fix bugs, research, or run scheduled jobs from your phone.
+lark-agent-bot bridges locally running Claude Code and Codex to a Feishu / Lark bot. It talks to Feishu over a WebSocket long connection, so **no public IP is needed**. Review code, fix bugs, research, or run scheduled jobs from your phone.
 
-> Derived from [chenhg5/cc-connect](https://github.com/chenhg5/cc-connect) (MIT), trimmed down to the Feishu / Lark platform only. All other messaging platforms were removed; every agent is kept.
+> Derived from [chenhg5/cc-connect](https://github.com/chenhg5/cc-connect) (MIT), trimmed down to the Feishu / Lark platform only. All other messaging platforms were removed, and only the Claude Code and Codex agents are kept.
 
 <p align="center">
   <img src="docs/images/screenshot/feishu.jpg" alt="Feishu screenshot" width="36%"/>
@@ -29,7 +29,7 @@ lark-agent-bot bridges locally running agents — Claude Code, Codex, Cursor, Ge
 
 ## Features
 
-- **Many agents**: Claude Code, Codex, Cursor Agent, Gemini CLI, Kimi CLI, Qoder CLI, OpenCode, iFlow CLI, Pi, Devin, Copilot, Antigravity, tmux, plus any [ACP](https://agentclientprotocol.com/get-started/agents) agent
+- **Two agents**: Claude Code and Codex
 - **Native Feishu / Lark UX**: interactive cards, streaming replies, permission buttons, images / files / voice, one-scan bot creation
 - **Chat as the control plane**: `/model`, `/mode`, `/new` `/list` `/switch`, `/dir`
 - **Scheduled tasks**: `/cron add 0 9 * * * summarize yesterday's commits`, or ask the agent in plain language
@@ -72,7 +72,7 @@ cd /path/to/your/repo
 lark-agent-bot feishu setup --project my-project
 ```
 
-Scan the QR code with the Feishu app. The bot is created and its `app_id` / `app_secret` are written to `~/.lark-agent-bot/config.toml` (a missing project is created with the current directory as its work dir). A first project uses Claude Code if `claude` is installed, otherwise Codex if `codex` is; pass `--agent <type>` to choose (e.g. `--agent gemini`). To bind an existing app instead:
+Scan the QR code with the Feishu app. The bot is created and its `app_id` / `app_secret` are written to `~/.lark-agent-bot/config.toml` (a missing project is created with the current directory as its work dir). A first project uses Claude Code if `claude` is installed, otherwise Codex if `codex` is; pass `--agent claudecode` or `--agent codex` to choose. To bind an existing app instead:
 
 ```bash
 lark-agent-bot feishu bind --project my-project --app cli_xxx:app_secret_xxx

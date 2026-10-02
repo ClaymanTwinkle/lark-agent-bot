@@ -109,31 +109,6 @@ mode = "auto-review"
 请使用 `app_server`。修改配置文件后需重启服务；通过 `/mode` 切换会保留
 已有会话，在代理进程恢复时应用新权限。
 
-### Cursor Agent 模式
-
-| 模式 | 配置值 | 行为 |
-|------|--------|------|
-| 默认 | `default` | 工具调用前询问 |
-| 强制执行 | `force` / `yolo` | 自动批准所有 |
-| 规划模式 | `plan` | 只读分析 |
-| 问答模式 | `ask` | 问答风格，只读 |
-
-### Gemini CLI 模式
-
-| 模式 | 配置值 | 行为 |
-|------|--------|------|
-| 默认 | `default` | 每次需确认 |
-| 自动编辑 | `auto_edit` / `edit` | 编辑自动通过 |
-| 全自动 | `yolo` | 自动批准所有 |
-| 规划模式 | `plan` | 只读规划 |
-
-### Qoder CLI / OpenCode / iFlow CLI
-
-| 模式 | 配置值 | 行为 |
-|------|--------|------|
-| 默认 | `default` | 标准权限 |
-| YOLO | `yolo` | 跳过所有检查 |
-
 ### 配置示例
 
 ```toml
@@ -224,9 +199,6 @@ lark-agent-bot provider import --project my-backend  # 从 cc-switch 导入
 |-------|-----------|------------|
 | Claude Code | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
 | Codex | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
-| Gemini CLI | `GEMINI_API_KEY` | 使用 `env` 字段 |
-| OpenCode | `ANTHROPIC_API_KEY` | 使用 `env` 字段 |
-| iFlow CLI | `IFLOW_API_KEY` | `IFLOW_BASE_URL` |
 
 ---
 
@@ -833,7 +805,7 @@ Shell 配置适用于 lark-agent-bot 中所有命令执行路径：
 ```
 /bind              查看绑定
 /bind claudecode   添加 claudecode 项目
-/bind gemini       添加 gemini 项目
+/bind codex        添加 codex 项目
 /bind -claudecode  移除 claudecode
 ```
 
@@ -841,10 +813,10 @@ Shell 配置适用于 lark-agent-bot 中所有命令执行路径：
 
 ```bash
 lark-agent-bot relay list                                  # 列出这个群里能派活的机器人
-lark-agent-bot relay send --to gemini "你觉得这个架构怎么样？"
+lark-agent-bot relay send --to codex "你觉得这个架构怎么样？"
 ```
 
-Agent 会自己调用这两条命令：发现任务需要别的机器人时，先 `relay list`，再 `relay send`。群里会看到源机器人发出 `@gemini 你觉得…`，目标机器人做完后回一条 `@源机器人 <结果>`，结果同时返回给源机器人继续处理。这里的 `@` 是普通文本，不是飞书原生 @：不同应用看到的 open_id 不一样，一个机器人拿不到另一个应用机器人的 open_id。
+Agent 会自己调用这两条命令：发现任务需要别的机器人时，先 `relay list`，再 `relay send`。群里会看到源机器人发出 `@codex 你觉得…`，目标机器人做完后回一条 `@源机器人 <结果>`，结果同时返回给源机器人继续处理。这里的 `@` 是普通文本，不是飞书原生 @：不同应用看到的 open_id 不一样，一个机器人拿不到另一个应用机器人的 open_id。
 
 ### 跨进程
 
@@ -1085,7 +1057,7 @@ WebSocket 支持双向通信 —— 向 Agent 发送消息，并实时接收 Age
 name = "my-project"
 
 [projects.agent]
-type = "claudecode"  # 或 codex, cursor, gemini, qoder, opencode, iflow
+type = "claudecode"  # 或 codex
 
 [projects.agent.options]
 work_dir = "/path/to/project"
@@ -1098,46 +1070,3 @@ type = "feishu"  # 或 "lark"（Lark 国际版）
 [projects.platforms.options]
 # app_id、app_secret 等（见 config.example.toml）
 ```
-
----
-
-## 常见问题（FAQ）
-
-下面这些是 issue 区里反复出现、维护者已经回答过的问题。每条都附上了
-原始 issue / PR 链接，方便继续深入。
-
-### lark-agent-bot 是否支持 OpenClaw？(issue #501)
-
-支持。OpenClaw 通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.com/get-started/agents) 接入。
-lark-agent-bot 内置了 `acp` agent 类型，可以和任何 ACP 兼容的 CLI 通信，
-包括 OpenClaw 的 `openclaw acp` 子命令。
-
-最小配置示例（完整版见 `config.example.toml` 中 `# --- Example:
-OpenClaw (Gateway-backed ACP bridge) ---` 段）：
-
-```toml
-[[projects]]
-name = "openclaw-acp"
-
-[projects.agent]
-type = "acp"
-
-[projects.agent.options]
-work_dir = "/path/to/project"
-command = "openclaw"
-args = ["acp"]
-display_name = "OpenClaw ACP"
-```
-
-**远端 Gateway 必须先完成配对授权。** 如果你把 lark-agent-bot 指向
-远程 OpenClaw Gateway（`args = ["acp", "--url", "wss://..."]`），
-必须先配对，否则所有回复都会是空消息：
-
-1. 启动 Gateway：`openclaw acp --url wss://your-gateway:18789`
-2. 另开终端执行：`openclaw pair`
-3. 在 OpenClaw UI 里同意配对请求
-4. 完成后 lark-agent-bot 才能与已授权的 Gateway 通信
-
-OpenClaw 回复空消息几乎都是漏掉了配对步骤（issue #432）。在排查其他
-原因之前，先重跑 `openclaw pair` 并在 UI 中重新授权一次。
-参考：<https://zhuanlan.zhihu.com/p/2005687480976970296>

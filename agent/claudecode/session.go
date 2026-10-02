@@ -514,11 +514,11 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	// （下面 startReadLoopWait 对 stdout 已经做了 50ms 后强关来躲这个坑，
 	//   注释里还写着 "no descendants holding it" —— 唯独 stderr 漏了同样的处理。）
 	//
-	// 证据：同一个仓库的 gemini / kimi / antigravity / hooks **四个适配器全都设了
-	// WaitDelay**（gemini 那行注释：「确保 I/O goroutine 在 context 结束后不会长时间阻塞」）
-	// —— 唯独 claudecode 漏了。这不是新发明，是补上一致性。
+	// 证据：core/hooks.go 和 cc_hooks.go 都设了 WaitDelay，当时从 cc-connect 带来的
+	// gemini / kimi / antigravity 适配器（已删除）也都设了 —— 唯独这里漏了。
+	// 这不是新发明，是补上一致性。
 	//
-	// 取 3s 而非兄弟们的 1s：Claude Code 退出时可能还在吐最后一段 stderr（报错栈），
+	// 取 3s 而非 cc_hooks.go 的 1s：Claude Code 退出时可能还在吐最后一段 stderr（报错栈），
 	// 太短会截掉有用的诊断；而 Close() 的兜底等待是 10s，3s 留足余量。
 	// 超时后 Wait() 返回 ErrWaitDelay 并强制关管道 —— stderr 可能不全，
 	// 但**进程状态是准的**。这正是要的取舍：宁可少一段日志，不要一个杀不死的会话。

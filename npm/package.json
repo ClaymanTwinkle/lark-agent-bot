@@ -1,7 +1,7 @@
 {
   "name": "lark-agent-bot",
   "version": "0.1.0",
-  "description": "Bridge local AI coding agents (Claude Code, Codex, Cursor, Gemini CLI, ...) to Feishu / Lark",
+  "description": "Bridge local Claude Code and Codex to Feishu / Lark",
   "keywords": [
     "feishu",
     "lark",

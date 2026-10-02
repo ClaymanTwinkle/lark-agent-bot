@@ -19,9 +19,9 @@
 
 > 原名 `lark-connect`，从 v0.3.0 起改名为 `lark-agent-bot`。命令、npm 包、配置目录（`~/.lark-agent-bot`）和环境变量（`LARK_AGENT_BOT_*`）都随之改名。
 
-lark-agent-bot 把运行在你电脑上的 Claude Code、Codex、Cursor、Gemini CLI 等 Agent 桥接到飞书 / Lark 机器人。通过 WebSocket 长连接收发消息，**无需公网 IP**。代码审查、改 bug、查资料、跑定时任务，用手机就能完成。
+lark-agent-bot 把运行在你电脑上的 Claude Code 和 Codex 桥接到飞书 / Lark 机器人。通过 WebSocket 长连接收发消息，**无需公网 IP**。代码审查、改 bug、查资料、跑定时任务，用手机就能完成。
 
-> 本项目基于 [chenhg5/cc-connect](https://github.com/chenhg5/cc-connect)（MIT）裁剪而来：只保留飞书 / Lark 平台，其余消息平台已移除，Agent 全部保留。
+> 本项目基于 [chenhg5/cc-connect](https://github.com/chenhg5/cc-connect)（MIT）裁剪而来：只保留飞书 / Lark 平台，其余消息平台已移除，Agent 只保留 Claude Code 和 Codex。
 
 <p align="center">
   <img src="docs/images/screenshot/feishu.jpg" alt="飞书截图" width="36%"/>
@@ -29,7 +29,7 @@ lark-agent-bot 把运行在你电脑上的 Claude Code、Codex、Cursor、Gemini
 
 ## 功能
 
-- **多 Agent**：Claude Code、Codex、Cursor Agent、Gemini CLI、Kimi CLI、Qoder CLI、OpenCode、iFlow CLI、Pi、Devin、Copilot、Antigravity、tmux，以及任意 [ACP](https://agentclientprotocol.com/get-started/agents) Agent
+- **两个 Agent**：Claude Code 和 Codex
 - **飞书 / Lark 原生体验**：交互卡片、流式输出、权限确认按钮、图片 / 文件 / 语音收发，扫码一键创建机器人
 - **聊天即控制**：`/model` 切模型、`/mode` 切权限模式、`/new` `/list` `/switch` 管理会话、`/dir` 切工作目录
 - **定时任务**：`/cron add 0 9 * * * 总结昨天的提交`，也可以用自然语言让 Agent 创建
@@ -71,7 +71,7 @@ cd /path/to/your/repo
 lark-agent-bot feishu setup --project my-project
 ```
 
-终端会显示二维码，用飞书 App 扫码确认后，会自动创建机器人，并把 `app_id` / `app_secret` 写入 `~/.lark-agent-bot/config.toml`（项目不存在时以当前目录为工作目录新建）。第一个项目默认用 Claude Code（装了 `claude` 时），否则用 Codex（装了 `codex` 时）；要用别的 Agent 加 `--agent <类型>`，例如 `--agent gemini`。已有飞书应用可以直接绑定：
+终端会显示二维码，用飞书 App 扫码确认后，会自动创建机器人，并把 `app_id` / `app_secret` 写入 `~/.lark-agent-bot/config.toml`（项目不存在时以当前目录为工作目录新建）。第一个项目默认用 Claude Code（装了 `claude` 时），否则用 Codex（装了 `codex` 时）；要指定 Agent 加 `--agent claudecode` 或 `--agent codex`。已有飞书应用可以直接绑定：
 
 ```bash
 lark-agent-bot feishu bind --project my-project --app cli_xxx:app_secret_xxx

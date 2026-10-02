@@ -82,7 +82,7 @@ func TestProductionSessionSetsWaitDelay(t *testing.T) {
 	if !strings.Contains(string(src), "cmd.WaitDelay") {
 		t.Fatal("session.go 没有设置 cmd.WaitDelay —— " +
 			"少了它，孙进程持有 stderr 管道时 cmd.Wait() 会永不返回，" +
-			"/stop 会重新变成『杀不死』。本仓库 gemini/kimi/antigravity/hooks 都设了，别只漏这个。")
+			"/stop 会重新变成『杀不死』。core/hooks.go 和 cc_hooks.go 都设了，别只漏这个。")
 	}
 }
 

@@ -114,31 +114,6 @@ outside its read-only sandbox fail. Use `app_server` for approval workflows.
 Changing the config file requires a service restart. Runtime `/mode` changes
 preserve the conversation and take effect when the agent process resumes.
 
-### Cursor Agent Modes
-
-| Mode | Config Value | Behavior |
-|------|-------------|----------|
-| Default | `default` | Trust workspace, ask before tools |
-| Force (YOLO) | `force` / `yolo` | Auto-approve all |
-| Plan | `plan` | Read-only analysis |
-| Ask | `ask` | Q&A style, read-only |
-
-### Gemini CLI Modes
-
-| Mode | Config Value | Behavior |
-|------|-------------|----------|
-| Default | `default` | Prompt for approval |
-| Auto Edit | `auto_edit` / `edit` | Auto-approve edits |
-| YOLO | `yolo` | Auto-approve all |
-| Plan | `plan` | Read-only plan mode |
-
-### Qoder CLI / OpenCode / iFlow CLI
-
-| Mode | Config Value | Behavior |
-|------|-------------|----------|
-| Default | `default` | Standard permissions |
-| YOLO | `yolo` | Skip all checks |
-
 ### Configuration
 
 ```toml
@@ -229,9 +204,6 @@ lark-agent-bot provider import --project my-backend  # from cc-switch
 |-------|-----------|------------|
 | Claude Code | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
 | Codex | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
-| Gemini CLI | `GEMINI_API_KEY` | use `env` map |
-| OpenCode | `ANTHROPIC_API_KEY` | use `env` map |
-| iFlow CLI | `IFLOW_API_KEY` | `IFLOW_BASE_URL` |
 
 ---
 
@@ -939,7 +911,7 @@ To just hand a task to another bot in the group without getting the result back,
 ```
 /bind              Show bindings
 /bind claudecode   Add claudecode project
-/bind gemini       Add gemini project
+/bind codex        Add codex project
 /bind -claudecode  Remove claudecode
 ```
 
@@ -947,10 +919,10 @@ To just hand a task to another bot in the group without getting the result back,
 
 ```bash
 lark-agent-bot relay list                                   # bots you can hand work to in this chat
-lark-agent-bot relay send --to gemini "What do you think about this architecture?"
+lark-agent-bot relay send --to codex "What do you think about this architecture?"
 ```
 
-The agent runs these itself: when a task needs another bot it calls `relay list`, then `relay send`. The group shows the source bot posting `@gemini What do you…`, and the target bot answering `@<source bot> <result>` when done; the result also goes back to the source bot so it can continue. The `@` is plain text, not a native Feishu mention: open_ids are scoped per app, so one bot cannot mention another app's bot.
+The agent runs these itself: when a task needs another bot it calls `relay list`, then `relay send`. The group shows the source bot posting `@codex What do you…`, and the target bot answering `@<source bot> <result>` when done; the result also goes back to the source bot so it can continue. The `@` is plain text, not a native Feishu mention: open_ids are scoped per app, so one bot cannot mention another app's bot.
 
 ### Across Processes
 
@@ -1199,7 +1171,7 @@ See [config.example.toml](../config.example.toml) for full examples.
 name = "my-project"
 
 [projects.agent]
-type = "claudecode"  # or codex, cursor, gemini, qoder, opencode, iflow
+type = "claudecode"  # or codex
 
 [projects.agent.options]
 work_dir = "/path/to/project"
@@ -1212,45 +1184,3 @@ type = "feishu"  # or "lark" (Lark international)
 [projects.platforms.options]
 # app_id, app_secret, ... (see config.example.toml)
 ```
-
----
-
-## FAQ
-
-Quick answers to questions that came up repeatedly in issues and that the
-maintainers have resolved. Each entry links back to the originating issue
-or PR so you can dig further if needed.
-
-### Does lark-agent-bot support OpenClaw? (issue #501)
-
-Yes. OpenClaw is supported via the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/get-started/agents). lark-agent-bot ships an `acp` agent type that talks to any ACP-compatible CLI, including OpenClaw's `openclaw acp` subcommand.
-
-Minimal config snippet (full version is in `config.example.toml` under
-`# --- Example: OpenClaw (Gateway-backed ACP bridge) ---`):
-
-```toml
-[[projects]]
-name = "openclaw-acp"
-
-[projects.agent]
-type = "acp"
-
-[projects.agent.options]
-work_dir = "/path/to/project"
-command = "openclaw"
-args = ["acp"]
-display_name = "OpenClaw ACP"
-```
-
-**Pairing is required for remote gateways.** If you point lark-agent-bot at a
-remote OpenClaw Gateway (`args = ["acp", "--url", "wss://..."]`) you must
-pair first or every reply comes back empty:
-
-1. Start the gateway: `openclaw acp --url wss://your-gateway:18789`
-2. In another terminal: `openclaw pair`
-3. Approve the pairing request in the OpenClaw UI
-4. Now lark-agent-bot can talk to the authorized gateway
-
-Empty responses from OpenClaw are almost always a missing pairing step
-(issue #432). Re-run `openclaw pair` and re-approve before debugging
-anything else. Reference: <https://zhuanlan.zhihu.com/p/2005687480976970296>

@@ -41,25 +41,6 @@ func TestP0_1_BasicMessageFlow_Codex(t *testing.T) {
 	testBasicMessageFlow(t, "codex")
 }
 
-// TestP0_1_BasicMessageFlow_Cursor tests the cursor agent (agent binary,
-// @anthropic-ai/cursor-agent). Set CC_BLACKBOX_CURSOR_API_KEY + optionally
-// CC_BLACKBOX_CURSOR_MODEL (e.g. "claude-sonnet-4-5") to run.
-// Cursor supports composer-2-fast via the model name; use a cheap model
-// for CI (e.g. "claude-haiku-3-5-20241022").
-func TestP0_1_BasicMessageFlow_Cursor(t *testing.T) {
-	t.Parallel()
-	testBasicMessageFlow(t, "cursor")
-}
-
-// TestP0_1_BasicMessageFlow_OpenCode tests the opencode agent (opencode binary).
-// Set CC_BLACKBOX_OPENCODE_API_KEY and CC_BLACKBOX_OPENCODE_BASE_URL to use a
-// custom proxy (e.g. minimax, dragoncode) or set ANTHROPIC_API_KEY for direct
-// Anthropic API access.
-func TestP0_1_BasicMessageFlow_OpenCode(t *testing.T) {
-	t.Parallel()
-	testBasicMessageFlow(t, "opencode")
-}
-
 func testBasicMessageFlow(t *testing.T, agentType string) {
 	t.Helper()
 	env := helper.NewEnv(t, agentType)

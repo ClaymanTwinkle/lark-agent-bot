@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-lark-agent-bot is a bridge that connects AI coding agents (Claude Code, Codex, Gemini CLI, Cursor, etc.) with Feishu / Lark. Users interact with their coding agent through a Feishu / Lark bot. It is a Feishu-only fork of [cc-connect](https://github.com/chenhg5/cc-connect); the platform abstraction is kept so the engine stays platform-agnostic.
+lark-agent-bot is a bridge that connects AI coding agents (Claude Code and Codex) with Feishu / Lark. Users interact with their coding agent through a Feishu / Lark bot. It is a Feishu-only fork of [cc-connect](https://github.com/chenhg5/cc-connect); the platform abstraction is kept so the engine stays platform-agnostic.
 
 ## Architecture
 
@@ -17,13 +17,7 @@ lark-agent-bot is a bridge that connects AI coding agents (Claude Code, Codex, G
 ├──────────────────────┬──────────────────────────┤
 │     agent/           │      platform/           │
 │  ├── claudecode/     │  └── feishu/             │
-│  ├── codex/          │      (feishu + lark)     │
-│  ├── cursor/         │                          │
-│  ├── gemini/         │                          │
-│  ├── iflow/          │                          │
-│  ├── opencode/       │                          │
-│  ├── acp/            │                          │
-│  └── qoder/ ...      │                          │
+│  └── codex/          │      (feishu + lark)     │
 ├──────────────────────┴──────────────────────────┤
 │                     daemon/                     │  ← systemd/launchd service
 └─────────────────────────────────────────────────┘
@@ -189,18 +183,16 @@ make build AGENTS=claudecode,codex
 ### Exclude specific agents
 
 ```bash
-make build EXCLUDE=cursor,gemini,iflow
+make build EXCLUDE=codex
 ```
 
 ### Direct build tag usage (without Make)
 
 ```bash
-go build -tags 'no_cursor no_gemini no_iflow' ./cmd/lark-agent-bot
+go build -tags 'no_codex' ./cmd/lark-agent-bot
 ```
 
-Available tags: `no_acp`, `no_antigravity`, `no_claudecode`, `no_codex`, `no_copilot`,
-`no_cursor`, `no_devin`, `no_gemini`, `no_iflow`, `no_kimi`, `no_opencode`, `no_pi`,
-`no_qoder`, `no_reasonix`, `no_tmux`, `no_feishu`, `no_web`.
+Available tags: `no_claudecode`, `no_codex`, `no_feishu`, `no_web`.
 
 ## Pre-Commit Checklist
 

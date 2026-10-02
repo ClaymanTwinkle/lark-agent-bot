@@ -235,7 +235,7 @@ func fileModTime(path string) int64 {
 func printAgentSIDUsage() {
 	fmt.Println(`Usage: lark-agent-bot agent-sid [options]
 
-Print the agent session ID (e.g. Claude Code, Codex, Gemini CLI) for the
+Print the agent session ID (Claude Code or Codex) for the
 current session. This is the ID used for --resume.
 
 The command reads from the persisted session file; no running lark-agent-bot
