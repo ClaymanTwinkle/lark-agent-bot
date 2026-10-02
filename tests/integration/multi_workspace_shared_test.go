@@ -225,8 +225,19 @@ func integrationMessage(platformName, channelID, userID, content string) *core.M
 	}
 }
 
+// resolvedTempDir is t.TempDir with symlinks and Windows 8.3 short names
+// resolved, the form the engine reports workspace paths in: on the Windows
+// CI runner t.TempDir() is C:UsersRUNNER~1..., on macOS it is behind
+// the /var symlink.
+func resolvedTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	return dir
+}
+
 func TestIntegration_SharedWorkspaceBindingLiveSyncAcrossProjects(t *testing.T) {
-	baseDir := t.TempDir()
+	baseDir := resolvedTempDir(t)
 	bindingStore := filepath.Join(t.TempDir(), "workspace_bindings.json")
 	channelID := "shared-channel"
 	platformName := "shared-platform"
@@ -263,7 +274,7 @@ func TestIntegration_SharedWorkspaceBindingLiveSyncAcrossProjects(t *testing.T) 
 }
 
 func TestIntegration_ProjectWorkspaceOverridesSharedAcrossProjects(t *testing.T) {
-	baseDir := t.TempDir()
+	baseDir := resolvedTempDir(t)
 	bindingStore := filepath.Join(t.TempDir(), "workspace_bindings.json")
 	channelID := "override-channel"
 	platformName := "shared-platform"
@@ -298,11 +309,11 @@ func TestIntegration_ProjectWorkspaceOverridesSharedAcrossProjects(t *testing.T)
 }
 
 func TestIntegration_ProjectWorkspaceRouteUsesAbsolutePath(t *testing.T) {
-	baseDir := t.TempDir()
+	baseDir := resolvedTempDir(t)
 	bindingStore := filepath.Join(t.TempDir(), "workspace_bindings.json")
 	channelID := "route-channel"
 
-	routedDir := filepath.Join(t.TempDir(), "routed workspace")
+	routedDir := filepath.Join(resolvedTempDir(t), "routed workspace")
 	require.NoError(t, os.MkdirAll(routedDir, 0o755))
 
 	platform := newIntegrationPlatform("proj-route-platform")
@@ -318,12 +329,12 @@ func TestIntegration_ProjectWorkspaceRouteUsesAbsolutePath(t *testing.T) {
 }
 
 func TestIntegration_SharedWorkspaceRouteLiveSyncAcrossProjects(t *testing.T) {
-	baseDir := t.TempDir()
+	baseDir := resolvedTempDir(t)
 	bindingStore := filepath.Join(t.TempDir(), "workspace_bindings.json")
 	channelID := "shared-route-channel"
 	platformName := "shared-platform"
 
-	routedDir := filepath.Join(t.TempDir(), "shared routed workspace")
+	routedDir := filepath.Join(resolvedTempDir(t), "shared routed workspace")
 	require.NoError(t, os.MkdirAll(routedDir, 0o755))
 
 	platformA := newIntegrationPlatform(platformName)
