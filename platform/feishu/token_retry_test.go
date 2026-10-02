@@ -3,16 +3,27 @@ package feishu
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 )
 
+// uniqueAppID returns an app ID no earlier run in this process used. The
+// SDK caches tenant tokens per app ID for the whole process, so with
+// -count > 1 a fixed ID started from the previous run's cached token.
+func uniqueAppID(prefix string) string {
+	return fmt.Sprintf("%s_%d", prefix, appIDSeq.Add(1))
+}
+
+var appIDSeq atomic.Int64
+
 func TestReplyRefreshesTenantTokenAfterInvalidCachedToken(t *testing.T) {
-	const appID = "cli_reply_retry"
+	appID := uniqueAppID("cli_reply_retry")
 	const appSecret = "secret-reply-retry"
 
 	authCalls := 0
@@ -92,7 +103,7 @@ func TestReplyRefreshesTenantTokenAfterInvalidCachedToken(t *testing.T) {
 }
 
 func TestSendNewMessageToChatRefreshesTenantTokenAfterInvalidCachedToken(t *testing.T) {
-	const appID = "cli_create_retry"
+	appID := uniqueAppID("cli_create_retry")
 	const appSecret = "secret-create-retry"
 
 	authCalls := 0
@@ -172,7 +183,7 @@ func TestSendNewMessageToChatRefreshesTenantTokenAfterInvalidCachedToken(t *test
 }
 
 func TestReplyDoesNotRefreshTenantTokenOnNonTokenError(t *testing.T) {
-	const appID = "cli_non_token_error"
+	appID := uniqueAppID("cli_non_token_error")
 	const appSecret = "secret-non-token-error"
 
 	authCalls := 0
