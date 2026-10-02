@@ -3864,6 +3864,18 @@ func (e *Engine) processInteractiveMessage(p Platform, msg *Message, session *Se
 	e.processInteractiveMessageWith(p, msg, session, e.agent, e.sessions, msg.SessionKey, "", "", lockGen)
 }
 
+// sendToAgent hands a prompt to the agent session and warns when that call
+// alone is slow. Send returns once the agent has the prompt, not when the turn
+// ends, so the turn's length must not count toward the warning (#8).
+func sendToAgent(as AgentSession, sessionKey, prompt, messageID string, images []ImageAttachment, files []FileAttachment) error {
+	start := time.Now()
+	err := as.Send(prompt, messageID, images, files)
+	if elapsed := time.Since(start); elapsed >= slowAgentSend {
+		slog.Warn("slow agent send", "elapsed", elapsed, "session", sessionKey, "content_len", len(prompt))
+	}
+	return err
+}
+
 // processInteractiveMessageWith is the core interactive processing loop.
 // It accepts an explicit agent, interactiveKey (for the interactiveStates map),
 // and workspaceDir so that multi-workspace mode can route to per-workspace agents.
@@ -3979,7 +3991,6 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 
 	promptContent := e.buildSenderPrompt(msg.Content, msg.UserID, msg.UserName, msg.Platform, msg.SessionKey, msg.ChannelKey)
 
-	sendStart := time.Now()
 	state.mu.Lock()
 	state.currentMessageID = msg.MessageID
 	state.fromVoice = msg.FromVoice
@@ -3997,14 +4008,11 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 			sendDone <- fmt.Errorf("agent session became nil")
 			return
 		}
-		sendDone <- as.Send(promptContent, msg.MessageID, msg.Images, msg.Files)
+		sendDone <- sendToAgent(as, msg.SessionKey, promptContent, msg.MessageID, msg.Images, msg.Files)
 	}()
 
 	e.beginTurnJournal(interactiveKey, p.Name(), msg.SessionKey, msg.MessageID, msg.Content)
 	e.processInteractiveEvents(state, session, sessions, interactiveKey, msg.MessageID, turnStart, stopTyping, sendDone, msg.ReplyCtx, lockGen)
-	if elapsed := time.Since(sendStart); elapsed >= slowAgentSend {
-		slog.Warn("slow agent send", "elapsed", elapsed, "session", msg.SessionKey, "content_len", len(msg.Content))
-	}
 	stopTyping = nil // ownership transferred; prevent defer from double-stopping
 
 	// Guard against a narrow race: a message may have been queued between
@@ -5959,7 +5967,7 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 						nextSend <- fmt.Errorf("agent session became nil")
 						return
 					}
-					nextSend <- as.Send(queuedPrompt, queued.messageID, queued.images, queued.files)
+					nextSend <- sendToAgent(as, queued.msgSessionKey, queuedPrompt, queued.messageID, queued.images, queued.files)
 				}()
 				pendingSend = nextSend
 
@@ -6352,7 +6360,7 @@ func (e *Engine) drainPendingMessages(state *interactiveState, session *Session,
 				sendDone <- fmt.Errorf("agent session became nil")
 				return
 			}
-			sendDone <- as.Send(prompt, queued.messageID, queued.images, queued.files)
+			sendDone <- sendToAgent(as, queued.msgSessionKey, prompt, queued.messageID, queued.images, queued.files)
 		}()
 
 		var stopTyping func()
