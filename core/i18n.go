@@ -830,11 +830,11 @@ var messages = map[MsgKey]map[Language]string{
 		LangSpanish:            "Credenciales guardadas; verificación incompleta: %v. Corrige y ejecuta feishu check; no crees otra aplicación.",
 	},
 	MsgSetupMissing: {
-		LangEnglish:            "Missing or ungranted configuration: %s",
-		LangChinese:            "缺失或未获授权的配置：%s",
-		LangTraditionalChinese: "缺少或未獲授權的設定：%s",
-		LangJapanese:           "不足または未承認の設定：%s",
-		LangSpanish:            "Configuración ausente o sin autorizar: %s",
+		LangEnglish:            "Missing or ungranted configuration: %s (add these permissions, events and callbacks in the developer console, then publish a version)",
+		LangChinese:            "缺失或未获授权的配置：%s（在开发者后台开通这些权限、订阅这些事件与回调，然后发布新版本）",
+		LangTraditionalChinese: "缺少或未獲授權的設定：%s（在開發者後台開通這些權限、訂閱這些事件與回呼，然後發布新版本）",
+		LangJapanese:           "不足または未承認の設定：%s（開発者コンソールでこれらの権限・イベント・コールバックを追加し、バージョンを公開してください）",
+		LangSpanish:            "Configuración ausente o sin autorizar: %s (añade estos permisos, eventos y callbacks en la consola de desarrolladores y publica una versión)",
 	},
 	MsgSetupChecked: {
 		LangEnglish:            "Bot capability and template permissions verified.",
@@ -914,11 +914,11 @@ var messages = map[MsgKey]map[Language]string{
 		LangSpanish:            "Error: no hay proyectos configurados en %s\nAñade al menos una sección [[projects]] o crea un bot de Feishu/Lark escaneando un código QR, desde la carpeta donde trabajará el agente:\n  lark-agent-bot feishu setup --project my-project",
 	},
 	MsgSetupMenuGuidance: {
-		LangEnglish:            "Menu setup remains to be completed in the developer console (registration does not create menu items):\n1. Open %s and select your app → Bot → Custom menu.\n2. Enable the floating menu and add these three top-level items, all using Push event:\n   View help → event_key: help\n   Current status → event_key: status\n   Upgrade service → event_key: upgrade\n3. Confirm application.bot.menu_v6 and im.message.recalled_v1 are subscribed under Events & callbacks.\n4. Create and publish a version. Menu changes may take about 5 minutes to appear.\n",
-		LangChinese:            "菜单待完成：注册不会创建菜单项，请在开发者后台完成以下步骤：\n1. 打开 %s，选择应用 → 机器人 → 机器人自定义菜单。\n2. 开启悬浮菜单，添加三个主菜单，响应动作均选择「推送事件」：\n   查看帮助 → event_key: help\n   当前状态 → event_key: status\n   升级服务 → event_key: upgrade\n3. 在事件与回调中确认已订阅 application.bot.menu_v6 和 im.message.recalled_v1。\n4. 创建版本并发布，菜单显示可能需要约 5 分钟。\n",
-		LangTraditionalChinese: "選單待完成：註冊不會建立選單項目，請在開發者後台完成以下步驟：\n1. 開啟 %s，選擇應用 → 機器人 → 機器人自訂選單。\n2. 啟用懸浮選單，新增三個主選單，回應動作均選擇「推送事件」：\n   查看說明 → event_key: help\n   目前狀態 → event_key: status\n   升級服務 → event_key: upgrade\n3. 在事件與回呼中確認已訂閱 application.bot.menu_v6 和 im.message.recalled_v1。\n4. 建立版本並發布，選單顯示可能需要約 5 分鐘。\n",
-		LangJapanese:           "メニュー設定は開発者コンソールで完了してください（登録ではメニュー項目は作成されません）：\n1. %s でアプリ → ボット → カスタムメニューを開きます。\n2. フローティングメニューを有効にし、次の3項目を追加します。すべて「イベントを送信」を選択してください：\n   ヘルプ → event_key: help\n   現在の状態 → event_key: status\n   サービスを更新 → event_key: upgrade\n3. イベントとコールバックで application.bot.menu_v6 と im.message.recalled_v1 の購読を確認します。\n4. バージョンを作成して公開します。表示には約5分かかる場合があります。\n",
-		LangSpanish:            "Falta configurar el menú en la consola de desarrolladores (el registro no crea sus elementos):\n1. Abre %s y selecciona tu aplicación → Bot → Menú personalizado.\n2. Activa el menú flotante y añade estos tres elementos principales, todos con la acción Enviar evento:\n   Ver ayuda → event_key: help\n   Estado actual → event_key: status\n   Actualizar servicio → event_key: upgrade\n3. Confirma las suscripciones a application.bot.menu_v6 e im.message.recalled_v1 en Eventos y callbacks.\n4. Crea y publica una versión. El menú puede tardar unos 5 minutos en aparecer.\n",
+		LangEnglish:            "Menu setup remains to be completed in the developer console (registration does not create menu items):\n1. Open %s and select your app → Bot → Custom menu.\n2. Enable the floating menu and add these three top-level items, all using Push event:\n   View help → event_key: help\n   Current status → event_key: status\n   Upgrade service → event_key: upgrade\n3. Confirm application.bot.menu_v6, im.message.recalled_v1 and im.chat.access_event.bot_p2p_chat_entered_v1 are subscribed under Events & callbacks.\n4. Create and publish a version. Menu changes may take about 5 minutes to appear.\n",
+		LangChinese:            "菜单待完成：注册不会创建菜单项，请在开发者后台完成以下步骤：\n1. 打开 %s，选择应用 → 机器人 → 机器人自定义菜单。\n2. 开启悬浮菜单，添加三个主菜单，响应动作均选择「推送事件」：\n   查看帮助 → event_key: help\n   当前状态 → event_key: status\n   升级服务 → event_key: upgrade\n3. 在事件与回调中确认已订阅 application.bot.menu_v6、im.message.recalled_v1 和 im.chat.access_event.bot_p2p_chat_entered_v1。\n4. 创建版本并发布，菜单显示可能需要约 5 分钟。\n",
+		LangTraditionalChinese: "選單待完成：註冊不會建立選單項目，請在開發者後台完成以下步驟：\n1. 開啟 %s，選擇應用 → 機器人 → 機器人自訂選單。\n2. 啟用懸浮選單，新增三個主選單，回應動作均選擇「推送事件」：\n   查看說明 → event_key: help\n   目前狀態 → event_key: status\n   升級服務 → event_key: upgrade\n3. 在事件與回呼中確認已訂閱 application.bot.menu_v6、im.message.recalled_v1 和 im.chat.access_event.bot_p2p_chat_entered_v1。\n4. 建立版本並發布，選單顯示可能需要約 5 分鐘。\n",
+		LangJapanese:           "メニュー設定は開発者コンソールで完了してください（登録ではメニュー項目は作成されません）：\n1. %s でアプリ → ボット → カスタムメニューを開きます。\n2. フローティングメニューを有効にし、次の3項目を追加します。すべて「イベントを送信」を選択してください：\n   ヘルプ → event_key: help\n   現在の状態 → event_key: status\n   サービスを更新 → event_key: upgrade\n3. イベントとコールバックで application.bot.menu_v6、im.message.recalled_v1、im.chat.access_event.bot_p2p_chat_entered_v1 の購読を確認します。\n4. バージョンを作成して公開します。表示には約5分かかる場合があります。\n",
+		LangSpanish:            "Falta configurar el menú en la consola de desarrolladores (el registro no crea sus elementos):\n1. Abre %s y selecciona tu aplicación → Bot → Menú personalizado.\n2. Activa el menú flotante y añade estos tres elementos principales, todos con la acción Enviar evento:\n   Ver ayuda → event_key: help\n   Estado actual → event_key: status\n   Actualizar servicio → event_key: upgrade\n3. Confirma las suscripciones a application.bot.menu_v6, im.message.recalled_v1 e im.chat.access_event.bot_p2p_chat_entered_v1 en Eventos y callbacks.\n4. Crea y publica una versión. El menú puede tardar unos 5 minutos en aparecer.\n",
 	},
 	MsgSetupScanQR: {
 		LangEnglish:            "Scan this QR code with the Feishu/Lark mobile app to create and authorize the bot:",

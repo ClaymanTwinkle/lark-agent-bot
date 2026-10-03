@@ -74,6 +74,32 @@ func TestSetupTemplate_IncludesRecallCancellationSubscription(t *testing.T) {
 	}
 }
 
+// The event lets a menu click join the user's chat session before the user
+// has written there (#21). It needs no permission, but only custom apps and
+// Feishu 7.18+ clients get it, so custom templates may leave it out.
+func TestSetupTemplate_IncludesBotChatEnteredSubscription(t *testing.T) {
+	const event = "im.chat.access_event.bot_p2p_chat_entered_v1"
+	addons, err := loadSetupTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(addons.Events.Items.Tenant, event) {
+		t.Fatal("new bots must learn the user's chat when it is opened")
+	}
+	addons.Events.Items.Tenant = slices.DeleteFunc(addons.Events.Items.Tenant, func(item string) bool { return item == event })
+	data, err := json.Marshal(addons)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "template.json")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadSetupTemplate(path); err != nil {
+		t.Fatalf("a template without %s should load: %v", event, err)
+	}
+}
+
 func TestSetupTemplate_RejectsMissingMenuOrRecallSubscription(t *testing.T) {
 	for _, event := range []string{"im.message.recalled_v1", "application.bot.menu_v6"} {
 		t.Run(event, func(t *testing.T) {
@@ -115,7 +141,7 @@ func TestBotMenuGuidance_UsesThreeEventActions(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := string(data)
-	for _, required := range []string{"https://open.larksuite.com/app", "悬浮菜单", "推送事件", "查看帮助", "当前状态", "升级服务", "help", "status", "upgrade", "发布"} {
+	for _, required := range []string{"https://open.larksuite.com/app", "悬浮菜单", "推送事件", "查看帮助", "当前状态", "升级服务", "help", "status", "upgrade", "im.chat.access_event.bot_p2p_chat_entered_v1", "发布"} {
 		if !strings.Contains(output, required) {
 			t.Errorf("missing menu setup instruction %q", required)
 		}
@@ -148,7 +174,7 @@ func TestLoadSetupTemplate_RejectsBrokenOverrides(t *testing.T) {
 
 func TestSetupCheck_VerifiesGrantedIdentityAndSubscriptions(t *testing.T) {
 	addons, _ := loadSetupTemplate("")
-	for _, scenario := range []string{"complete", "pending", "wrong-identity", "missing-feature-scopes", "missing-event", "missing-recall", "omitted-subscriptions", "owner-is-bot", "denied"} {
+	for _, scenario := range []string{"complete", "pending", "wrong-identity", "missing-feature-scopes", "missing-event", "missing-recall", "missing-chat-entered", "omitted-subscriptions", "owner-is-bot", "denied"} {
 		t.Run(scenario, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
@@ -209,6 +235,9 @@ func TestSetupCheck_VerifiesGrantedIdentityAndSubscriptions(t *testing.T) {
 						if scenario == "missing-recall" {
 							events = slices.DeleteFunc(slices.Clone(events), func(event string) bool { return event == "im.message.recalled_v1" })
 						}
+						if scenario == "missing-chat-entered" {
+							events = slices.DeleteFunc(slices.Clone(events), func(event string) bool { return event == "im.chat.access_event.bot_p2p_chat_entered_v1" })
+						}
 						app["event"] = map[string]any{"subscribed_events": events}
 						app["callback"] = map[string]any{"subscribed_callbacks": addons.Callbacks.Items}
 					}
@@ -230,9 +259,12 @@ func TestSetupCheck_VerifiesGrantedIdentityAndSubscriptions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantMissing := scenario == "pending" || scenario == "wrong-identity" || scenario == "missing-feature-scopes" || scenario == "missing-event" || scenario == "missing-recall"
+			wantMissing := scenario == "pending" || scenario == "wrong-identity" || scenario == "missing-feature-scopes" || scenario == "missing-event" || scenario == "missing-recall" || scenario == "missing-chat-entered"
 			if (len(check.Missing) > 0) != wantMissing {
 				t.Fatalf("missing: %v", check.Missing)
+			}
+			if scenario == "missing-chat-entered" && !reflect.DeepEqual(check.Missing, []string{"event:im.chat.access_event.bot_p2p_chat_entered_v1"}) {
+				t.Fatalf("bots created before the event joined the template must be told to subscribe it, got %v", check.Missing)
 			}
 			if scenario == "missing-feature-scopes" {
 				for _, scope := range []string{"contact:user.base:readonly", "im:chat.members:read", "im:message.group_msg"} {
