@@ -265,6 +265,9 @@ type Platform struct {
 	// typingLedger records typing reactions until they are removed. Nil when
 	// no data directory is configured.
 	typingLedger *typingReactionLedger
+	// dmChats maps users to their one-to-one chat with the bot, for bot
+	// menu clicks.
+	dmChats *dmChats
 	// typingDeleteBackoff overrides defaultTypingDeleteBackoff. Indirected so
 	// unit tests don't wait seconds between attempts.
 	typingDeleteBackoff []time.Duration
@@ -550,6 +553,7 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		resourceChunkSize:          resourceChunkSize,
 		resourceMaxBytes:           defaultResourceMaxBytes,
 		typingLedger:               openTypingReactionLedger(typingReactionLedgerPath(dataDir, name, project, appID)),
+		dmChats:                    openDMChats(dmChatsPath(dataDir, name, project, appID)),
 	}
 	if !useInteractiveCard {
 		base.self = base
@@ -677,6 +681,9 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 		}).
 		OnP2ChatAccessEventBotP2pChatEnteredV1(func(ctx context.Context, event *larkim.P2ChatAccessEventBotP2pChatEnteredV1) error {
 			slog.Debug(p.platformName+": user opened bot chat", "app_id", p.appID)
+			for _, sibling := range p.sharedGroup.allPlatforms() {
+				sibling.onBotChatEntered(event)
+			}
 			return nil
 		}).
 		OnP1P2PChatCreatedV1(func(ctx context.Context, event *larkim.P1P2PChatCreatedV1) error {
@@ -1871,6 +1878,9 @@ func (p *Platform) onMessage(ctx context.Context, event *larkim.P2MessageReceive
 	if chatType != "group" && p.groupOnly {
 		slog.Debug(p.tag()+": p2p message skipped (group_only=true)", "chat_type", chatType)
 		return nil
+	}
+	if chatType == "p2p" && !fromBot {
+		p.dmChats.remember(userID, chatID)
 	}
 
 	if msg.Content == nil && msgType != "merge_forward" {
@@ -3333,9 +3343,8 @@ func (p *Platform) Reply(ctx context.Context, rctx any, content string) error {
 	return p.replyMessage(ctx, rc, msgType, msgBody)
 }
 
-// Send sends a message. When the original message ID is available, the message
-// is sent as a reply (quoting the original) so the conversation stays threaded.
-// Falls back to creating a standalone message when no message ID exists.
+// Send sends a message where Reply would: core sends a turn's answers with
+// Send, and they quote the message that started the turn. See replyTarget.
 func (p *Platform) Send(ctx context.Context, rctx any, content string) error {
 	rc, ok := rctx.(replyContext)
 	if !ok {
@@ -5773,7 +5782,7 @@ func (p *Platform) onBotMenu(event *larkapplication.P2BotMenuV6) error {
 	}
 
 	userName := p.resolveUserName(userID)
-	sessionKey := p.menuSessionKey(userID)
+	sessionKey, chatID := p.menuSession(userID)
 
 	p.getHandler()(p.dispatchPlatform(), &core.Message{
 		SessionKey: sessionKey,
@@ -5781,9 +5790,23 @@ func (p *Platform) onBotMenu(event *larkapplication.P2BotMenuV6) error {
 		Content:    content,
 		UserID:     userID,
 		UserName:   userName,
-		ReplyCtx:   replyContext{chatID: userID, sessionKey: sessionKey},
+		ReplyCtx:   replyContext{chatID: chatID, sessionKey: sessionKey},
 	})
 	return nil
+}
+
+// onBotChatEntered records the chat a user opened with the bot, so that a
+// menu click in it joins the chat's session even before the user writes
+// there.
+func (p *Platform) onBotChatEntered(event *larkim.P2ChatAccessEventBotP2pChatEnteredV1) {
+	if event == nil || event.Event == nil || event.Event.OperatorId == nil {
+		return
+	}
+	userID := stringValue(event.Event.OperatorId.OpenId)
+	if userID == "" || !core.AllowList(p.allowFrom, userID) || p.groupOnly {
+		return
+	}
+	p.dmChats.remember(userID, stringValue(event.Event.ChatId))
 }
 
 // ═══════════════════════════════════════════════════════════════

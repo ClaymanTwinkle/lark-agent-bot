@@ -77,6 +77,12 @@ type typingReactionLedger struct {
 }
 
 func typingReactionLedgerPath(dataDir, platformName, project, appID string) string {
+	return platformStatePath(dataDir, platformName, "typing_reactions", project, appID)
+}
+
+// platformStatePath is where the platform keeps one kind of state for a
+// project's bot across restarts, or "" without a data dir.
+func platformStatePath(dataDir, platformName, kind, project, appID string) string {
 	if strings.TrimSpace(dataDir) == "" {
 		return ""
 	}
@@ -84,7 +90,7 @@ func typingReactionLedgerPath(dataDir, platformName, project, appID string) stri
 		"\\", "_", "/", "_", ":", "_", "*", "_", "?", "_",
 		"\"", "_", "<", "_", ">", "_", "|", "_",
 	)
-	name := fmt.Sprintf("%s_typing_reactions_%s_%s.json", platformName, strings.TrimSpace(project), appID)
+	name := fmt.Sprintf("%s_%s_%s_%s.json", platformName, kind, strings.TrimSpace(project), appID)
 	return filepath.Join(dataDir, "run", safe.Replace(name))
 }
 
