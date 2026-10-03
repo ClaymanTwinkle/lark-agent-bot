@@ -32,7 +32,7 @@ jobs:
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
           fetch-depth: 0
@@ -45,14 +45,14 @@ jobs:
           fi
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 10
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
           cache-dependency-path: web/pnpm-lock.yaml
 
@@ -63,7 +63,7 @@ jobs:
           pnpm build
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -142,14 +142,14 @@ jobs:
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Publish to npm
@@ -157,7 +157,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          # setup-node supplies this placeholder when no token is configured.
+          # setup-node before v7 supplied this placeholder when no token was
+          # configured.
           if [ -z "$NODE_AUTH_TOKEN" ] || [ "$NODE_AUTH_TOKEN" = 'XXXXX-XXXXX-XXXXX-XXXXX' ]; then
             echo "::notice::NPM_TOKEN secret is not set; skipping npm publish."
             exit 0
