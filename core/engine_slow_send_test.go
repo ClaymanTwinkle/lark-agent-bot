@@ -43,10 +43,8 @@ func (l *warnLog) count(msg, sessionKey string) int {
 
 func captureWarnings(t *testing.T) *warnLog {
 	t.Helper()
-	prev := slog.Default()
 	l := &warnLog{}
-	slog.SetDefault(slog.New(slog.NewJSONHandler(l, &slog.HandlerOptions{Level: slog.LevelWarn})))
-	t.Cleanup(func() { slog.SetDefault(prev) })
+	t.Cleanup(setDefaultSlog(slog.New(slog.NewJSONHandler(l, &slog.HandlerOptions{Level: slog.LevelWarn}))))
 	return l
 }
 

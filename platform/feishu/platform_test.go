@@ -329,9 +329,7 @@ func TestInteractivePlatform_CardActionActWithoutCardResponseDoesNotWarn(t *test
 	}
 
 	var buf bytes.Buffer
-	orig := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	t.Cleanup(func() { slog.SetDefault(orig) })
+	setDefaultSlog(t, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 
 	resp, err := ip.onCardAction(&callback.CardActionTriggerEvent{
 		Event: &callback.CardActionTriggerRequest{

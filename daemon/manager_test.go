@@ -3,6 +3,7 @@ package daemon
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -13,9 +14,14 @@ import (
 func captureSlog(t *testing.T) (get func() string, restore func()) {
 	t.Helper()
 	var buf bytes.Buffer
-	prev := slog.Default()
+	prev, prevOut, prevFlags := slog.Default(), log.Writer(), log.Flags()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	return func() string { return buf.String() }, func() { slog.SetDefault(prev) }
+	// slog.SetDefault also redirected the log package; undo that too.
+	return func() string { return buf.String() }, func() {
+		slog.SetDefault(prev)
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	}
 }
 
 // withDiscoverer registers d for the duration of the test and resets

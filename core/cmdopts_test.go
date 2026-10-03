@@ -3,20 +3,34 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"log"
 	"log/slog"
 	"sort"
 	"testing"
 )
 
+// setDefaultSlog makes l the default slog logger and returns a func that
+// undoes it. slog.SetDefault also points the log package at l's handler, and
+// setting the original logger back does not undo that, so restoring only the
+// slog default would send every later test's log output into l (#19).
+func setDefaultSlog(l *slog.Logger) (restore func()) {
+	prev, prevOut, prevFlags := slog.Default(), log.Writer(), log.Flags()
+	slog.SetDefault(l)
+	return func() {
+		slog.SetDefault(prev)
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	}
+}
+
 // captureSlog redirects the default slog logger to a buffer for the duration
 // of a test, and returns the buffer plus a restore func.
 func captureSlog(t *testing.T) (*bytes.Buffer, func()) {
 	t.Helper()
-	prev := slog.Default()
 	buf := &bytes.Buffer{}
 	handler := slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelWarn})
-	slog.SetDefault(slog.New(handler))
-	return buf, func() { slog.SetDefault(prev) }
+	return buf, setDefaultSlog(slog.New(handler))
 }
 
 func TestParseCmdOpts_CmdField(t *testing.T) {
@@ -268,11 +282,13 @@ func TestParseCmdOpts_NoWarningForCanonical(t *testing.T) {
 }
 
 func TestParseCmdOpts_SlogRestoreNoLeak(t *testing.T) {
-	// Sanity check: the restore func actually reverts the default logger.
+	// Sanity check: the restore func actually reverts the default logger,
+	// and the log package output slog.SetDefault redirects along with it.
 	// We use a unique sentinel handler and verify it's gone after restore.
-	sentinel := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	prev := slog.Default()
-	slog.SetDefault(sentinel)
+	out := log.Writer()
+	sentinel := slog.New(slog.NewTextHandler(io.Discard, nil))
+	restoreSentinel := setDefaultSlog(sentinel)
+	sentinelOut := log.Writer()
 	{
 		_, restore := captureSlog(t)
 		restore()
@@ -280,7 +296,13 @@ func TestParseCmdOpts_SlogRestoreNoLeak(t *testing.T) {
 	if slog.Default() != sentinel {
 		t.Errorf("expected default logger to be restored to sentinel")
 	}
-	slog.SetDefault(prev) // cleanup
+	if log.Writer() != sentinelOut {
+		t.Errorf("expected log output to be restored to the sentinel's")
+	}
+	restoreSentinel()
+	if log.Writer() != out {
+		t.Errorf("log output not restored; later tests' logs would be lost")
+	}
 }
 
 // equalStrings compares two string slices for unordered-set equality.

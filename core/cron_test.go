@@ -975,13 +975,15 @@ func TestCronScheduler_SleepRecovery_PastDueFiresImmediately(t *testing.T) {
 	if err := store.Add(job); err != nil {
 		t.Fatal(err)
 	}
+	// Count before the job can fire: it may send both of its messages
+	// before signalWakeUp below returns (#19).
+	startSent := len(platform.getSent())
 	if err := cs.Start(); err != nil {
 		t.Fatal(err)
 	}
 	defer cs.Stop()
 
-	// Wait long enough for the loop to be in its idle wait (1 hour).
-	// Then backdate nextRun to simulate "system just woke after 8h".
+	// Backdate nextRun to simulate "system just woke after 8h".
 	cs.mu.Lock()
 	entry, ok := cs.entries[job.ID]
 	if !ok {
@@ -995,7 +997,6 @@ func TestCronScheduler_SleepRecovery_PastDueFiresImmediately(t *testing.T) {
 	// Should fire within maxCronTimerSpan (30s) of the wake-up signal,
 	// not 8 hours from now (the naive pre-fix behavior).
 	deadline := time.Now().Add(maxCronTimerSpan + 5*time.Second)
-	startSent := len(platform.getSent())
 	for time.Now().Before(deadline) {
 		if len(platform.getSent()) > startSent+1 {
 			return
