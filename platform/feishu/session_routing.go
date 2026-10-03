@@ -19,9 +19,8 @@ import (
 //	{platform}:{chat}:root:{root}  a topic's session (thread_isolation, group chats)
 //
 // {chat} is a chat_id, or the user's open_id for events that carry no chat
-// (bot menu clicks, some card callbacks). Keys written by older versions may
-// end in thread:{id} instead of root:{root}; they are still read as topic
-// keys.
+// (bot menu clicks before the bot knows the user's chat, some card
+// callbacks).
 //
 // Where a message goes follows from its reply context; see replyTarget.
 
@@ -62,10 +61,11 @@ func (p *Platform) userSessionKey(chatID, userID string) string {
 }
 
 // sessionKeyFromCardAction returns the session a card button belongs to: the
-// one the card was rendered for, which renderCardMap puts in its buttons, or
-// for a card rendered without one the clicker's or the chat's session. A
-// callback does not say which topic the card is in, so it never falls back
-// to a topic session.
+// one the card was rendered for, which renderCardMap puts in its buttons.
+// Every card the bot renders for a session carries it, so the fallback, the
+// clicker's or the chat's session, is only for cards rendered without one. A
+// callback does not say which topic the card is in, so the fallback is never
+// a topic session.
 func (p *Platform) sessionKeyFromCardAction(chatID, userID string, value map[string]any) string {
 	if value != nil {
 		if sessionKey, _ := value["session_key"].(string); sessionKey != "" {
@@ -75,11 +75,17 @@ func (p *Platform) sessionKeyFromCardAction(chatID, userID string, value map[str
 	return p.sessionKeyFor(chatID, userID, "")
 }
 
-// menuSessionKey returns the session of a bot menu click. Menu events carry
-// only the operator, so it is that user's own session, keyed by their
-// open_id, whatever share_session_in_channel says.
-func (p *Platform) menuSessionKey(userID string) string {
-	return p.userSessionKey(userID, userID)
+// menuSession returns the session of a bot menu click and the chat its
+// messages go to. The menu is shown in the user's chat with the bot, so the
+// click joins the session the user's messages in that chat join. Menu events
+// name only the user; until the bot has seen the user open or write in the
+// chat, the click uses a session of its own keyed by the user's open_id, as
+// all menu clicks did before, and messages go to the user.
+func (p *Platform) menuSession(userID string) (sessionKey, chatID string) {
+	if chatID := p.dmChats.chatOf(userID); chatID != "" {
+		return p.sessionKeyFor(chatID, userID, ""), chatID
+	}
+	return p.userSessionKey(userID, userID), userID
 }
 
 // topicOfSessionKey splits a topic session key into its platform, chat and
@@ -97,16 +103,11 @@ func topicOfSessionKey(sessionKey string) (platform, chatID, rootID string, ok b
 }
 
 func parseThreadRootID(sessionTail string) (string, bool) {
-	for _, prefix := range []string{"root:", "thread:"} {
-		if strings.HasPrefix(sessionTail, prefix) {
-			rootID := strings.TrimPrefix(sessionTail, prefix)
-			if rootID != "" {
-				return rootID, true
-			}
-			return "", false
-		}
+	rootID, ok := strings.CutPrefix(sessionTail, "root:")
+	if !ok || rootID == "" {
+		return "", false
 	}
-	return "", false
+	return rootID, true
 }
 
 // threadScoped reports whether sessionKey is a topic session and
@@ -135,8 +136,13 @@ type replyTarget struct {
 // clicks, cron in a user's or the chat's session), they are new messages to
 // rc.chatID.
 //
-// Two senders differ: SendCard replies only inside a topic and otherwise
-// sends a new message, and NotifyMessageRecall always sends a new message.
+// Send follows these rules like Reply: core sends a turn's answers with
+// Send, and they quote the message that started the turn. Two senders
+// differ. SendCard, used for permission and question cards among others,
+// sends a new message as core asks of it, but in a topic session it replies
+// inside the topic so the card stays there.
+// NotifyMessageRecall always sends a new message: the message it would reply
+// to is gone.
 func (p *Platform) replyTarget(rc replyContext) replyTarget {
 	if rc.messageID == "" || p.noReplyToTrigger {
 		return replyTarget{}

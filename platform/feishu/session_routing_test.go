@@ -408,7 +408,6 @@ func TestSessionRouting_Outbound(t *testing.T) {
 	userKey := replyContext{messageID: "om_msg", chatID: "oc_chat", sessionKey: "feishu:oc_chat:ou_user"}
 	chatKey := replyContext{messageID: "om_msg", chatID: "oc_chat", sessionKey: "feishu:oc_chat"}
 	rootKey := replyContext{messageID: "om_msg", chatID: "oc_chat", sessionKey: "feishu:oc_chat:root:om_root"}
-	threadKey := replyContext{messageID: "om_msg", chatID: "oc_chat", sessionKey: "feishu:oc_chat:thread:omt_old"}
 	rootNoTrigger := replyContext{chatID: "oc_chat", sessionKey: "feishu:oc_chat:root:om_root"}
 	toUser := replyContext{chatID: "ou_user", sessionKey: "feishu:ou_user:ou_user"}
 	otherPlatformRoot := replyContext{messageID: "om_msg", chatID: "oc_chat", sessionKey: "lark:oc_chat:root:om_root"}
@@ -424,7 +423,6 @@ func TestSessionRouting_Outbound(t *testing.T) {
 		"off/user":                {false, true, userKey, reply, toChat, toChat},
 		"off/chat":                {false, true, chatKey, reply, toChat, toChat},
 		"off/root":                {false, true, rootKey, reply, toChat, toChat},
-		"off/thread":              {false, true, threadKey, reply, toChat, toChat},
 		"off/root-no-trigger":     {false, true, rootNoTrigger, toChat, toChat, toChat},
 		"off/open-id":             {false, true, toUser, toOpenID, toOpenID, toOpenID},
 		"off/other-platform-root": {false, true, otherPlatformRoot, reply, toChat, toChat},
@@ -432,7 +430,6 @@ func TestSessionRouting_Outbound(t *testing.T) {
 		"on/user":                {true, true, userKey, reply, toChat, toChat},
 		"on/chat":                {true, true, chatKey, reply, toChat, toChat},
 		"on/root":                {true, true, rootKey, inThread, inThread, toChat},
-		"on/thread":              {true, true, threadKey, inThread, inThread, toChat},
 		"on/root-no-trigger":     {true, true, rootNoTrigger, toChat, toChat, toChat},
 		"on/open-id":             {true, true, toUser, toOpenID, toOpenID, toOpenID},
 		"on/other-platform-root": {true, true, otherPlatformRoot, inThread, inThread, toChat},
@@ -440,14 +437,12 @@ func TestSessionRouting_Outbound(t *testing.T) {
 		"off-noreply/user":                {false, false, userKey, toChat, toChat, toChat},
 		"off-noreply/chat":                {false, false, chatKey, toChat, toChat, toChat},
 		"off-noreply/root":                {false, false, rootKey, toChat, toChat, toChat},
-		"off-noreply/thread":              {false, false, threadKey, toChat, toChat, toChat},
 		"off-noreply/root-no-trigger":     {false, false, rootNoTrigger, toChat, toChat, toChat},
 		"off-noreply/open-id":             {false, false, toUser, toOpenID, toOpenID, toOpenID},
 		"off-noreply/other-platform-root": {false, false, otherPlatformRoot, toChat, toChat, toChat},
 		"on-noreply/user":                 {true, false, userKey, toChat, toChat, toChat},
 		"on-noreply/chat":                 {true, false, chatKey, toChat, toChat, toChat},
 		"on-noreply/root":                 {true, false, rootKey, toChat, toChat, toChat},
-		"on-noreply/thread":               {true, false, threadKey, toChat, toChat, toChat},
 		"on-noreply/root-no-trigger":      {true, false, rootNoTrigger, toChat, toChat, toChat},
 		"on-noreply/open-id":              {true, false, toUser, toOpenID, toOpenID, toOpenID},
 		"on-noreply/other-platform-root":  {true, false, otherPlatformRoot, toChat, toChat, toChat},
@@ -629,37 +624,150 @@ func TestSessionRouting_CardNavigation(t *testing.T) {
 	}
 }
 
-// Bot menu clicks carry only the operator: they always use that user's own
-// session, keyed by open_id, and answer with a new message to the user.
+func clickBotMenu(t *testing.T, p *interactivePlatform, got <-chan *core.Message) *core.Message {
+	t.Helper()
+	var event larkapplication.P2BotMenuV6
+	if err := json.Unmarshal([]byte(`{"event":{"event_key":"help","operator":{"operator_id":{"open_id":"ou_user"}}}}`), &event); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.onBotMenu(&event); err != nil {
+		t.Fatalf("onBotMenu() error = %v", err)
+	}
+	return waitRoutedMessage(t, got)
+}
+
+func botChatEnteredEvent(chatID, userID string) *larkim.P2ChatAccessEventBotP2pChatEnteredV1 {
+	return &larkim.P2ChatAccessEventBotP2pChatEnteredV1{Event: &larkim.P2ChatAccessEventBotP2pChatEnteredV1Data{
+		ChatId:     stringPtr(chatID),
+		OperatorId: &larkim.UserId{OpenId: stringPtr(userID)},
+	}}
+}
+
+// writeInDM delivers a message from ou_user in its chat with the bot and
+// returns what was dispatched.
+func writeInDM(t *testing.T, p *interactivePlatform, rec *routeRecorder, got <-chan *core.Message, messageID string) *core.Message {
+	t.Helper()
+	if err := p.onMessage(context.Background(), routingMessageEvent("p2p", "oc_p2p", messageID, shapeTop)); err != nil {
+		t.Fatalf("onMessage() error = %v", err)
+	}
+	msg := waitRoutedMessage(t, got)
+	rec.take()
+	return msg
+}
+
+// Bot menu clicks carry only the operator. The menu is shown in the user's
+// chat with the bot, so once the bot has seen the user open the chat or
+// write in it, a click joins the session the user's messages there join and
+// answers in the chat. Before that it uses the user's own session, keyed by
+// open_id, and answers the user.
 func TestSessionRouting_BotMenu(t *testing.T) {
 	for _, name := range []string{"feishu", "lark"} {
 		for _, isolation := range []bool{false, true} {
 			for _, share := range []bool{false, true} {
-				t.Run(name+"/"+routingOptsName(isolation, share), func(t *testing.T) {
-					p, rec, got := newRoutingTestPlatform(t, name, routingOpts(isolation, share))
-					var event larkapplication.P2BotMenuV6
-					if err := json.Unmarshal([]byte(`{"event":{"event_key":"help","operator":{"operator_id":{"open_id":"ou_user"}}}}`), &event); err != nil {
-						t.Fatal(err)
-					}
-					if err := p.onBotMenu(&event); err != nil {
-						t.Fatalf("onBotMenu() error = %v", err)
-					}
-					msg := waitRoutedMessage(t, got)
-					key := name + ":ou_user:ou_user"
-					if msg.SessionKey != key {
-						t.Fatalf("SessionKey = %q, want %q", msg.SessionKey, key)
-					}
-					assertReplyCtx(t, msg.ReplyCtx, replyContext{chatID: "ou_user", sessionKey: key})
-					if msg.ChannelKey != "" || msg.LegacyChannelKey != "" {
-						t.Fatalf("ChannelKey, LegacyChannelKey = %q, %q, want both empty", msg.ChannelKey, msg.LegacyChannelKey)
-					}
-					if err := p.Reply(context.Background(), msg.ReplyCtx, "ok"); err != nil {
-						t.Fatalf("Reply() error = %v", err)
-					}
-					assertCalls(t, "Reply", rec.take(), []string{"create open_id:ou_user"})
-				})
+				for _, learned := range []string{"unknown", "opened", "wrote"} {
+					t.Run(fmt.Sprintf("%s/%s/%s", name, routingOptsName(isolation, share), learned), func(t *testing.T) {
+						p, rec, got := newRoutingTestPlatform(t, name, routingOpts(isolation, share))
+						var dm *core.Message
+						switch learned {
+						case "opened":
+							p.onBotChatEntered(botChatEnteredEvent("oc_p2p", "ou_user"))
+						case "wrote":
+							dm = writeInDM(t, p, rec, got, "om_before")
+						}
+
+						msg := clickBotMenu(t, p, got)
+						key, chatID, reply := name+":ou_user:ou_user", "ou_user", "create open_id:ou_user"
+						if learned != "unknown" {
+							key, chatID, reply = name+":oc_p2p:ou_user", "oc_p2p", "create chat_id:oc_p2p"
+							if share {
+								key = name + ":oc_p2p"
+							}
+						}
+						if msg.SessionKey != key {
+							t.Fatalf("SessionKey = %q, want %q", msg.SessionKey, key)
+						}
+						assertReplyCtx(t, msg.ReplyCtx, replyContext{chatID: chatID, sessionKey: key})
+						if msg.ChannelKey != "" || msg.LegacyChannelKey != "" {
+							t.Fatalf("ChannelKey, LegacyChannelKey = %q, %q, want both empty", msg.ChannelKey, msg.LegacyChannelKey)
+						}
+						if err := p.Reply(context.Background(), msg.ReplyCtx, "ok"); err != nil {
+							t.Fatalf("Reply() error = %v", err)
+						}
+						assertCalls(t, "Reply", rec.take(), []string{reply})
+
+						if learned == "unknown" {
+							return
+						}
+						if dm == nil {
+							dm = writeInDM(t, p, rec, got, "om_after")
+						}
+						if dm.SessionKey != msg.SessionKey {
+							t.Fatalf("message in the chat joins %q, menu click %q", dm.SessionKey, msg.SessionKey)
+						}
+					})
+				}
 			}
 		}
+	}
+}
+
+// The bot learns a user's chat only from the user's own one-to-one chat, and
+// only for users allowed to use the bot.
+func TestSessionRouting_BotMenuIgnoresOtherChats(t *testing.T) {
+	cases := map[string]func(t *testing.T, p *interactivePlatform, rec *routeRecorder, got chan *core.Message){
+		"group message": func(t *testing.T, p *interactivePlatform, _ *routeRecorder, got chan *core.Message) {
+			if err := p.onMessage(context.Background(), routingMessageEvent("group", "oc_group", "om_group", shapeTop)); err != nil {
+				t.Fatalf("onMessage() error = %v", err)
+			}
+			waitRoutedMessage(t, got)
+		},
+		"chat opened by another user": func(t *testing.T, p *interactivePlatform, _ *routeRecorder, _ chan *core.Message) {
+			p.onBotChatEntered(botChatEnteredEvent("oc_other", "ou_other"))
+		},
+		"chat event without user": func(t *testing.T, p *interactivePlatform, _ *routeRecorder, _ chan *core.Message) {
+			p.onBotChatEntered(&larkim.P2ChatAccessEventBotP2pChatEnteredV1{Event: &larkim.P2ChatAccessEventBotP2pChatEnteredV1Data{
+				ChatId: stringPtr("oc_p2p"),
+			}})
+		},
+	}
+	for name, learn := range cases {
+		t.Run(name, func(t *testing.T) {
+			p, rec, got := newRoutingTestPlatform(t, "feishu", routingOpts(false, false))
+			learn(t, p, rec, got)
+			if msg := clickBotMenu(t, p, got); msg.SessionKey != "feishu:ou_user:ou_user" {
+				t.Fatalf("SessionKey = %q, want feishu:ou_user:ou_user", msg.SessionKey)
+			}
+		})
+	}
+
+	t.Run("user outside allow_from", func(t *testing.T) {
+		opts := routingOpts(false, false)
+		opts["allow_from"] = "ou_user"
+		p, _, got := newRoutingTestPlatform(t, "feishu", opts)
+		p.onBotChatEntered(botChatEnteredEvent("oc_stranger", "ou_stranger"))
+		if chatID := p.dmChats.chatOf("ou_stranger"); chatID != "" {
+			t.Fatalf("chat of a user outside allow_from = %q, want none", chatID)
+		}
+		p.onBotChatEntered(botChatEnteredEvent("oc_p2p", "ou_user"))
+		if msg := clickBotMenu(t, p, got); msg.SessionKey != "feishu:oc_p2p:ou_user" {
+			t.Fatalf("SessionKey = %q, want feishu:oc_p2p:ou_user", msg.SessionKey)
+		}
+	})
+}
+
+// A user's chat is kept in the data dir: after a restart, a menu click joins
+// the chat's session before the user opens or writes in it again.
+func TestSessionRouting_BotMenuAfterRestart(t *testing.T) {
+	opts := routingOpts(false, false)
+	opts["cc_data_dir"] = t.TempDir()
+	opts["cc_project"] = "proj"
+
+	before, rec, got := newRoutingTestPlatform(t, "feishu", opts)
+	writeInDM(t, before, rec, got, "om_before")
+
+	after, _, got := newRoutingTestPlatform(t, "feishu", opts)
+	if msg := clickBotMenu(t, after, got); msg.SessionKey != "feishu:oc_p2p:ou_user" {
+		t.Fatalf("SessionKey after restart = %q, want feishu:oc_p2p:ou_user", msg.SessionKey)
 	}
 }
 
@@ -697,7 +805,9 @@ func TestSessionRouting_ReconstructReplyCtx(t *testing.T) {
 		{"feishu", "feishu:oc_chat:ou_user", "oc_chat", "", "create chat_id:oc_chat", "create chat_id:oc_chat"},
 		{"feishu", "feishu:oc_chat", "oc_chat", "", "create chat_id:oc_chat", "create chat_id:oc_chat"},
 		{"feishu", "feishu:oc_chat:root:om_root", "oc_chat", "om_root", "reply om_root", "reply om_root in_thread"},
-		{"feishu", "feishu:oc_chat:thread:omt_old", "oc_chat", "omt_old", "reply omt_old", "reply omt_old in_thread"},
+		// No version wrote topic keys ending in thread:{id}; such a key is
+		// not a topic key.
+		{"feishu", "feishu:oc_chat:thread:omt_old", "oc_chat", "", "create chat_id:oc_chat", "create chat_id:oc_chat"},
 		{"feishu", "feishu:oc_chat:root:", "oc_chat", "", "create chat_id:oc_chat", "create chat_id:oc_chat"},
 		{"feishu", "feishu:oc_chat:relay", "oc_chat", "", "create chat_id:oc_chat", "create chat_id:oc_chat"},
 		{"feishu", "feishu:ou_user:ou_user", "ou_user", "", "create open_id:ou_user", "create open_id:ou_user"},

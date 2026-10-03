@@ -84,6 +84,8 @@ The creation flow includes the menu permission and the menu-click subscription, 
 
 3. Make sure `application.bot.menu_v6` and `im.message.recalled_v1` are subscribed under Events & Callbacks, then create and publish a version. The menu may take about 5 minutes to appear and only shows in one-on-one chats with the bot.
 
+A menu click joins the same session as the messages you send in your chat with the bot. Menu events name only the user who clicked, not the chat, so the bot first has to learn which chat is yours: it does once you have sent a message there, and remembers it across restarts. If you also subscribe to the "user entered chat with bot" event (`im.chat.access_event.bot_p2p_chat_entered_v1`, Feishu client 7.18 or later), it learns it as soon as you open the chat. Until then, menu clicks use a session of their own.
+
 After "Upgrade" installs a new version, the bot has to restart, and a restart ends every agent process. If tasks are still running, it replies that N tasks are still running and it will restart once they finish, and waits for them, at most `upgrade_restart_wait_mins` minutes (default 120; 0 restarts at once). To restart right away, send `/restart`.
 
 Bots on one machine that use relay with each other must run the same version, otherwise handing work between them fails. If other bots on this machine run a different version from the new one, the upgrade reply lists them, and so does the "restart successful" notice. Bots sharing one program file must each restart to load the new version.

@@ -6,11 +6,12 @@ import (
 
 // TestPlatform_RelayGroupVisibilityKey pins the contract feishu's
 // Platform satisfies for core.RelayGroupVisibilityTarget: only the
-// platform's own session keys whose third segment carries a non-empty "root:..." or
-// "thread:..." prefix turn into a thread-scoped visibility key; every
-// other shape (bare-user keys, short keys, empty tails, or anything
-// from a foreign platform) returns ("", false) so core falls back to
-// its legacy "<platform>:<chatID>:relay" default.
+// platform's own session keys whose third segment carries a non-empty
+// "root:..." prefix turn into a thread-scoped visibility key; every
+// other shape (bare-user keys, short keys, empty tails, "thread:..." tails
+// no version ever wrote, or anything from a foreign platform) returns
+// ("", false) so core falls back to its legacy "<platform>:<chatID>:relay"
+// default.
 func TestPlatform_RelayGroupVisibilityKey(t *testing.T) {
 	p := &Platform{platformName: "feishu"}
 
@@ -22,12 +23,11 @@ func TestPlatform_RelayGroupVisibilityKey(t *testing.T) {
 	}{
 		// ── feishu thread shapes (hits) ──────────────────────────
 		{"feishu root", "feishu:oc_chat:root:om_msg", "feishu:oc_chat:root:om_msg", true},
-		{"feishu thread", "feishu:oc_chat:thread:omt_thr", "feishu:oc_chat:thread:omt_thr", true},
 
 		// ── feishu non-thread shapes (misses) ────────────────────
 		{"feishu bare user", "feishu:oc_chat:ou_user", "", false},
 		{"feishu empty root tail", "feishu:oc_chat:root:", "", false},
-		{"feishu empty thread tail", "feishu:oc_chat:thread:", "", false},
+		{"feishu thread", "feishu:oc_chat:thread:omt_thr", "", false},
 		{"feishu only two parts", "feishu:oc_chat", "", false},
 
 		// ── foreign platforms (must miss even if shape coincides) ─
