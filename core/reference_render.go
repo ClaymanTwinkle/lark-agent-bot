@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -27,7 +26,7 @@ var (
 	reFenceBlock      = regexp.MustCompile("(?s)```.*?```")
 	reInlineCodeSpan  = regexp.MustCompile("`([^`\n]+)`")
 	reBareURL         = regexp.MustCompile(`https?://[^\s<>()]+`)
-	reAbsOrFileRef    = regexp.MustCompile(`file:///[^\s` + "`" + `<>\[\](),，、;；。！？!?]+|/[^\s` + "`" + `<>\[\](),，、;；。！？!?]+`)
+	reAbsOrFileRef    = regexp.MustCompile(`file:///[^\s` + "`" + `<>\[\](),，、;；。！？!?]+|/[^\s` + "`" + `<>\[\](),，、;；。！？!?]+|\b[A-Za-z]:[\\/][^\s` + "`" + `<>\[\](),，、;；。！？!?]+`)
 	reRelativeRef     = regexp.MustCompile(`(?:\.\.?/|[A-Za-z0-9_.-]+/)[^\s` + "`" + `<>\[\](),，、;；。！？!?]+`)
 	reBasenameFileRef = regexp.MustCompile(`\b[A-Za-z0-9_.-]+\.[A-Za-z0-9_.-]+(?:#L\d+(?:C\d+)?|:\d+(?::\d+)?|:\d+-\d+)?\b`)
 )
@@ -442,7 +441,7 @@ func referenceDisplaySource(ref *localReference, mode string) string {
 }
 
 func sanitizeRelativeDisplay(rel string) string {
-	rel = filepath.ToSlash(strings.TrimSpace(rel))
+	rel = strings.TrimSpace(rel)
 	if rel == "" || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
 		return ""
 	}
@@ -455,13 +454,13 @@ func pathTail(ref *localReference, segs int) string {
 		if ref.isRelative {
 			source = cleanDisplayPath(ref.pathOriginal)
 		} else if ref.pathAbs != "" {
-			source = filepath.ToSlash(ref.pathAbs)
+			source = ref.pathAbs
 		} else {
 			source = cleanDisplayPath(ref.pathOriginal)
 		}
 	}
 	source = strings.TrimSuffix(source, "/")
-	parts := strings.Split(filepath.ToSlash(source), "/")
+	parts := strings.Split(source, "/")
 	if len(parts) == 0 {
 		return source
 	}
@@ -475,13 +474,12 @@ func cleanDisplayPath(path string) string {
 	if path == "" {
 		return ""
 	}
-	path = filepath.ToSlash(path)
 	path = strings.TrimPrefix(path, "./")
 	return strings.TrimSpace(path)
 }
 
 func appendDirSuffix(path string, kind referenceKind) string {
-	path = filepath.ToSlash(strings.TrimSpace(path))
+	path = strings.TrimSpace(path)
 	if path == "" {
 		return path
 	}

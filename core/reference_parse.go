@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -110,29 +111,119 @@ func parseLocalReference(raw, workspaceDir string) (*localReference, bool) {
 			return nil, false
 		}
 		pathPart = u.Path
+		// file:///C:/x has the path /C:/x.
+		if hasDrivePrefix(pathPart[1:]) {
+			pathPart = pathPart[1:]
+		}
+	}
+	if strings.Contains(pathPart, `\`) && backslashIsSeparator(pathPart, ref.locationFormat != referenceLocationNone) {
+		pathPart = strings.ReplaceAll(pathPart, `\`, "/")
 	}
 	if !looksLikeLocalPath(pathPart) {
 		return nil, false
 	}
 	ref.pathOriginal = pathPart
-	ref.isRelative = !filepath.IsAbs(pathPart)
+	ref.isRelative = !isAbsReferencePath(pathPart)
+	workspace := referenceWorkspace(workspaceDir)
 	if ref.isRelative {
-		if workspaceDir != "" {
-			ref.pathAbs = filepath.Clean(filepath.Join(workspaceDir, pathPart))
-			if rel, err := filepath.Rel(workspaceDir, ref.pathAbs); err == nil {
-				ref.pathRel = filepath.ToSlash(rel)
-			}
+		if workspace != "" {
+			ref.pathAbs = cleanReferencePath(workspace + "/" + pathPart)
+			ref.pathRel = relReferencePath(workspace, ref.pathAbs)
 		}
 	} else {
-		ref.pathAbs = filepath.Clean(pathPart)
-		if workspaceDir != "" {
-			if rel, err := filepath.Rel(workspaceDir, ref.pathAbs); err == nil {
-				ref.pathRel = filepath.ToSlash(rel)
-			}
+		ref.pathAbs = cleanReferencePath(pathPart)
+		if workspace != "" {
+			ref.pathRel = relReferencePath(workspace, ref.pathAbs)
 		}
 	}
 	ref.kind = inferReferenceKind(ref)
 	return ref, true
+}
+
+// Reference paths are kept with forward slashes and handled the same on
+// every host: "/root/x" and "D:\Projects\x" are both absolute, so an
+// agent's output renders alike on Linux, macOS and Windows.
+
+// hasDrivePrefix reports whether p starts with a Windows drive, as in
+// "C:\" or "C:/".
+func hasDrivePrefix(p string) bool {
+	if len(p) < 3 || p[1] != ':' || (p[2] != '\\' && p[2] != '/') {
+		return false
+	}
+	c := p[0]
+	return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z')
+}
+
+// backslashIsSeparator reports whether the backslashes in p separate the
+// parts of a Windows path. They do in a drive path ("D:\x\y") and in a
+// relative path that starts with ".\" or "..\", carries a location
+// (hasLocation) or ends in a file name with an extension ("x\main.go").
+// They do not in text that only resembles a path, such as "\n", a markdown
+// escape ("foo\_bar") or "DOMAIN\user", nor in a UNC path ("\\server\x"),
+// nor when p has a character Windows does not allow in a name.
+func backslashIsSeparator(p string, hasLocation bool) bool {
+	drive := hasDrivePrefix(p)
+	rest := p
+	if drive {
+		rest = p[2:]
+	} else if strings.HasPrefix(p, `\`) {
+		return false
+	}
+	if strings.ContainsAny(rest, `:*?"<>|`) {
+		return false
+	}
+	if drive || hasLocation || strings.HasPrefix(p, `.\`) || strings.HasPrefix(p, `..\`) {
+		return true
+	}
+	name := p[strings.LastIndexAny(p, `\/`)+1:]
+	return path.Ext(name) != ""
+}
+
+func isAbsReferencePath(p string) bool {
+	return strings.HasPrefix(p, "/") || hasDrivePrefix(p)
+}
+
+// referenceWorkspace returns the workspace directory, a path on this host,
+// in the form parseLocalReference compares references with.
+func referenceWorkspace(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	if hasDrivePrefix(dir) {
+		dir = strings.ReplaceAll(dir, `\`, "/")
+	} else {
+		dir = filepath.ToSlash(dir)
+	}
+	return cleanReferencePath(dir)
+}
+
+// cleanReferencePath is path.Clean that keeps a drive: ".." stops at "D:/".
+func cleanReferencePath(p string) string {
+	if hasDrivePrefix(p) {
+		return p[:2] + path.Clean(p[2:])
+	}
+	return path.Clean(p)
+}
+
+// relReferencePath returns target relative to base, both cleaned, or ""
+// when target is neither base nor below it. Drive paths compare
+// case-insensitively, as Windows does.
+func relReferencePath(base, target string) string {
+	same := func(a, b string) bool { return a == b }
+	if hasDrivePrefix(base) {
+		same = strings.EqualFold
+	}
+	if same(base, target) {
+		return "."
+	}
+	prefix := base
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+	if len(target) > len(prefix) && same(target[:len(prefix)], prefix) {
+		return target[len(prefix):]
+	}
+	return ""
 }
 
 func inferReferenceKind(ref *localReference) referenceKind {
@@ -153,27 +244,26 @@ func inferReferenceKind(ref *localReference) referenceKind {
 	if strings.HasSuffix(ref.pathOriginal, "/") {
 		return referenceKindDir
 	}
-	base := filepath.Base(strings.TrimSuffix(ref.pathOriginal, "/"))
-	if filepath.Ext(base) != "" {
+	base := path.Base(strings.TrimSuffix(ref.pathOriginal, "/"))
+	if path.Ext(base) != "" {
 		return referenceKindFile
 	}
 	return referenceKindUnknown
 }
 
-func looksLikeLocalPath(path string) bool {
-	if path == "" || strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") || strings.HasPrefix(path, "//") {
+func looksLikeLocalPath(p string) bool {
+	if p == "" || strings.HasPrefix(p, "http://") || strings.HasPrefix(p, "https://") || strings.HasPrefix(p, "//") {
 		return false
 	}
 	switch {
-	case strings.HasPrefix(path, "/"):
+	case strings.HasPrefix(p, "/"):
 		return true
-	case strings.HasPrefix(path, "./"), strings.HasPrefix(path, "../"):
+	case strings.HasPrefix(p, "./"), strings.HasPrefix(p, "../"):
 		return true
-	case strings.Contains(path, "/"):
+	case strings.Contains(p, "/"):
 		return true
 	default:
-		base := filepath.Base(path)
-		return strings.Contains(base, ".")
+		return strings.Contains(path.Base(p), ".")
 	}
 }
 
