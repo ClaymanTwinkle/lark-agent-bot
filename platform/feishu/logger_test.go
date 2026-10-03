@@ -3,12 +3,27 @@ package feishu
 import (
 	"bytes"
 	"context"
+	"log"
 	"log/slog"
 	"strings"
 	"testing"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
+
+// setDefaultSlog makes l the default slog logger until the test ends.
+// slog.SetDefault also points the log package at l's handler, and setting
+// the original logger back does not undo that, so it is restored separately.
+func setDefaultSlog(t *testing.T, l *slog.Logger) {
+	t.Helper()
+	prev, prevOut, prevFlags := slog.Default(), log.Writer(), log.Flags()
+	slog.SetDefault(l)
+	t.Cleanup(func() {
+		slog.SetDefault(prev)
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	})
+}
 
 type recordingLarkLogger struct {
 	debugCalls int
@@ -64,9 +79,7 @@ func TestSanitizingLogger_KeepOtherDebugAndMaskSecrets(t *testing.T) {
 
 func TestSlogLarkLogger_WritesMaskedSDKLinesToSlog(t *testing.T) {
 	var buf bytes.Buffer
-	prev := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
-	t.Cleanup(func() { slog.SetDefault(prev) })
+	setDefaultSlog(t, slog.New(slog.NewTextHandler(&buf, nil)))
 
 	logger := &sanitizingLogger{inner: slogLarkLogger{}}
 	logger.Info(context.Background(), "connected to wss://msg-frontier.feishu.cn/ws/v2?ticket=abc&aid=1")

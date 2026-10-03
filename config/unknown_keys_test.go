@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"log"
 	"log/slog"
 	"os"
 	"reflect"
@@ -13,9 +14,14 @@ import (
 func captureSlog(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
-	prev := slog.Default()
+	prev, prevOut, prevFlags := slog.Default(), log.Writer(), log.Flags()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	t.Cleanup(func() { slog.SetDefault(prev) })
+	// slog.SetDefault also redirected the log package; undo that too.
+	t.Cleanup(func() {
+		slog.SetDefault(prev)
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	})
 	return &buf
 }
 
