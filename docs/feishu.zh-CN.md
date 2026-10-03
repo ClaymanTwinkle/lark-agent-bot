@@ -44,7 +44,7 @@ lark-agent-bot feishu bind --project my-project --app cli_xxx:sec_xxx
 - `--project` 不存在时会自动创建该项目；若项目存在但没有 `feishu/lark` 平台，也会自动补一个。如果之前运行过一次 `lark-agent-bot`，会接管它生成的初始项目（改名为 `--project`，替换占位的 `app_id` / `work_dir`），不再另建一个。
 - 写回配置时仅定点更新目标字段（`app_id`、`app_secret`、`allow_from` 等），尽量保留原有注释与排版。
 - 新建默认使用内置统一模板：38 项应用权限、1 项用户权限，覆盖消息、图片/文件、表情、卡片、发送者姓名、群成员查询、群消息上下文、文档及应用管理；Claude Code 和 Codex 使用同一模板。模板包含 `im:message.group_msg`，允许接收未 @ 机器人的群消息；`group_chat_history_share` 仍默认关闭。无需这一权限时，可使用移除该项的自定义模板。
-- 同时预填 `im.message.receive_v1`（接收消息）、`im.message.recalled_v1`（撤回消息）、`application.bot.menu_v6`（菜单点击）事件，以及 `card.action.trigger` 卡片回调。扫码确认页一次确认权限与订阅。撤回排队中的原消息会移除对应提示词；已开始的任务会尝试停止，不会回滚已执行的操作，排在它后面的消息也不会执行。
+- 同时预填 `im.message.receive_v1`（接收消息）、`im.message.recalled_v1`（撤回消息）、`application.bot.menu_v6`（菜单点击）、`im.chat.access_event.bot_p2p_chat_entered_v1`（用户进入与机器人的会话）事件，以及 `card.action.trigger` 卡片回调。扫码确认页一次确认权限与订阅。撤回排队中的原消息会移除对应提示词；已开始的任务会尝试停止，不会回滚已执行的操作，排在它后面的消息也不会执行。
 - 注册成功后先保存凭证，再检查机器人能力、权限授予状态及可读取的订阅配置。失败会保留凭证并明确报错，避免重复创建应用。
 - 通过应用详情接口获取该应用身份下的所有者 ID，初始化尚未设置的 `admin_from`；全新项目同时设置 `allow_from` 为所有者。保留已有管理员、访问范围和项目设置。
 - 全新项目默认 `quiet` 消息模式，可用 `--display full` 或 `--display compact` 更改。模型、权限模式、工作目录和 agent 类型可在创建时指定；这些参数仅影响新项目和上面说的初始项目。第一个项目不指定 `--agent` 时，装了 `claude` 用 Claude Code，否则装了 `codex` 用 Codex。
@@ -82,9 +82,9 @@ lark-agent-bot feishu check --config config.toml --project my-claude
 | 当前状态 | `status` | `/status` |
 | 升级服务 | `upgrade` | `/upgrade` |
 
-3. 确认事件与回调中已订阅 `application.bot.menu_v6` 和 `im.message.recalled_v1`，创建版本并发布。菜单显示可能需要约 5 分钟，仅支持机器人私聊。
+3. 确认事件与回调中已订阅 `application.bot.menu_v6`、`im.message.recalled_v1` 和 `im.chat.access_event.bot_p2p_chat_entered_v1`，创建版本并发布。菜单显示可能需要约 5 分钟，仅支持机器人私聊。
 
-菜单点击和你在私聊里发的消息用同一个会话。菜单事件里只有点击人，没有会话 ID，所以机器人要先知道你和它的私聊是哪个：你在私聊里发过一条消息后就知道了，重启后也记得。如果还订阅了「用户进入与机器人的会话」事件（`im.chat.access_event.bot_p2p_chat_entered_v1`，需要飞书客户端 7.18 及以上），打开私聊时就知道了。在这之前，菜单点击用一个单独的会话。
+菜单点击和你在私聊里发的消息用同一个会话。菜单事件里只有点击人，没有会话 ID，所以机器人要先知道你和它的私聊是哪个：你打开私聊时，「用户进入与机器人的会话」事件（`im.chat.access_event.bot_p2p_chat_entered_v1`，需要飞书客户端 7.18 及以上）会告诉它；你在私聊里发第一条消息时也会。重启后也记得。在这之前，菜单点击用一个单独的会话。用模板创建的机器人已订阅这个事件；之前创建的机器人要在事件与回调里添加它（不需要额外权限）并发布新版本，在这之前 `feishu check` 会报缺少 `event:im.chat.access_event.bot_p2p_chat_entered_v1`。
 
 「升级服务」装好新版本后需要重启，重启会结束所有 agent 进程。如果当时还有任务在处理，会回复“还有 N 个任务在处理，等它们做完再重启”，等任务做完再重启，最多等 `upgrade_restart_wait_mins` 分钟（默认 120，设为 0 立即重启）。要马上重启，发 `/restart`。
 
