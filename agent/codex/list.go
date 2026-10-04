@@ -176,13 +176,24 @@ func parseCodexSessionFile(path, filterCwd string) *core.AgentSessionInfo {
 		return nil
 	}
 
+	info, err := parseCodexSession(f, filterCwd)
+	if err != nil {
+		slog.Warn("codex: failed to read session transcript", "path", path, "error", err)
+	}
+	if info != nil {
+		info.ModifiedAt = stat.ModTime()
+	}
+	return info
+}
+
+func parseCodexSession(r io.Reader, filterCwd string) (*core.AgentSessionInfo, error) {
 	var sessionID string
 	var sessionCwd string
 	var sessionSource json.RawMessage
 	var summary string
 	var msgCount int
 
-	readErr := forEachLine(f, func(line []byte) bool {
+	readErr := forEachLine(r, func(line []byte) bool {
 		var entry struct {
 			Type    string          `json:"type"`
 			Payload json.RawMessage `json:"payload"`
@@ -205,6 +216,12 @@ func parseCodexSessionFile(path, filterCwd string) *core.AgentSessionInfo {
 				sessionID = meta.ID
 				sessionCwd = meta.Cwd
 				sessionSource = meta.Source
+				// Metadata identifies excluded rollouts before their potentially
+				// huge transcript bodies. Reading them first makes the session
+				// menu scale with all projects in CODEX_HOME.
+				if sessionID != "" && ((filterCwd != "" && sessionCwd != "" && sessionCwd != filterCwd) || isSubagentSessionSource(sessionSource)) {
+					return false
+				}
 			}
 
 		case "response_item":
@@ -233,20 +250,16 @@ func parseCodexSessionFile(path, filterCwd string) *core.AgentSessionInfo {
 		}
 		return true
 	})
-	if readErr != nil {
-		slog.Warn("codex: failed to read session transcript", "path", path, "error", readErr)
-	}
-
 	// Filter by cwd
 	if filterCwd != "" && sessionCwd != "" && sessionCwd != filterCwd {
-		return nil
+		return nil, readErr
 	}
 
 	if sessionID == "" {
-		return nil
+		return nil, readErr
 	}
 	if isSubagentSessionSource(sessionSource) {
-		return nil
+		return nil, readErr
 	}
 
 	if len([]rune(summary)) > 60 {
@@ -257,8 +270,7 @@ func parseCodexSessionFile(path, filterCwd string) *core.AgentSessionInfo {
 		ID:           sessionID,
 		Summary:      summary,
 		MessageCount: msgCount,
-		ModifiedAt:   stat.ModTime(),
-	}
+	}, readErr
 }
 
 // isSubagentSessionSource reports whether Codex recorded the rollout as an
