@@ -1635,6 +1635,9 @@ func saveConfig(cfg *Config) error {
 		return fmt.Errorf("create temp config: %w", err)
 	}
 	tmpPath := tmp.Name()
+	// The file holds secrets: CreateTemp gives it mode 0600 on Unix; on
+	// Windows restrict its ACL before writing (rename keeps the ACL).
+	ProtectSecretFile(tmpPath)
 
 	var buf strings.Builder
 	if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
@@ -3336,6 +3339,9 @@ func writeRawConfig(content string) error {
 		return fmt.Errorf("create temp config: %w", err)
 	}
 	tmpPath := tmp.Name()
+	// The file holds secrets: CreateTemp gives it mode 0600 on Unix; on
+	// Windows restrict its ACL before writing (rename keeps the ACL).
+	ProtectSecretFile(tmpPath)
 	if _, err := tmp.WriteString(content); err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)
@@ -3376,6 +3382,9 @@ func FormatConfigFile(path string) error {
 		return fmt.Errorf("create temp file: %w", err)
 	}
 	tmpPath := tmp.Name()
+	// The file holds secrets: CreateTemp gives it mode 0600 on Unix; on
+	// Windows restrict its ACL before writing (rename keeps the ACL).
+	ProtectSecretFile(tmpPath)
 	if _, err := tmp.WriteString(formatted); err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)

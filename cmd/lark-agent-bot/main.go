@@ -1586,7 +1586,12 @@ type = "feishu"
 app_id = "your-feishu-app-id"
 app_secret = "your-feishu-app-secret"
 `
-	return os.WriteFile(path, []byte(tmpl), 0o644)
+	// The file gets the app secret and other credentials: owner only.
+	if err := os.WriteFile(path, []byte(tmpl), 0o600); err != nil {
+		return err
+	}
+	config.ProtectSecretFile(path)
+	return nil
 }
 
 func printUsage() {
