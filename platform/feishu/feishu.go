@@ -767,8 +767,9 @@ func (p *Platform) startWebhookMode() error {
 
 	p.mu.Lock()
 	p.server = &http.Server{
-		Addr:    ":" + p.port,
-		Handler: mux,
+		Addr:              ":" + p.port,
+		Handler:           mux,
+		ReadHeaderTimeout: webhookReadHeaderTimeout,
 	}
 
 	_, cancel := context.WithCancel(context.Background())
@@ -785,12 +786,73 @@ func (p *Platform) startWebhookMode() error {
 	return nil
 }
 
+const (
+	// webhookReadHeaderTimeout bounds how long a client may take to send the
+	// request headers of a webhook callback.
+	webhookReadHeaderTimeout = 10 * time.Second
+
+	// webhookBodyLimit caps a webhook callback body. Event and card callbacks
+	// are a few KiB; the body is read whole before its signature is checked.
+	webhookBodyLimit int64 = 1 << 20 // 1 MiB
+
+	// webhookMaxClockSkew is how far X-Lark-Request-Timestamp may be from now.
+	// The signature covers the timestamp, so an older request cannot be
+	// replayed with a fresh one.
+	webhookMaxClockSkew = 5 * time.Minute
+)
+
+// checkWebhookTimestamp rejects a signed callback whose request timestamp is
+// outside webhookMaxClockSkew. Requests without a signature or without a
+// timestamp header are left to the SDK (the URL verification challenge is not
+// signed).
+func checkWebhookTimestamp(header http.Header, now time.Time) error {
+	if header.Get(larkevent.EventSignature) == "" {
+		return nil
+	}
+	raw := strings.TrimSpace(header.Get(larkevent.EventRequestTimestamp))
+	if raw == "" {
+		return nil
+	}
+	ts, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid request timestamp %q", raw)
+	}
+	if ts > 1e12 { // milliseconds
+		ts /= 1000
+	}
+	skew := now.Sub(time.Unix(ts, 0))
+	if skew < 0 {
+		skew = -skew
+	}
+	if skew > webhookMaxClockSkew {
+		return fmt.Errorf("request timestamp %d is %s from now (max %s)", ts, skew.Round(time.Second), webhookMaxClockSkew)
+	}
+	return nil
+}
+
 // webhookHandler handles HTTP webhook requests from Lark international version
 func (p *Platform) webhookHandler(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	if r.ContentLength > webhookBodyLimit {
+		slog.Warn(p.tag()+": webhook body too large", "content_length", r.ContentLength, "limit", webhookBodyLimit)
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, webhookBodyLimit))
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			slog.Warn(p.tag()+": webhook body too large", "limit", webhookBodyLimit)
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		slog.Error(p.tag()+": read webhook body failed", "error", err)
 		http.Error(w, "read body failed", http.StatusBadRequest)
+		return
+	}
+
+	if err := checkWebhookTimestamp(r.Header, time.Now()); err != nil {
+		slog.Warn(p.tag()+": webhook request rejected", "reason", err, "remote", r.RemoteAddr)
+		http.Error(w, "stale or invalid request timestamp", http.StatusUnauthorized)
 		return
 	}
 
