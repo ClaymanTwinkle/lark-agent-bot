@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -180,7 +181,11 @@ func newBridgeServer(port int, token, path string, corsOrigins []string, insecur
 		return nil
 	}
 	if insecure && token == "" {
-		slog.Warn("bridge: running in INSECURE mode without authentication - only use for local development!")
+		slog.Warn("bridge: running in INSECURE mode without authentication; only local clients (127.0.0.1) are accepted - only use for local development!")
+		if bridgeOriginListHasWildcard(corsOrigins) {
+			slog.Warn("bridge: cors_origins \"*\" is ignored while the bridge has no token; list the allowed origins explicitly")
+			corsOrigins = withoutWildcardOrigin(corsOrigins)
+		}
 	}
 
 	return &BridgeServer{
@@ -219,8 +224,12 @@ func (bs *BridgeServer) Start() {
 	mux.HandleFunc("/bridge/sessions", bs.corsHTTP(bs.authHTTP(bs.handleSessions)))
 	mux.HandleFunc("/bridge/sessions/", bs.corsHTTP(bs.authHTTP(bs.handleSessionRoutes)))
 
-	addr := fmt.Sprintf(":%d", bs.port)
-	bs.server = &http.Server{Addr: addr, Handler: mux}
+	addr := bs.listenAddr()
+	bs.server = &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: serverReadHeaderTimeout,
+	}
 
 	go func() {
 		slog.Info("bridge: server started", "addr", addr, "path", bs.path)
@@ -228,6 +237,81 @@ func (bs *BridgeServer) Start() {
 			slog.Error("bridge: server error", "error", err)
 		}
 	}()
+}
+
+// tokenless reports whether the bridge runs without authentication
+// (insecure = true and no token). It then serves local clients only.
+func (bs *BridgeServer) tokenless() bool {
+	return bs.token == ""
+}
+
+// listenAddr returns the address the bridge listens on: every interface when
+// a token guards it, loopback only when it runs without one.
+func (bs *BridgeServer) listenAddr() string {
+	if bs.tokenless() {
+		return loopbackListenAddr(bs.port)
+	}
+	return allInterfacesListenAddr(bs.port)
+}
+
+// allowRequestSource checks where a WebSocket or REST request comes from.
+// A tokenless bridge accepts only requests from this machine addressed to a
+// loopback host name: its own port is bound to 127.0.0.1, but the WebSocket is
+// also mounted on the management port, which listens on every interface.
+func (bs *BridgeServer) allowRequestSource(r *http.Request) bool {
+	if !bs.tokenless() {
+		return true
+	}
+	if isLocalRequest(r) {
+		return true
+	}
+	slog.Warn("bridge: rejected non-local request to tokenless bridge",
+		"remote", r.RemoteAddr, "host", r.Host, "path", r.URL.Path)
+	return false
+}
+
+// originAllowed reports whether a browser origin may use the bridge. With
+// cors_origins set, the origin must be listed (or the list holds "*");
+// without it, the origin must match the request host.
+func (bs *BridgeServer) originAllowed(origin, host string) bool {
+	if len(bs.corsOrigins) > 0 {
+		for _, o := range bs.corsOrigins {
+			if o == "*" || o == origin {
+				return true
+			}
+		}
+		return false
+	}
+	if idx := strings.Index(origin, "://"); idx > 0 {
+		if origin[idx+3:] == host {
+			return true
+		}
+	}
+	return false
+}
+
+func bridgeOriginListHasWildcard(origins []string) bool {
+	for _, o := range origins {
+		if o == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+// withoutWildcardOrigin drops "*" from cors_origins. A bridge without a token
+// cannot let every web page the local user opens drive the agent.
+func withoutWildcardOrigin(origins []string) []string {
+	if !bridgeOriginListHasWildcard(origins) {
+		return origins
+	}
+	out := make([]string, 0, len(origins))
+	for _, o := range origins {
+		if o != "*" {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 // corsHTTP wraps a handler with CORS headers. OPTIONS preflight is handled directly.
@@ -690,49 +774,41 @@ func (bp *BridgePlatform) SetCardNavigationHandler(h CardNavigationHandler) {
 // WebSocket connection handling (on BridgeServer)
 // ---------------------------------------------------------------------------
 
-// checkOrigin validates the WebSocket origin against CORS origins.
-// In insecure mode, it allows all origins. Otherwise, it checks against CORS origins or same host.
+// checkOrigin validates a browser Origin against cors_origins, or the request
+// host when cors_origins is empty. Requests without an Origin header come from
+// non-browser clients and pass; authentication already ran. The check applies
+// in insecure mode too: without a token it is what keeps a web page the local
+// user opens from driving the bridge.
 func (bs *BridgeServer) checkOrigin(r *http.Request) bool {
-	// In insecure mode, allow all origins (for local development)
-	if bs.insecure {
-		return true
-	}
-
 	origin := r.Header.Get("Origin")
 	if origin == "" {
-		// No origin header (e.g., non-browser client) - allow only if authenticated
-		// The authentication check happens before this, so we allow
 		return true
 	}
-
-	// If CORS origins are configured, check against them
-	if len(bs.corsOrigins) > 0 {
-		for _, o := range bs.corsOrigins {
-			if o == "*" || o == origin {
-				return true
-			}
-		}
-		slog.Warn("bridge: websocket origin rejected", "origin", origin, "allowed", bs.corsOrigins)
-		return false
-	}
-
-	// No CORS configured - require same-host (origin must match host)
 	host := r.Host
 	if host == "" {
 		host = r.URL.Host
 	}
-	// Parse origin to get host
-	if idx := strings.Index(origin, "://"); idx > 0 {
-		originHost := origin[idx+3:]
-		if originHost == host {
-			return true
-		}
+	if bs.originAllowed(origin, host) {
+		return true
 	}
-	slog.Warn("bridge: websocket origin mismatch", "origin", origin, "host", host)
+	slog.Warn("bridge: origin rejected", "origin", origin, "host", host, "allowed", bs.corsOrigins)
 	return false
 }
 
+// Read limits for adapter WebSocket messages. The register message is small;
+// a later message can carry base64 images, files or audio, so it may hold one
+// attachment of DefaultMaxAttachmentSize after base64 expansion plus envelope
+// slack, the same allowance the local /send API gives.
+const (
+	bridgeRegisterReadLimit int64 = 1 << 20 // 1 MiB
+	bridgeMessageReadLimit        = DefaultMaxAttachmentSize*4/3 + sendBodyEnvelope
+)
+
 func (bs *BridgeServer) handleWS(w http.ResponseWriter, r *http.Request) {
+	if !bs.allowRequestSource(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	if !bs.authenticate(r) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -765,6 +841,7 @@ func (bs *BridgeServer) handleConnection(conn *websocket.Conn) {
 	})
 
 	// First message must be "register"
+	conn.SetReadLimit(bridgeRegisterReadLimit)
 	_, raw, err := conn.ReadMessage()
 	if err != nil {
 		slog.Error("bridge: read register failed", "error", err)
@@ -822,6 +899,7 @@ func (bs *BridgeServer) handleConnection(conn *websocket.Conn) {
 	}
 
 	slog.Info("bridge: adapter registered", "platform", reg.Platform, "capabilities", reg.Capabilities)
+	conn.SetReadLimit(bridgeMessageReadLimit)
 
 	defer func() {
 		bs.mu.Lock()
@@ -839,7 +917,10 @@ func (bs *BridgeServer) handleConnection(conn *websocket.Conn) {
 		}
 		_, raw, err := conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+			if errors.Is(err, websocket.ErrReadLimit) {
+				slog.Warn("bridge: adapter message exceeds the size limit; closing connection",
+					"platform", reg.Platform, "limit_bytes", bridgeMessageReadLimit)
+			} else if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
 				slog.Debug("bridge: read error", "platform", reg.Platform, "error", err)
 			}
 			return
@@ -1070,15 +1151,44 @@ func (a *bridgeAdapter) handlePreviewAck(raw json.RawMessage) {
 // Session management REST API (on BridgeServer)
 // ---------------------------------------------------------------------------
 
-// authHTTP wraps an HTTP handler with token authentication.
+// authHTTP guards the REST endpoints: token, and a body size cap. Without a
+// token, only local requests from an allowed browser origin (or from a
+// non-browser client) get through: there is no secret to stop a web page the
+// local user opens from calling the endpoints.
 func (bs *BridgeServer) authHTTP(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !bs.allowRequestSource(r) {
+			bridgeError(w, http.StatusForbidden, "forbidden: bridge has no token and only accepts local requests")
+			return
+		}
+		if bs.tokenless() && !bs.checkOrigin(r) {
+			bridgeError(w, http.StatusForbidden, "forbidden: origin not allowed")
+			return
+		}
 		if !bs.authenticate(r) {
 			bridgeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
+		if capRequestBody(w, r, jsonBodyLimit) {
+			bridgeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
 		handler(w, r)
 	}
+}
+
+// decodeBridgeJSON decodes a REST request body, answering 413 or 400 itself
+// when it fails.
+func decodeBridgeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		if isBodyTooLarge(err) {
+			bridgeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return false
+		}
+		bridgeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return false
+	}
+	return true
 }
 
 func bridgeJSON(w http.ResponseWriter, status int, data any) {
@@ -1141,8 +1251,7 @@ func (bs *BridgeServer) handleSessions(w http.ResponseWriter, r *http.Request) {
 			Name       string `json:"name"`
 			Project    string `json:"project,omitempty"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			bridgeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		if !decodeBridgeJSON(w, r, &body) {
 			return
 		}
 		if body.SessionKey == "" {
@@ -1247,8 +1356,7 @@ func (bs *BridgeServer) handleSessionSwitch(w http.ResponseWriter, r *http.Reque
 		Target     string `json:"target"`
 		Project    string `json:"project,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		bridgeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+	if !decodeBridgeJSON(w, r, &body) {
 		return
 	}
 	if body.SessionKey == "" || body.Target == "" {

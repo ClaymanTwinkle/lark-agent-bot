@@ -150,7 +150,10 @@ GET /api/v1/status?token=mgmt-secret
 | 401    | 未授权（缺少/无效令牌）                   |
 | 404    | 资源未找到（项目、会话等）                |
 | 405    | 方法不允许                                |
+| 413    | 请求体超过 1 MiB                          |
 | 500    | 服务器内部错误                            |
+
+请求体上限为 1 MiB；没有端点接收附件。
 
 ---
 
@@ -1061,6 +1064,7 @@ Web 管理后台还用到下面这些端点。认证方式和响应信封与上�
 | 404  | `"project not found: xyz"`                    | 未知项目/会话/定时任务       |
 | 404  | `"session not found"`                         | 未知会话 ID                   |
 | 405  | `"method not allowed"`                       | HTTP 方法错误                 |
+| 413  | `"request body too large"`                   | 请求体超过 1 MiB              |
 | 500  | `"internal error"`                           | 服务器意外错误                |
 
 ### 6.3 校验错误
@@ -1120,6 +1124,7 @@ cors_origins = ["http://localhost:3000", "https://dashboard.example.com"]
 
 | 版本       | 日期       | 变更                    |
 |------------|------------|-------------------------|
+| —          | 2026-10-07 | 请求体上限 1 MiB（413）；不设 token 的 bridge 在管理端口上只接受本机的 WebSocket 连接 |
 | —          | 2026-10-03 | 标记为已实现；删除不存在的 `GET /api/v1/logs`；按实现改写 `GET /api/v1/config` 和 CORS；补充其他端点列表 |
 | 1.0-draft  | 2026-03-10 | 初始规范                |
 

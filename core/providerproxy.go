@@ -66,9 +66,10 @@ func NewProviderProxy(targetURL, thinkingOverride string) (*ProviderProxy, strin
 		thinkingOverride: thinkingOverride,
 		listener:         listener,
 		server: &http.Server{
-			Handler:      mux,
-			ReadTimeout:  10 * time.Minute,
-			WriteTimeout: 10 * time.Minute,
+			Handler:           mux,
+			ReadHeaderTimeout: serverReadHeaderTimeout,
+			ReadTimeout:       10 * time.Minute,
+			WriteTimeout:      10 * time.Minute,
 		},
 	}
 

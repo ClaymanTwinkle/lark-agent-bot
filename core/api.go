@@ -90,28 +90,61 @@ func NewAPIServer(dataDir string) (*APIServer, error) {
 		engines:            make(map[string]*Engine),
 		maxAttachmentBytes: DefaultMaxAttachmentSize,
 	}
-	s.mux.HandleFunc("/send", s.handleSend)
-	s.mux.HandleFunc("/restart", s.handleRestart)
-	s.mux.HandleFunc("/sessions", s.handleSessions)
-	s.mux.HandleFunc("/cron/add", s.handleCronAdd)
-	s.mux.HandleFunc("/cron/list", s.handleCronList)
-	s.mux.HandleFunc("/cron/info", s.handleCronInfo)
-	s.mux.HandleFunc("/cron/edit", s.handleCronEdit)
-	s.mux.HandleFunc("/cron/del", s.handleCronDel)
-	s.mux.HandleFunc("/timer/add", s.handleTimerAdd)
-	s.mux.HandleFunc("/timer/list", s.handleTimerList)
-	s.mux.HandleFunc("/timer/info", s.handleTimerInfo)
-	s.mux.HandleFunc("/timer/del", s.handleTimerDel)
-	s.mux.HandleFunc("/cron/exec", s.handleCronExec)
-	s.mux.HandleFunc("/cron/run", s.handleCronExec)
-	s.mux.HandleFunc("/relay/send", s.handleRelaySend)
-	s.mux.HandleFunc("/relay/bind", s.handleRelayBind)
-	s.mux.HandleFunc("/relay/binding", s.handleRelayBinding)
-	s.mux.HandleFunc("/relay/targets", s.handleRelayTargets)
-	s.mux.HandleFunc("/relay/handle", s.handleRelayHandle)
-	s.mux.HandleFunc("/relay/join", s.handleRelayJoin)
+	s.registerRoutes()
 
 	return s, nil
+}
+
+// registerRoutes adds the API endpoints to s.mux. /send and /restart size
+// their own body limits; the rest take small JSON bodies.
+func (s *APIServer) registerRoutes() {
+	s.mux.HandleFunc("/send", s.handleSend)
+	s.mux.HandleFunc("/restart", s.handleRestart)
+	small := map[string]http.HandlerFunc{
+		"/sessions":      s.handleSessions,
+		"/cron/add":      s.handleCronAdd,
+		"/cron/list":     s.handleCronList,
+		"/cron/info":     s.handleCronInfo,
+		"/cron/edit":     s.handleCronEdit,
+		"/cron/del":      s.handleCronDel,
+		"/timer/add":     s.handleTimerAdd,
+		"/timer/list":    s.handleTimerList,
+		"/timer/info":    s.handleTimerInfo,
+		"/timer/del":     s.handleTimerDel,
+		"/cron/exec":     s.handleCronExec,
+		"/cron/run":      s.handleCronExec,
+		"/relay/send":    s.handleRelaySend,
+		"/relay/bind":    s.handleRelayBind,
+		"/relay/binding": s.handleRelayBinding,
+		"/relay/targets": s.handleRelayTargets,
+		"/relay/handle":  s.handleRelayHandle,
+		"/relay/join":    s.handleRelayJoin,
+	}
+	for path, h := range small {
+		s.mux.HandleFunc(path, apiLimitBody(h))
+	}
+}
+
+// apiLimitBody caps the body of a local API request that carries a small JSON
+// body.
+func apiLimitBody(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if capRequestBody(w, r, jsonBodyLimit) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		h(w, r)
+	}
+}
+
+// apiDecodeError answers a request whose JSON body could not be decoded: 413
+// when it ran past the body limit, 400 otherwise.
+func apiDecodeError(w http.ResponseWriter, err error) {
+	if isBodyTooLarge(err) {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
 }
 
 func (s *APIServer) SocketPath() string {
@@ -177,7 +210,7 @@ func (s *APIServer) sendBodyLimit() int64 {
 }
 
 func (s *APIServer) Start() {
-	s.server = &http.Server{Handler: s.mux}
+	s.server = &http.Server{Handler: s.mux, ReadHeaderTimeout: serverReadHeaderTimeout}
 	go func() {
 		if err := s.server.Serve(s.listener); err != nil && err != http.ErrServerClosed {
 			slog.Error("api server error", "error", err)
@@ -219,7 +252,7 @@ func (s *APIServer) handleSend(w http.ResponseWriter, r *http.Request) {
 	// limit in step with the configured attachment limit.
 	var req SendRequest
 	if err := json.NewDecoder(io.LimitReader(r.Body, s.sendBodyLimit())).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		apiDecodeError(w, err)
 		return
 	}
 	if req.Message == "" && strings.TrimSpace(req.TTSText) == "" && len(req.Images) == 0 && len(req.Files) == 0 && len(req.Audios) == 0 && len(req.Videos) == 0 {
@@ -308,7 +341,7 @@ func (s *APIServer) handleRestart(w http.ResponseWriter, r *http.Request) {
 	}
 	var req RestartAPIRequest
 	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		apiDecodeError(w, err)
 		return
 	}
 
@@ -402,7 +435,7 @@ func (s *APIServer) handleCronAdd(w http.ResponseWriter, r *http.Request) {
 
 	var req CronAddRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		apiDecodeError(w, err)
 		return
 	}
 	if req.CronExpr == "" {
@@ -509,7 +542,7 @@ func (s *APIServer) handleCronDel(w http.ResponseWriter, r *http.Request) {
 		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		apiDecodeError(w, err)
 		return
 	}
 	if req.ID == "" {
@@ -538,7 +571,7 @@ func (s *APIServer) handleCronExec(w http.ResponseWriter, r *http.Request) {
 		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		apiDecodeError(w, err)
 		return
 	}
 	if req.ID == "" {
@@ -602,7 +635,7 @@ func (s *APIServer) handleCronEdit(w http.ResponseWriter, r *http.Request) {
 		Value any    `json:"value"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		apiDecodeError(w, err)
 		return
 	}
 	if req.ID == "" {
@@ -658,7 +691,7 @@ func (s *APIServer) handleTimerAdd(w http.ResponseWriter, r *http.Request) {
 
 	var req TimerAddRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		apiDecodeError(w, err)
 		return
 	}
 	if req.Delay == "" {
@@ -801,7 +834,7 @@ func (s *APIServer) handleTimerDel(w http.ResponseWriter, r *http.Request) {
 		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		apiDecodeError(w, err)
 		return
 	}
 	if req.ID == "" {
@@ -831,7 +864,7 @@ func (s *APIServer) handleRelaySend(w http.ResponseWriter, r *http.Request) {
 
 	var req RelayRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		apiDecodeError(w, err)
 		return
 	}
 	if req.To == "" || req.Message == "" || req.SessionKey == "" {
@@ -864,7 +897,7 @@ func (s *APIServer) handleRelayBind(w http.ResponseWriter, r *http.Request) {
 		Bots     map[string]string `json:"bots"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		apiDecodeError(w, err)
 		return
 	}
 	if req.ChatID == "" || len(req.Bots) < 2 {
@@ -932,7 +965,7 @@ func (s *APIServer) handleRelayHandle(w http.ResponseWriter, r *http.Request) {
 
 	var req RelayPeerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		apiDecodeError(w, err)
 		return
 	}
 	if req.To == "" || req.Message == "" || req.SessionKey == "" {
@@ -962,7 +995,7 @@ func (s *APIServer) handleRelayJoin(w http.ResponseWriter, r *http.Request) {
 
 	var req RelayJoinRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		apiDecodeError(w, err)
 		return
 	}
 	if req.ChatID == "" || len(req.Projects) == 0 {

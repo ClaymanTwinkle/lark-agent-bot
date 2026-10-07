@@ -60,12 +60,31 @@ func (ws *WebhookServer) RegisterEngine(name string, e *Engine) {
 	ws.engines[name] = e
 }
 
+// listenAddr returns the address the webhook listens on. Requests can run
+// shell commands, so without a token the server is reachable from this
+// machine only.
+func (ws *WebhookServer) listenAddr() string {
+	if ws.token == "" {
+		return loopbackListenAddr(ws.port)
+	}
+	return allInterfacesListenAddr(ws.port)
+}
+
 func (ws *WebhookServer) Start() {
 	mux := http.NewServeMux()
 	mux.HandleFunc(ws.path, ws.handleHook)
 
-	addr := fmt.Sprintf(":%d", ws.port)
-	ws.server = &http.Server{Addr: addr, Handler: mux}
+	addr := ws.listenAddr()
+	if ws.token == "" {
+		slog.Error("webhook: no token set; the webhook is unauthenticated and only accepts requests from localhost",
+			"addr", addr,
+			"help", "set webhook.token in config to accept authenticated requests from other hosts")
+	}
+	ws.server = &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: serverReadHeaderTimeout,
+	}
 
 	go func() {
 		slog.Info("webhook: server started", "addr", addr, "path", ws.path)
@@ -89,13 +108,36 @@ func (ws *WebhookServer) handleHook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Without a token the listener is bound to loopback; also refuse requests
+	// addressed to another host name, which is how a browser page reaches a
+	// loopback listener through DNS rebinding.
+	if ws.token == "" && !isLocalRequest(r) {
+		slog.Warn("webhook: rejected non-local request to tokenless webhook",
+			"remote", r.RemoteAddr, "host", r.Host)
+		http.Error(w, "forbidden: webhook has no token and only accepts local requests", http.StatusForbidden)
+		return
+	}
+
 	if !ws.authenticate(r) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
+	if !isJSONContentType(r) {
+		http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+		return
+	}
+	if capRequestBody(w, r, jsonBodyLimit) {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+
 	var req WebhookRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if isBodyTooLarge(err) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
 		return
 	}
