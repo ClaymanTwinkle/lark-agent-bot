@@ -75,9 +75,22 @@ func assertOwnerOnly(t *testing.T, path string) {
 			t.Errorf("%s: DACL grants a broad group (%s): %s", filepath.Base(path), sid, got)
 		}
 	}
-	if !strings.Contains(got, currentUserSID(t)) {
-		t.Errorf("%s: DACL lacks the current user: %s", filepath.Base(path), got)
+	if want := currentUserACE(t); !strings.Contains(got, want) {
+		t.Errorf("%s: DACL lacks the current user's entry %s: %s", filepath.Base(path), want, got)
 	}
+}
+
+// currentUserACE returns the full-control entry for the current user as SDDL
+// writes it. SDDL abbreviates well-known accounts, so the raw SID string is
+// not always what appears: the built-in Administrator the CI runner uses is
+// written as "LA".
+func currentUserACE(t *testing.T) string {
+	t.Helper()
+	sd, err := windows.SecurityDescriptorFromString("D:(A;;FA;;;" + currentUserSID(t) + ")")
+	if err != nil {
+		t.Fatalf("SecurityDescriptorFromString: %v", err)
+	}
+	return strings.TrimPrefix(sd.String(), "D:")
 }
 
 func TestSaveConfigRestrictsACLOnWindows(t *testing.T) {
