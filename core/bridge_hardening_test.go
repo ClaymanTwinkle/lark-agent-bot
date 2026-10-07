@@ -133,7 +133,7 @@ func TestBridge_WSRejectsCrossSiteOriginWithoutToken(t *testing.T) {
 	headers.Set("Origin", "http://evil.example")
 	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, headers)
 	if err == nil {
-		conn.Close()
+		_ = conn.Close()
 		t.Fatal("expected handshake to fail for a cross-site origin")
 	}
 	if resp == nil || resp.StatusCode != http.StatusForbidden {
@@ -155,7 +155,7 @@ func TestBridge_TokenlessRESTRejectsCrossSiteOrigin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", resp.StatusCode)
 	}
@@ -172,7 +172,7 @@ func TestBridge_RESTBodyTooLarge(t *testing.T) {
 		if err != nil {
 			t.Fatalf("POST %s: %v", path, err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusRequestEntityTooLarge {
 			t.Errorf("POST %s: expected 413, got %d", path, resp.StatusCode)
 		}

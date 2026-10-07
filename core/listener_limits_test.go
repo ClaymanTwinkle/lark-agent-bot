@@ -23,7 +23,7 @@ func TestMgmt_RequestBodyTooLarge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PATCH: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("expected 413, got %d", resp.StatusCode)
 	}
