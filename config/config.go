@@ -175,7 +175,8 @@ type WebhookConfig struct {
 	Port    int   `toml:"port,omitempty"` // listen port; default 9111
 	// Token is the shared secret for authentication. With a token the webhook
 	// listens on every interface; without one it is unauthenticated, listens
-	// on 127.0.0.1 only and accepts local requests only.
+	// on 127.0.0.1 only and accepts only local requests sent to a loopback
+	// host name (localhost, 127.0.0.1, ::1).
 	Token string `toml:"token,omitempty"`
 	Path  string `toml:"path,omitempty"` // URL path prefix; default "/hook"
 }

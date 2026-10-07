@@ -327,9 +327,11 @@ level = "info" # debug, info, warn, error
 # path = "/hook"               # URL path (default: "/hook") / URL 路径（默认 "/hook"）
 #
 # Without a token the webhook is unauthenticated, so it listens on 127.0.0.1
-# only and accepts requests from this machine only. Set a token to accept
+# only and accepts only requests from this machine sent to localhost,
+# 127.0.0.1 or [::1] (not to the machine's host name). Set a token to accept
 # requests from other hosts (CI, other machines, containers).
-# 不设 token 时 webhook 不做认证，因此只监听 127.0.0.1、只接受本机请求。
+# 不设 token 时 webhook 不做认证，因此只监听 127.0.0.1，只接受本机发往 localhost、
+# 127.0.0.1 或 [::1] 的请求（发往本机主机名的请求会被拒绝）。
 # 需要接受其他主机（CI、其他机器、容器）的请求时请设置 token。
 #
 # Requests must be POST with "Content-Type: application/json" (other content
