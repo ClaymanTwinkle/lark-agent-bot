@@ -168,22 +168,33 @@ type QueueConfig struct {
 	MaxDepth *int `toml:"max_depth"` // max queued messages per session; default 5
 }
 
-// WebhookConfig controls the external HTTP webhook endpoint.
+// WebhookConfig controls the external HTTP webhook endpoint. Requests must
+// send Content-Type: application/json.
 type WebhookConfig struct {
-	Enabled *bool  `toml:"enabled"`         // default false
-	Port    int    `toml:"port,omitempty"`  // listen port; default 9111
-	Token   string `toml:"token,omitempty"` // shared secret for authentication; empty = no auth
-	Path    string `toml:"path,omitempty"`  // URL path prefix; default "/hook"
+	Enabled *bool `toml:"enabled"`        // default false
+	Port    int   `toml:"port,omitempty"` // listen port; default 9111
+	// Token is the shared secret for authentication. With a token the webhook
+	// listens on every interface; without one it is unauthenticated, listens
+	// on 127.0.0.1 only and accepts only local requests sent to a loopback
+	// host name (localhost, 127.0.0.1, ::1).
+	Token string `toml:"token,omitempty"`
+	Path  string `toml:"path,omitempty"` // URL path prefix; default "/hook"
 }
 
 // BridgeConfig controls the WebSocket bridge for external platform adapters.
 type BridgeConfig struct {
-	Enabled     *bool    `toml:"enabled"`                // default false
-	Port        int      `toml:"port,omitempty"`         // listen port; default 9810
-	Token       string   `toml:"token,omitempty"`        // shared secret for authentication; required unless insecure=true
-	Path        string   `toml:"path,omitempty"`         // URL path; default "/bridge/ws"
-	CORSOrigins []string `toml:"cors_origins,omitempty"` // allowed CORS origins; empty = no CORS
-	Insecure    *bool    `toml:"insecure,omitempty"`     // allow running without token (local dev only); default false
+	Enabled *bool  `toml:"enabled"`         // default false
+	Port    int    `toml:"port,omitempty"`  // listen port; default 9810
+	Token   string `toml:"token,omitempty"` // shared secret for authentication; required unless insecure=true
+	Path    string `toml:"path,omitempty"`  // URL path; default "/bridge/ws"
+	// CORSOrigins lists the browser origins allowed to call the bridge; empty
+	// = same host only. "*" allows any origin, and is ignored without a token.
+	CORSOrigins []string `toml:"cors_origins,omitempty"`
+	// Insecure allows running without a token (local development only). The
+	// tokenless bridge listens on 127.0.0.1 and accepts local requests only,
+	// also on the management port; browser Origin checks still apply.
+	// Default false.
+	Insecure *bool `toml:"insecure,omitempty"`
 }
 
 // HookConfig is a single event hook rule.
@@ -1625,6 +1636,9 @@ func saveConfig(cfg *Config) error {
 		return fmt.Errorf("create temp config: %w", err)
 	}
 	tmpPath := tmp.Name()
+	// The file holds secrets: CreateTemp gives it mode 0600 on Unix; on
+	// Windows restrict its ACL before writing (rename keeps the ACL).
+	ProtectSecretFile(tmpPath)
 
 	var buf strings.Builder
 	if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
@@ -3326,6 +3340,9 @@ func writeRawConfig(content string) error {
 		return fmt.Errorf("create temp config: %w", err)
 	}
 	tmpPath := tmp.Name()
+	// The file holds secrets: CreateTemp gives it mode 0600 on Unix; on
+	// Windows restrict its ACL before writing (rename keeps the ACL).
+	ProtectSecretFile(tmpPath)
 	if _, err := tmp.WriteString(content); err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)
@@ -3366,6 +3383,9 @@ func FormatConfigFile(path string) error {
 		return fmt.Errorf("create temp file: %w", err)
 	}
 	tmpPath := tmp.Name()
+	// The file holds secrets: CreateTemp gives it mode 0600 on Unix; on
+	// Windows restrict its ACL before writing (rename keeps the ACL).
+	ProtectSecretFile(tmpPath)
 	if _, err := tmp.WriteString(formatted); err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)

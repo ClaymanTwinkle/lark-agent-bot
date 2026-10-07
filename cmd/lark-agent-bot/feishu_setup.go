@@ -415,7 +415,12 @@ func ensureSetupConfig() error {
 	if err != nil {
 		return fmt.Errorf("create setup config: %w", err)
 	}
-	return file.Close()
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("create setup config: %w", err)
+	}
+	// Setup writes the app secret here; 0600 does nothing on Windows.
+	config.ProtectSecretFile(config.ConfigPath)
+	return nil
 }
 
 func checkConfiguredSetup(project string, index int, template *setupAddons) error {

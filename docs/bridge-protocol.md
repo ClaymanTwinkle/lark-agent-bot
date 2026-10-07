@@ -71,6 +71,34 @@ The adapter must authenticate on connection using one of:
 
 Unauthenticated connections are rejected with HTTP 401.
 
+When the Management API (web admin) is enabled too, the WebSocket endpoint is also served on the management port at the same path, with the same token.
+
+### Browser Origins
+
+A WebSocket handshake that carries an `Origin` header (every browser sends one) must come from an allowed origin, or it is rejected with HTTP 403:
+
+- `cors_origins` set: the origin must be listed, or the list holds `"*"`.
+- `cors_origins` empty: the origin must match the request host (for example a page served from the same host and port).
+
+Clients that send no `Origin` header (adapters written as programs) are not affected.
+
+### Running Without a Token (`insecure`)
+
+`insecure = true` with no `token` turns authentication off. It is meant for local development only, and the bridge then:
+
+- listens on `127.0.0.1` instead of every interface;
+- accepts WebSocket and REST requests only from this machine, addressed to a loopback host name (`localhost`, `127.0.0.1`, `::1`); this also holds on the management port;
+- still checks browser origins (WebSocket and REST), and ignores `"*"` in `cors_origins`, so any web page the local user opens cannot drive the bridge. List a browser dev server explicitly, e.g. `cors_origins = ["http://localhost:9821"]`.
+
+With a token set, `insecure` changes nothing.
+
+### Size Limits
+
+- The `register` message may be at most 1 MiB.
+- Any later message may be at most 74⅔ MiB: one 50 MiB attachment after base64 expansion, plus 8 MiB for the rest of the message. Send larger files some other way (for example a link).
+- A message over the limit closes the connection (close code 1009, message too big).
+- REST request bodies may be at most 1 MiB (HTTP 413 otherwise).
+
 ### Connection Lifecycle
 
 ```
@@ -605,6 +633,8 @@ The same token used for WebSocket connections applies to REST endpoints:
 |--------|---------|
 | Header | `Authorization: Bearer your-secret` |
 | Query param | `?token=your-secret` |
+
+Request bodies are limited to 1 MiB (HTTP 413). Without a token, the rules in [Running Without a Token](#running-without-a-token-insecure) apply: local requests only, and a request with an `Origin` header must come from an allowed origin (HTTP 403 otherwise).
 
 ### Response Format
 

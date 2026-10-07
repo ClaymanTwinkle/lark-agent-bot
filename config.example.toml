@@ -323,8 +323,21 @@ level = "info" # debug, info, warn, error
 # [webhook]
 # enabled = true
 # port = 9111                  # Listen port (default: 9111) / 监听端口（默认 9111）
-# token = "your-secret-token"  # Shared secret for auth; empty = no auth / 认证密钥；为空则不验证
+# token = "your-secret-token"  # Shared secret for auth (recommended) / 认证密钥（建议设置）
 # path = "/hook"               # URL path (default: "/hook") / URL 路径（默认 "/hook"）
+#
+# Without a token the webhook is unauthenticated, so it listens on 127.0.0.1
+# only and accepts only requests from this machine sent to localhost,
+# 127.0.0.1 or [::1] (not to the machine's host name). Set a token to accept
+# requests from other hosts (CI, other machines, containers).
+# 不设 token 时 webhook 不做认证，因此只监听 127.0.0.1，只接受本机发往 localhost、
+# 127.0.0.1 或 [::1] 的请求（发往本机主机名的请求会被拒绝）。
+# 需要接受其他主机（CI、其他机器、容器）的请求时请设置 token。
+#
+# Requests must be POST with "Content-Type: application/json" (other content
+# types get 415) and a body of at most 1 MiB (larger gets 413).
+# 请求必须是 POST，且带 "Content-Type: application/json"（其他类型返回 415），
+# 请求体不超过 1 MiB（超过返回 413）。
 #
 # Usage / 使用方式:
 #
@@ -362,6 +375,24 @@ level = "info" # debug, info, warn, error
 # port = 9810                         # WebSocket listen port (default: 9810) / 监听端口
 # token = "your-bridge-secret"        # Auth token (required) / 认证密钥（必填）
 # path = "/bridge/ws"                 # URL path (default: "/bridge/ws") / URL 路径
+# cors_origins = ["http://localhost:3000"]  # Browser origins allowed; empty = same host only
+#                                     # 允许的浏览器来源；为空则只允许同一主机
+# insecure = false                    # Allow running without a token (local development only)
+#                                     # 允许不设 token 运行（仅限本地开发）
+#
+# Browser connections (WebSocket and REST) must come from an origin listed in
+# cors_origins, or from the same host when it is empty. "*" allows any origin.
+# 浏览器连接（WebSocket 和 REST）的 Origin 必须在 cors_origins 中；为空时必须与
+# 请求的主机相同。"*" 允许任何来源。
+#
+# With insecure = true and no token, the bridge listens on 127.0.0.1 only and
+# accepts requests from this machine only (also on the management port, where
+# the web admin reaches it). The Origin check still applies and "*" in
+# cors_origins is ignored, so list a browser dev server explicitly, for example
+# "http://localhost:9821".
+# 当 insecure = true 且不设 token 时：bridge 只监听 127.0.0.1，只接受本机请求（在管理端口上，
+# 即 Web 管理后台连接它的地方，同样如此）。Origin 检查仍然生效，cors_origins 中的 "*" 会被忽略，
+# 因此浏览器开发服务器需要显式列出，例如 "http://localhost:9821"。
 
 # =============================================================================
 # Management API (External Management Tools)
@@ -377,6 +408,9 @@ level = "info" # debug, info, warn, error
 # port = 9820                           # HTTP listen port (default: 9820) / 监听端口
 # token = "your-mgmt-secret"            # Auth token (required) / 认证密钥（必填）
 # cors_origins = ["http://localhost:3000"]  # Allowed CORS origins / 允许的 CORS 来源
+#
+# Request bodies are limited to 1 MiB (larger gets 413).
+# 请求体不超过 1 MiB（超过返回 413）。
 
 # =============================================================================
 # Hooks (Event Triggers / 事件钩子)

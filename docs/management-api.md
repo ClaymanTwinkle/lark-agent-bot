@@ -150,7 +150,10 @@ If the token is missing or invalid:
 | 401  | Unauthorized (missing/invalid token)        |
 | 404  | Resource not found (project, session, etc.) |
 | 405  | Method not allowed                          |
+| 413  | Request body larger than 1 MiB               |
 | 500  | Internal server error                        |
+
+Request bodies are limited to 1 MiB; no endpoint takes attachments.
 
 ---
 
@@ -1089,6 +1092,7 @@ All errors use the same envelope:
 | 404  | `"project not found: xyz"`                      | Unknown project/session/cron   |
 | 404  | `"session not found"`                           | Unknown session ID             |
 | 405  | `"method not allowed"`                          | Wrong HTTP method              |
+| 413  | `"request body too large"`                      | Body over 1 MiB                |
 | 500  | `"internal error"`                              | Unexpected server error        |
 
 ### 6.3 Validation Errors
@@ -1148,6 +1152,7 @@ cors_origins = ["http://localhost:3000", "https://dashboard.example.com"]
 
 | Version   | Date       | Changes                    |
 |-----------|------------|----------------------------|
+| 1.2       | 2026-10-07 | Request bodies limited to 1 MiB (413); a bridge running without a token accepts only local WebSocket connections on the management port |
 | 1.1       | 2026-10-03 | Marked as implemented; removed the nonexistent `GET /api/v1/logs`; `GET /api/v1/config` and CORS described as implemented; listed the other endpoints |
 | 1.1-draft | 2026-03-24 | Enrich session list/detail with `live`, `last_message`, `agent_type`, `user_name`, `chat_name`, `active_keys` fields |
 | 1.0-draft | 2026-03-10 | Initial specification      |

@@ -71,6 +71,34 @@ token = "your-secret"     # 认证密钥，必填
 
 未认证的连接将被拒绝并返回 HTTP 401。
 
+同时启用管理 API（Web 管理后台）时，管理端口上的同一路径也提供这个 WebSocket 端点，使用同一个 token。
+
+### 浏览器来源（Origin）
+
+带 `Origin` 请求头的 WebSocket 握手（浏览器都会带）必须来自允许的来源，否则返回 HTTP 403：
+
+- 设置了 `cors_origins`：来源必须在列表中，或列表包含 `"*"`。
+- `cors_origins` 为空：来源必须与请求的主机相同（例如同一主机和端口提供的页面）。
+
+不带 `Origin` 请求头的客户端（以程序形式编写的适配器）不受影响。
+
+### 不设 token 运行（`insecure`）
+
+`insecure = true` 且不设 `token` 时不做认证，仅用于本地开发。此时 bridge：
+
+- 只监听 `127.0.0.1`，不再监听所有网卡；
+- 只接受来自本机、且目标主机名为回环地址（`localhost`、`127.0.0.1`、`::1`）的 WebSocket 和 REST 请求；在管理端口上同样如此；
+- 仍然检查浏览器来源（WebSocket 和 REST），并忽略 `cors_origins` 中的 `"*"`，这样本机用户打开的任意网页都无法操作 bridge。浏览器开发服务器需要显式列出，例如 `cors_origins = ["http://localhost:9821"]`。
+
+设置了 token 时，`insecure` 不起作用。
+
+### 大小限制
+
+- `register` 消息最大 1 MiB。
+- 之后的每条消息最大 74⅔ MiB：一个 50 MiB 附件 base64 编码后的大小，加上消息其余部分的 8 MiB。更大的文件请用其他方式传递（例如链接）。
+- 超过上限的消息会导致连接被关闭（关闭码 1009，消息过大）。
+- REST 请求体最大 1 MiB（否则返回 HTTP 413）。
+
 ### 连接生命周期
 
 ```
@@ -605,6 +633,8 @@ Session key 遵循以下格式：
 |------|------|
 | Header | `Authorization: Bearer your-secret` |
 | Query 参数 | `?token=your-secret` |
+
+请求体最大 1 MiB（否则返回 HTTP 413）。不设 token 时适用[不设 token 运行](#不设-token-运行insecure)中的规则：只接受本机请求，带 `Origin` 请求头的请求必须来自允许的来源（否则返回 HTTP 403）。
 
 ### 响应格式
 

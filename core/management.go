@@ -203,8 +203,9 @@ func (m *ManagementServer) Start() {
 	handler := m.buildHandler(mux)
 
 	m.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", m.port),
-		Handler: handler,
+		Addr:              fmt.Sprintf(":%d", m.port),
+		Handler:           handler,
+		ReadHeaderTimeout: serverReadHeaderTimeout,
 	}
 	go func() {
 		if err := m.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -318,6 +319,11 @@ func (m *ManagementServer) wrap(handler http.HandlerFunc) http.HandlerFunc {
 			mgmtError(w, http.StatusUnauthorized, "unauthorized: missing or invalid token")
 			return
 		}
+		// Every endpoint takes a small JSON body (no attachments).
+		if capRequestBody(w, r, jsonBodyLimit) {
+			mgmtError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
 		handler(w, r)
 	}
 }
@@ -373,6 +379,16 @@ func mgmtError(w http.ResponseWriter, status int, msg string) {
 	if err := json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": msg}); err != nil {
 		slog.Error("management api: write error JSON failed", "error", err)
 	}
+}
+
+// mgmtDecodeError answers a request whose JSON body could not be decoded:
+// 413 when it ran past the body limit set in wrap, 400 otherwise.
+func mgmtDecodeError(w http.ResponseWriter, err error) {
+	if isBodyTooLarge(err) {
+		mgmtError(w, http.StatusRequestEntityTooLarge, "request body too large")
+		return
+	}
+	mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 }
 
 func mgmtOK(w http.ResponseWriter, msg string) {
@@ -536,7 +552,7 @@ func (m *ManagementServer) handleGlobalSettings(w http.ResponseWriter, r *http.R
 		}
 		var updates map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
-			mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			mgmtDecodeError(w, err)
 			return
 		}
 		if err := m.saveGlobalSettings(updates); err != nil {
@@ -752,7 +768,7 @@ func (m *ManagementServer) handleProjectDetail(w http.ResponseWriter, r *http.Re
 			PlatformAllowFrom    map[string]string `json:"platform_allow_from"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			mgmtDecodeError(w, err)
 			return
 		}
 		if body.WorkDir != nil {
@@ -886,7 +902,7 @@ func (m *ManagementServer) handleProjectUsers(w http.ResponseWriter, r *http.Req
 			Roles       map[string]json.RawMessage `json:"roles"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			mgmtDecodeError(w, err)
 			return
 		}
 
@@ -1028,7 +1044,7 @@ func (m *ManagementServer) handleProjectSessions(w http.ResponseWriter, r *http.
 			Name       string `json:"name"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			mgmtDecodeError(w, err)
 			return
 		}
 		if body.SessionKey == "" {
@@ -1131,7 +1147,7 @@ func (m *ManagementServer) handleProjectSessionSwitch(w http.ResponseWriter, r *
 		SessionID  string `json:"session_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		mgmtDecodeError(w, err)
 		return
 	}
 	if body.SessionKey == "" || body.SessionID == "" {
@@ -1159,7 +1175,7 @@ func (m *ManagementServer) handleProjectSend(w http.ResponseWriter, r *http.Requ
 		Message    string `json:"message"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		mgmtDecodeError(w, err)
 		return
 	}
 	if body.Message == "" {
@@ -1268,7 +1284,7 @@ func (m *ManagementServer) handleProjectProviders(w http.ResponseWriter, r *http
 			Env      map[string]string `json:"env"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			mgmtDecodeError(w, err)
 			return
 		}
 		if body.Name == "" {
@@ -1322,7 +1338,7 @@ func (m *ManagementServer) handleProjectProviderRefs(w http.ResponseWriter, r *h
 			ProviderRefs []string `json:"provider_refs"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			mgmtDecodeError(w, err)
 			return
 		}
 		if err := m.saveProviderRefs(projName, body.ProviderRefs); err != nil {
@@ -1395,7 +1411,7 @@ func (m *ManagementServer) handleProjectModel(w http.ResponseWriter, r *http.Req
 		Model string `json:"model"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		mgmtDecodeError(w, err)
 		return
 	}
 	if body.Model == "" {
@@ -1491,7 +1507,7 @@ func (m *ManagementServer) handleProjectHeartbeat(w http.ResponseWriter, r *http
 			Minutes int `json:"minutes"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			mgmtDecodeError(w, err)
 			return
 		}
 		if body.Minutes < 1 {
@@ -1534,7 +1550,7 @@ func (m *ManagementServer) handleCron(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		var req CronAddRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			mgmtDecodeError(w, err)
 			return
 		}
 		if req.CronExpr == "" {
@@ -1633,7 +1649,7 @@ func (m *ManagementServer) handleCronByID(w http.ResponseWriter, r *http.Request
 		}
 		var updates map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
-			mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			mgmtDecodeError(w, err)
 			return
 		}
 		for field, value := range updates {
@@ -1739,7 +1755,7 @@ func (m *ManagementServer) handleGlobalProviders(w http.ResponseWriter, r *http.
 		}
 		var body GlobalProviderInfo
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			mgmtDecodeError(w, err)
 			return
 		}
 		if body.Name == "" {
@@ -1792,7 +1808,7 @@ func (m *ManagementServer) handleGlobalProviderRoutes(w http.ResponseWriter, r *
 		}
 		var body GlobalProviderInfo
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			mgmtDecodeError(w, err)
 			return
 		}
 		if err := m.updateGlobalProvider(name, body); err != nil {
@@ -1886,7 +1902,7 @@ func (m *ManagementServer) handleCCSwitchProviders(w http.ResponseWriter, r *htt
 			Names []string `json:"names"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			mgmtError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			mgmtDecodeError(w, err)
 			return
 		}
 		if len(body.Names) == 0 {
