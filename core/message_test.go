@@ -8,8 +8,10 @@ import (
 	"testing"
 )
 
-// TestSanitizeAttachmentFileName covers the basename-stripping rules used by
-// SaveFilesToDisk to reject path-traversal in user-supplied filenames.
+// TestSanitizeAttachmentFileName covers the rules SaveFilesToDisk applies to
+// user-supplied filenames: basename stripping against path traversal, and
+// the Windows rules (":" streams, trailing dots and spaces, device names),
+// which apply on every OS.
 func TestSanitizeAttachmentFileName(t *testing.T) {
 	tests := []struct {
 		in, want string
@@ -29,6 +31,56 @@ func TestSanitizeAttachmentFileName(t *testing.T) {
 		{"../", ""},
 		{`..\`, ""},
 		{"./../foo", "foo"},
+		{"/", ""},
+		// Volume and UNC prefixes give the same name on every OS.
+		{"//server/share", "share"},
+		{`\\server\share\doc.txt`, "doc.txt"},
+		{`\\?\C:\dir\doc.txt`, "doc.txt"},
+		// ":" would address an NTFS alternate data stream or a drive.
+		{"a:b.txt", "a_b.txt"},
+		{"report.pdf:Zone.Identifier", "report.pdf_Zone.Identifier"},
+		{"file.txt::$DATA", "file.txt__$DATA"},
+		{"C:foo.txt", "C_foo.txt"},
+		{"CON:", "CON_"},
+		// Windows drops trailing dots and spaces.
+		{"foo.", "foo"},
+		{"foo  ", "foo"},
+		{"foo.txt. . ", "foo.txt"},
+		{"...", ""},
+		{" ", ""},
+		{". .", ""},
+		{".hidden", ".hidden"},
+		{" leading.txt", " leading.txt"},
+		// Windows device names, in any case, with or without an extension.
+		{"CON", "_CON"},
+		{"con.txt", "_con.txt"},
+		{"CON.tar.gz", "_CON.tar.gz"},
+		{"CON .txt", "_CON .txt"},
+		{"CON.", "_CON"},
+		{"nul ", "_nul"},
+		{"Prn", "_Prn"},
+		{"aux.log", "_aux.log"},
+		{"COM1", "_COM1"},
+		{"com9.txt", "_com9.txt"},
+		{"COM0", "_COM0"},
+		{"lpt1", "_lpt1"},
+		{"LPT9.doc", "_LPT9.doc"},
+		{"com¹.log", "_com¹.log"},
+		{"COM²", "_COM²"},
+		{"LPT³.txt", "_LPT³.txt"},
+		{"CONIN$", "_CONIN$"},
+		{"conout$.txt", "_conout$.txt"},
+		{"dir/NUL.txt", "_NUL.txt"},
+		// Names that only look like device names are kept.
+		{"COM10", "COM10"},
+		{"LPT", "LPT"},
+		{"COM", "COM"},
+		{"COMA.txt", "COMA.txt"},
+		{"COM⁴", "COM⁴"},
+		{"console.txt", "console.txt"},
+		{"nul_file.txt", "nul_file.txt"},
+		{"my CON.txt", "my CON.txt"},
+		{"CON_", "CON_"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
@@ -105,6 +157,35 @@ func TestSaveFilesToDisk_RejectsPathTraversal(t *testing.T) {
 	okPath := filepath.Join(attachDir, "ok.txt")
 	if _, err := os.Stat(okPath); err != nil {
 		t.Errorf("legitimate ok.txt not saved: %v", err)
+	}
+}
+
+// Attachment names that Windows would treat as a device ("CON.txt"), an
+// alternate data stream ("notes.txt:hidden") or a name it trims ("plan. ")
+// are saved as ordinary files under their sanitized names, on every OS.
+func TestSaveFilesToDisk_WindowsReservedNames(t *testing.T) {
+	workDir := t.TempDir()
+	attachDir := filepath.Join(workDir, ".lark-agent-bot", "attachments", "msg1")
+
+	paths := SaveFilesToDisk(workDir, "msg1", []FileAttachment{
+		{FileName: "CON.txt", Data: []byte("con")},
+		{FileName: "notes.txt:hidden", Data: []byte("stream")},
+		{FileName: "plan. ", Data: []byte("plan")},
+	})
+
+	want := map[string]string{"_CON.txt": "con", "notes.txt_hidden": "stream", "plan": "plan"}
+	if len(paths) != len(want) {
+		t.Fatalf("SaveFilesToDisk saved %v, want %d files", paths, len(want))
+	}
+	for name, content := range want {
+		data, err := os.ReadFile(filepath.Join(attachDir, name))
+		if err != nil {
+			t.Errorf("%s not saved: %v", name, err)
+			continue
+		}
+		if string(data) != content {
+			t.Errorf("%s = %q, want %q", name, data, content)
+		}
 	}
 }
 

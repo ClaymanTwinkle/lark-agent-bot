@@ -1,11 +1,20 @@
 package core
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 )
@@ -288,6 +297,211 @@ func TestCheckForUpdate_AuthenticatesAPIWithToken(t *testing.T) {
 				t.Errorf("release page Authorization = %q, want none", got)
 			}
 		})
+	}
+}
+
+// tarGzWith returns a release-style .tar.gz holding one lark-agent-bot file.
+func tarGzWith(t *testing.T, binary []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	if err := tw.WriteHeader(&tar.Header{Name: "lark-agent-bot", Mode: 0o755, Size: int64(len(binary)), Typeflag: tar.TypeReg}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(binary); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// zipWith returns a release-style .zip holding one lark-agent-bot.exe file.
+func zipWith(t *testing.T, binary []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.Create("lark-agent-bot.exe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(binary); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+// fakeReleaseDownloads serves files (name -> content) under /download/<tag>/
+// the way GitHub serves release assets, 404s everything else, and counts
+// the requests for each path.
+func fakeReleaseDownloads(t *testing.T, tag string, files map[string][]byte) (base string, hits *sync.Map) {
+	t.Helper()
+	hits = &sync.Map{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n, _ := hits.LoadOrStore(r.URL.Path, new(atomic.Int32))
+		n.(*atomic.Int32).Add(1)
+		name, ok := strings.CutPrefix(r.URL.Path, "/download/"+tag+"/")
+		data, found := files[name]
+		if !ok || !found {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(data)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/download", hits
+}
+
+func requestCount(hits *sync.Map, path string) int32 {
+	if n, ok := hits.Load(path); ok {
+		return n.(*atomic.Int32).Load()
+	}
+	return 0
+}
+
+// /upgrade and `lark-agent-bot update` install a release archive only after
+// its SHA-256 matches the one the release's checksums.txt lists for it, and
+// refuse when checksums.txt is missing, does not list the archive, or lists
+// another hash.
+func TestDownloadReleaseBinaryFrom_VerifiesChecksum(t *testing.T) {
+	const tag = "v1.2.3"
+	binary := []byte("the new binary")
+	archive := tarGzWith(t, binary)
+	archiveName := releaseArchiveName(tag, "linux", "amd64")
+	if archiveName != "lark-agent-bot-v1.2.3-linux-amd64.tar.gz" {
+		t.Fatalf("releaseArchiveName = %q, want the name release.yml publishes", archiveName)
+	}
+	otherName := releaseArchiveName(tag, "darwin", "arm64")
+	// sha256sum output, as the Makefile's release-all target writes it.
+	sumsFor := func(lines ...string) []byte { return []byte(strings.Join(lines, "\n") + "\n") }
+
+	tests := []struct {
+		name      string
+		checksums []byte // nil: the release has no checksums.txt
+		archive   []byte
+		wantErr   string // "" for success
+	}{
+		{
+			name:      "match",
+			checksums: sumsFor(sha256Hex([]byte("other"))+"  "+otherName, sha256Hex(archive)+"  "+archiveName),
+			archive:   archive,
+		},
+		{
+			name:      "match with CRLF, upper-case hex and binary-mode marker",
+			checksums: []byte(strings.ToUpper(sha256Hex(archive)) + " *" + archiveName + "\r\n"),
+			archive:   archive,
+		},
+		{
+			name:      "mismatch",
+			checksums: sumsFor(sha256Hex(archive) + "  " + archiveName),
+			archive:   tarGzWith(t, []byte("a tampered binary")),
+			wantErr:   "the SHA-256 of " + archiveName,
+		},
+		{
+			name:    "missing checksums.txt",
+			archive: archive,
+			wantErr: "cannot get checksums.txt",
+		},
+		{
+			name:      "archive not listed",
+			checksums: sumsFor(sha256Hex(archive) + "  " + otherName),
+			archive:   archive,
+			wantErr:   "checksums.txt does not list " + archiveName,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			files := map[string][]byte{archiveName: tt.archive}
+			if tt.checksums != nil {
+				files[releaseChecksumsName] = tt.checksums
+			}
+			base, hits := fakeReleaseDownloads(t, tag, files)
+
+			got, err := downloadReleaseBinaryFrom(base, tag, "linux", "amd64")
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("downloadReleaseBinaryFrom: %v", err)
+				}
+				if !bytes.Equal(got, binary) {
+					t.Fatalf("binary = %q, want %q", got, binary)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("downloadReleaseBinaryFrom returned %d bytes, want an error", len(got))
+			}
+			if !errors.Is(err, ErrUnverifiedRelease) {
+				t.Errorf("error %v does not wrap ErrUnverifiedRelease", err)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %v, want it to contain %q", err, tt.wantErr)
+			}
+			if got != nil {
+				t.Errorf("binary = %q, want none", got)
+			}
+			// Without a usable checksum the archive is not even downloaded.
+			if tt.checksums == nil || !bytes.Contains(tt.checksums, []byte(archiveName)) {
+				if n := requestCount(hits, "/download/"+tag+"/"+archiveName); n != 0 {
+					t.Errorf("archive downloaded %d times, want 0", n)
+				}
+			}
+		})
+	}
+}
+
+func TestDownloadReleaseBinaryFrom_WindowsZip(t *testing.T) {
+	const tag = "v1.2.3"
+	binary := []byte("the new windows binary")
+	archive := zipWith(t, binary)
+	archiveName := releaseArchiveName(tag, "windows", "amd64")
+	if archiveName != "lark-agent-bot-v1.2.3-windows-amd64.zip" {
+		t.Fatalf("releaseArchiveName = %q, want the name release.yml publishes", archiveName)
+	}
+	base, _ := fakeReleaseDownloads(t, tag, map[string][]byte{
+		archiveName:          archive,
+		releaseChecksumsName: []byte(sha256Hex(archive) + "  " + archiveName + "\n"),
+	})
+
+	got, err := downloadReleaseBinaryFrom(base, tag, "windows", "amd64")
+	if err != nil {
+		t.Fatalf("downloadReleaseBinaryFrom: %v", err)
+	}
+	if !bytes.Equal(got, binary) {
+		t.Fatalf("binary = %q, want %q", got, binary)
+	}
+}
+
+func TestParseChecksums(t *testing.T) {
+	hexA := strings.Repeat("a", 64)
+	hexB := strings.Repeat("B", 64)
+	text := fmt.Sprintf("%s  one.tar.gz\r\n%s *two.zip\n\nnot a checksum line\n%s  short\nabc  three.tar.gz\n%s  spaced name.zip  \n",
+		hexA, hexB, hexA[:63], hexA)
+	got := parseChecksums(text)
+	want := map[string]string{
+		"one.tar.gz":      hexA,
+		"two.zip":         strings.ToLower(hexB),
+		"spaced name.zip": hexA,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("parseChecksums = %v, want %v", got, want)
+	}
+	for name, sum := range want {
+		if got[name] != sum {
+			t.Errorf("parseChecksums[%q] = %q, want %q", name, got[name], sum)
+		}
 	}
 }
 

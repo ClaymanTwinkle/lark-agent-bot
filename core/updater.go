@@ -6,7 +6,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -181,21 +184,78 @@ func SetGitHubAuth(req *http.Request) {
 
 // SelfUpdate downloads and installs the given release version.
 func SelfUpdate(tag string) error {
-	goos := runtime.GOOS
-	goarch := runtime.GOARCH
+	binary, err := DownloadReleaseBinary(tag)
+	if err != nil {
+		return err
+	}
+	return replaceBinary(binary)
+}
 
+// releaseChecksumsName is the release asset that lists the SHA-256 of every
+// archive: `sha256sum *.tar.gz *.zip` output from the Makefile's release-all
+// target.
+const releaseChecksumsName = "checksums.txt"
+
+// ErrUnverifiedRelease is wrapped by the error of a release download that
+// could not be checked against its release's checksums.txt.
+var ErrUnverifiedRelease = errors.New("refusing to install an unverified download")
+
+// releaseArchiveName is the release asset holding the binary for goos/goarch.
+// release.yml publishes these names; keep them in sync.
+func releaseArchiveName(tag, goos, goarch string) string {
 	ext := ".tar.gz"
 	if goos == "windows" {
 		ext = ".zip"
 	}
-	filename := fmt.Sprintf("lark-agent-bot-%s-%s-%s%s", tag, goos, goarch, ext)
+	return fmt.Sprintf("lark-agent-bot-%s-%s-%s%s", tag, goos, goarch, ext)
+}
 
-	url := fmt.Sprintf("%s/%s/%s", githubDownload, tag, filename)
-	slog.Info("updater: downloading", "url", url)
-	data, err := downloadFile(url)
+// ReleaseArchiveURL is the URL DownloadReleaseBinary downloads tag's archive
+// for this platform from.
+func ReleaseArchiveURL(tag string) string {
+	return fmt.Sprintf("%s/%s/%s", githubDownload, tag, releaseArchiveName(tag, runtime.GOOS, runtime.GOARCH))
+}
+
+// DownloadReleaseBinary downloads tag's release archive for this platform,
+// checks it against the SHA-256 the release's checksums.txt lists for it,
+// and returns the lark-agent-bot binary inside. It is the download step
+// shared by /upgrade and the `lark-agent-bot update` command.
+func DownloadReleaseBinary(tag string) ([]byte, error) {
+	return downloadReleaseBinaryFrom(githubDownload, tag, runtime.GOOS, runtime.GOARCH)
+}
+
+// downloadReleaseBinaryFrom is DownloadReleaseBinary for the release
+// downloads under base. Unlike the npm installer, which installs with a
+// warning when no checksums.txt lists the archive, it fails closed: the
+// archive is only extracted once checksums.txt has been read, lists it, and
+// matches it.
+func downloadReleaseBinaryFrom(base, tag, goos, goarch string) ([]byte, error) {
+	dir := base + "/" + tag
+	archive := releaseArchiveName(tag, goos, goarch)
+
+	// checksums.txt is small; reading it first skips the archive download
+	// when the update cannot be verified anyway.
+	sums, err := downloadFile(dir + "/" + releaseChecksumsName)
 	if err != nil {
-		return fmt.Errorf("download failed: %w", err)
+		return nil, fmt.Errorf("%w: cannot get %s: %w", ErrUnverifiedRelease, releaseChecksumsName, err)
 	}
+	want, ok := parseChecksums(string(sums))[archive]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s does not list %s", ErrUnverifiedRelease, releaseChecksumsName, archive)
+	}
+
+	archiveURL := dir + "/" + archive
+	slog.Info("updater: downloading", "url", archiveURL)
+	data, err := downloadFile(archiveURL)
+	if err != nil {
+		return nil, fmt.Errorf("download failed: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	if got := hex.EncodeToString(sum[:]); got != want {
+		return nil, fmt.Errorf("%w: the SHA-256 of %s is %s, but %s lists %s",
+			ErrUnverifiedRelease, archive, got, releaseChecksumsName, want)
+	}
+	slog.Info("updater: SHA-256 matches checksums.txt", "asset", archive)
 
 	var binary []byte
 	if goos == "windows" {
@@ -204,10 +264,26 @@ func SelfUpdate(tag string) error {
 		binary, err = extractBinaryFromTarGz(data)
 	}
 	if err != nil {
-		return fmt.Errorf("extract binary: %w", err)
+		return nil, fmt.Errorf("extract binary: %w", err)
 	}
+	return binary, nil
+}
 
-	return replaceBinary(binary)
+// checksumLineRe matches a sha256sum output line: the hex digest, then the
+// file name, with "*" before it in binary mode.
+var checksumLineRe = regexp.MustCompile(`^([0-9a-fA-F]{64})\s+\*?(\S.*?)\s*$`)
+
+// parseChecksums reads sha256sum output (a release's checksums.txt) into a
+// map from file name to lowercase hex digest. It reads the same lines as
+// parseChecksums in npm/install.js.
+func parseChecksums(text string) map[string]string {
+	sums := make(map[string]string)
+	for _, line := range strings.Split(text, "\n") {
+		if m := checksumLineRe.FindStringSubmatch(strings.TrimSuffix(line, "\r")); m != nil {
+			sums[m[2]] = strings.ToLower(m[1])
+		}
+	}
+	return sums
 }
 
 func downloadFile(url string) ([]byte, error) {
