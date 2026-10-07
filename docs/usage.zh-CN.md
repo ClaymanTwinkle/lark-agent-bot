@@ -51,7 +51,23 @@ lark-agent-bot 完整功能使用指南。
 | `/stop` | 停止当前执行 |
 | `/help` | 显示可用命令 |
 
-会话中 Agent 请求工具权限时，回复 **允许** / **拒绝** / **允许所有**。
+会话中 Agent 请求工具权限时，回复 **允许** / **拒绝** / **允许所有**。只有发起这次任务的用户或管理员（`admin_from`）可以回应权限请求，其他人的回复会被拒绝。
+
+### 仅管理员可用的命令
+
+能动到宿主机的命令要求发送者的 User ID 在项目的 `admin_from` 里（未设置 = 所有人都不行）：
+
+- `/shell`（以及 `!命令`）、`/show`、`/dir`、`/diff`、`/restart`、`/upgrade`、`/web`
+- `/commands addexec`、`/cron addexec`
+- `/provider` 除了直接查看、`list` 和 `current` 以外的操作（添加、删除、切换、清除）
+- `/allow <工具>`（不带参数的 `/allow` 仍可查看已允许的工具）
+- `/alias add|del`（查看别名不受限）
+- `/memory global`（查看和添加）
+- `/mode` 切到没有审批、没有沙箱的模式（Claude Code 的 `bypassPermissions`/`yolo`，Codex 的 `full-access`）
+- `/workspace route|init|worktree`、`/workspace shared route|init`，以及在未绑定的群里发送仓库地址或路径来初始化
+- `/bind <项目>`（把群关联到另一个机器人；中继任务会自动批准工具调用）
+
+卡片按钮做同样的事情时也按点击者的身份做同样的检查。
 
 也可以为项目开启“空闲后自动切换新会话”。默认关闭（不设置 `reset_on_idle_mins` 或设为 `0`：下一条消息总是继续上次的会话），需要时按项目开启：
 

@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
 // ensureCodexProviderConfig writes or updates a [model_providers.<name>] section
@@ -15,6 +17,10 @@ import (
 func ensureCodexProviderConfig(codexHome, name, baseURL, wireAPI string, headers map[string]string) error {
 	if name == "" {
 		return nil
+	}
+	section, err := buildProviderSection(name, baseURL, wireAPI, headers)
+	if err != nil {
+		return err
 	}
 	home, err := resolveCodexHomeForConfig(codexHome)
 	if err != nil {
@@ -28,8 +34,10 @@ func ensureCodexProviderConfig(codexHome, name, baseURL, wireAPI string, headers
 	raw, _ := os.ReadFile(cfgPath)
 	content := string(raw)
 
-	section := buildProviderSection(name, baseURL, wireAPI, headers)
-	updated := upsertProviderSection(content, name, section)
+	updated, err := upsertProviderSection(content, name, section)
+	if err != nil {
+		return err
+	}
 
 	if err := os.WriteFile(cfgPath, []byte(updated), 0o644); err != nil {
 		return fmt.Errorf("codex: write config.toml: %w", err)
@@ -83,7 +91,13 @@ func resolveCodexHomeForConfig(explicit string) (string, error) {
 	return filepath.Join(homeDir, ".codex"), nil
 }
 
-func buildProviderSection(name, baseURL, wireAPI string, headers map[string]string) string {
+// buildProviderSection renders the [model_providers.<name>] table. The name
+// is written into a table header unquoted, so it is validated first: a
+// newline or bracket in it would add arbitrary TOML to the user's config.
+func buildProviderSection(name, baseURL, wireAPI string, headers map[string]string) (string, error) {
+	if err := core.ValidateProviderName(name); err != nil {
+		return "", fmt.Errorf("codex: provider config: %w", err)
+	}
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "[model_providers.%s]\n", name)
 	fmt.Fprintf(&sb, "name = %q\n", name)
@@ -100,21 +114,25 @@ func buildProviderSection(name, baseURL, wireAPI string, headers map[string]stri
 			fmt.Fprintf(&sb, "%q = %q\n", k, v)
 		}
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
 // upsertProviderSection replaces an existing [model_providers.<name>] section
-// or appends a new one at the end of the config content.
-func upsertProviderSection(content, name, newSection string) string {
+// or appends a new one at the end of the config content. Like
+// buildProviderSection it refuses a name that is not a valid provider name.
+func upsertProviderSection(content, name, newSection string) (string, error) {
+	if err := core.ValidateProviderName(name); err != nil {
+		return "", fmt.Errorf("codex: provider config: %w", err)
+	}
 	sectionHeader := fmt.Sprintf("[model_providers.%s]", name)
 	subSectionPrefix := fmt.Sprintf("[model_providers.%s.", name)
 
 	if !strings.Contains(content, sectionHeader) {
 		trimmed := strings.TrimRight(content, "\n\t ")
 		if trimmed == "" {
-			return newSection
+			return newSection, nil
 		}
-		return trimmed + "\n\n" + newSection
+		return trimmed + "\n\n" + newSection, nil
 	}
 
 	idx := strings.Index(content, sectionHeader)
@@ -132,5 +150,5 @@ func upsertProviderSection(content, name, newSection string) string {
 		}
 	}
 
-	return strings.TrimRight(content[:idx], "\n") + "\n\n" + newSection + "\n" + content[end:]
+	return strings.TrimRight(content[:idx], "\n") + "\n\n" + newSection + "\n" + content[end:], nil
 }

@@ -50,7 +50,23 @@ Each user gets an independent session with full conversation context. Manage ses
 | `/stop` | Stop current execution |
 | `/help` | Show available commands |
 
-During a session, the agent may request tool permissions. Reply **allow** / **deny** / **allow all**.
+During a session, the agent may request tool permissions. Reply **allow** / **deny** / **allow all**. Only the user whose message started the task, or an admin (`admin_from`), can answer a permission request; replies from anyone else are refused.
+
+### Admin-only commands
+
+Commands that give host-level power need the sender's user ID in the project's `admin_from` (unset = nobody):
+
+- `/shell` (and `!cmd`), `/show`, `/dir`, `/diff`, `/restart`, `/upgrade`, `/web`
+- `/commands addexec`, `/cron addexec`
+- `/provider` except the bare listing, `list` and `current` (add, remove, switch, clear)
+- `/allow <tool>` (bare `/allow` still lists the allowed tools)
+- `/alias add|del` (listing stays open)
+- `/memory global` (show and add)
+- `/mode` to a mode without approvals or sandbox (Claude Code `bypassPermissions`/`yolo`, Codex `full-access`)
+- `/workspace route|init|worktree`, `/workspace shared route|init`, and sending a repo URL or path to set up an unbound chat
+- `/bind <project>` (linking a chat to another bot; relay turns auto-approve tool use)
+
+The same checks apply to the card buttons that do these things, using the identity of whoever clicks.
 
 A project can also start a fresh session automatically after long inactivity. This is off by default (`reset_on_idle_mins` unset or `0`: the next message always continues the previous session); turn it on per project:
 

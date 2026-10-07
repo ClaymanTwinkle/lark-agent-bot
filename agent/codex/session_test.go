@@ -1152,3 +1152,23 @@ func waitForFileLines(t *testing.T, path string, want int) {
 	}
 	t.Fatalf("timed out waiting for %d lines in %s", want, path)
 }
+
+// An npm-installed codex on Windows is a .cmd shim that runs through
+// cmd.exe, which os/exec does not quote for. A spawn whose arguments carry a
+// cmd.exe metacharacter must be refused before anything runs; the shim
+// written here is never executed.
+func TestSend_RefusesBatchShimWithCmdMetacharacters(t *testing.T) {
+	shim := filepath.Join(t.TempDir(), "codex.cmd")
+	if err := os.WriteFile(shim, []byte("@exit 1\r\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := newCodexSession(context.Background(), shim, nil, t.TempDir(), "gpt&calc", "", "read-only", "", "", nil, "", "", "")
+	if err != nil {
+		t.Fatalf("newCodexSession: %v", err)
+	}
+	defer func() { _ = cs.Close() }()
+	err = cs.Send("hello", "", nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "batch file") {
+		t.Fatalf("Send err = %v, want batch-file refusal", err)
+	}
+}

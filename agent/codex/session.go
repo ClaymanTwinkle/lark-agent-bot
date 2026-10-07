@@ -166,6 +166,11 @@ func (cs *codexSession) Send(prompt string, messageID string, images []core.Imag
 	slog.Debug("codexSession: launching", "resume", isResume, "args", core.RedactArgs(args))
 
 	cmd := exec.CommandContext(cs.ctx, bin, args...)
+	// cmd.Path is the resolved executable, e.g. the codex.cmd shim npm
+	// installs on Windows, which runs through cmd.exe.
+	if err := core.CheckBatchArgs(cmd.Path, cmd.Args[1:]); err != nil {
+		return fmt.Errorf("codexSession: %w", err)
+	}
 	cmd.Dir = cs.workDir
 	prepareCmdForKill(cmd)
 	if len(cs.extraEnv) > 0 {

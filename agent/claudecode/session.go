@@ -434,6 +434,15 @@ func newClaudeSession(ctx context.Context, workDir, cliBin string, cliExtraArgs 
 	// the path itself is passed through RunAsChdirEnv below.
 	spawnOpts.WorkDir = workDir
 	cmd := core.BuildSpawnCommand(sessionCtx, spawnOpts, cliBin, allArgs...)
+	// cmd.Path is the resolved executable, e.g. the claude.cmd shim npm
+	// installs on Windows, which runs through cmd.exe.
+	if err := core.CheckBatchArgs(cmd.Path, cmd.Args[1:]); err != nil {
+		if promptFilePath != "" && !promptFileIsShared {
+			_ = os.Remove(promptFilePath)
+		}
+		cancel()
+		return nil, fmt.Errorf("claudeSession: %w", err)
+	}
 	cmd.Dir = workDir
 	// Put the child into its own process group so Close() can terminate the
 	// entire descendant tree (claude CLI → MCP server bridges → ...) with a

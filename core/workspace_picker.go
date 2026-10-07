@@ -139,7 +139,7 @@ func (e *Engine) handleCardNavWithContext(action string, msg *Message) *Card {
 	prefix, command, _ := strings.Cut(action, ":")
 	args := strings.Fields(command)
 	if len(args) == 0 || args[0] != "/workspace" {
-		return e.handleCardNav(action, msg.SessionKey)
+		return e.cardNav(action, msg.SessionKey, msg)
 	}
 	errorCard := func(text string) *Card {
 		return NewCard().Markdown(text).Buttons(DefaultBtn(e.i18n.T(MsgCardBack), "nav:/workspace bind")).Build()
@@ -149,16 +149,7 @@ func (e *Engine) handleCardNavWithContext(action string, msg *Message) *Card {
 	}
 	// Match command authorization using the clicker's identity, not the user
 	// who originally opened the card (shared group/topic cards can differ).
-	e.userRolesMu.RLock()
-	disabled := e.disabledCmds["workspace"]
-	roles := e.userRoles
-	e.userRolesMu.RUnlock()
-	if roles != nil {
-		if role := roles.ResolveRole(msg.UserID); role != nil {
-			disabled = role.DisabledCmds["workspace"]
-		}
-	}
-	if disabled {
+	if e.effectiveDisabledCmds(msg.UserID)["workspace"] {
 		return errorCard(e.i18n.Tf(MsgCommandDisabled, "/workspace"))
 	}
 	page, notice := 1, ""

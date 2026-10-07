@@ -200,6 +200,23 @@ func TestAgent_PermissionModes(t *testing.T) {
 	}
 }
 
+// Only the mode that auto-approves everything needs admin_from, and every
+// alias for it must normalize to that key so the engine can tell.
+func TestAgent_PrivilegedModeAndAliases(t *testing.T) {
+	a := &Agent{}
+	for _, mode := range a.PermissionModes() {
+		if want := mode.Key == "bypassPermissions"; mode.Privileged != want {
+			t.Errorf("mode %q: Privileged = %v, want %v", mode.Key, mode.Privileged, want)
+		}
+	}
+	var n core.ModeNormalizer = a
+	for _, alias := range []string{"yolo", "YOLO", "bypass-permissions", "bypass_permissions", "bypasspermissions"} {
+		if got := n.NormalizeMode(alias); got != "bypassPermissions" {
+			t.Errorf("NormalizeMode(%q) = %q, want bypassPermissions", alias, got)
+		}
+	}
+}
+
 func TestIsClaudeEditTool(t *testing.T) {
 	for _, tool := range []string{"Edit", "Write", "NotebookEdit", "MultiEdit"} {
 		if !isClaudeEditTool(tool) {

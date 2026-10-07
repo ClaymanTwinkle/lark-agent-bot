@@ -229,7 +229,10 @@ func TestIsPrivilegedCommandInvocation_WorkspaceWorktree(t *testing.T) {
 		"worktree":      true,
 		"worktree rm x": true,
 		"list":          false,
-		"route /tmp":    false,
+		"bind repo":     false,
+		"unbind":        false,
+		"route /tmp":    true,
+		"init repo":     true,
 	} {
 		if got := isPrivilegedCommandInvocation("workspace", strings.Fields(args)); got != want {
 			t.Errorf("/workspace %s privileged = %v, want %v", args, got, want)

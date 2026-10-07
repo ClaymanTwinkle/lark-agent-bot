@@ -604,6 +604,7 @@ type interactiveState struct {
 	pendingMessages          []queuedMessage // messages queued while session was busy
 	approveAll               bool            // when true, auto-approve all permission requests for this session
 	fromVoice                bool            // true if current turn originated from voice transcription
+	turnUserID               string          // sender of the message the running turn answers; see pendingPermission.RequesterID
 	sideText                 string
 	deleteMode               *deleteModeState
 	modelSwitch              *modelSwitchState
@@ -779,8 +780,34 @@ type pendingPermission struct {
 	Questions       []UserQuestion // non-nil for AskUserQuestion
 	Answers         map[int]string // collected answers keyed by question index
 	CurrentQuestion int            // index of the question currently being asked
-	Resolved        chan struct{}  // closed when user responds
-	resolveOnce     sync.Once
+	// RequesterID is the user whose message started the turn that raised
+	// this request. Only they or an admin may answer it; empty or a system
+	// sender (see systemSenderIDs) means unknown, and then anyone in the
+	// session may answer as before.
+	RequesterID string
+	Resolved    chan struct{} // closed when user responds
+	resolveOnce sync.Once
+}
+
+// systemSenderIDs are the UserID values core puts on messages it builds
+// itself (scheduled turns, webhook and bridge calls). They name no chat user.
+var systemSenderIDs = map[string]bool{
+	"cron":      true,
+	"timer":     true,
+	"heartbeat": true,
+	"webhook":   true,
+	"web-admin": true,
+}
+
+// permissionResponderAllowed reports whether userID may answer a pending
+// permission request raised for requesterID's turn: the same user, an
+// admin, or anyone when the requester is unknown. A system sender answering
+// (a token-authenticated bridge or webhook caller) is allowed as before.
+func (e *Engine) permissionResponderAllowed(requesterID, userID string) bool {
+	if requesterID == "" || systemSenderIDs[requesterID] || systemSenderIDs[userID] {
+		return true
+	}
+	return strings.EqualFold(requesterID, userID) || e.isAdmin(userID)
 }
 
 func (s *interactiveState) stopSignal() <-chan struct{} {
@@ -829,6 +856,7 @@ func (s *interactiveState) setTurnMessage(p Platform, msg *Message) {
 	s.platform = p
 	s.replyCtx = msg.ReplyCtx
 	s.currentTurnUserMessageTimeMs = msg.UserMessageTimeMs
+	s.turnUserID = msg.UserID
 }
 
 // setCurrentMessageLocked makes messageID the message the running turn
@@ -1274,7 +1302,7 @@ func (e *Engine) SetAdminFrom(adminFrom string) {
 	shellDisabled := e.disabledCmds["shell"]
 	e.userRolesMu.Unlock()
 	if af == "" && !shellDisabled {
-		slog.Warn("admin_from is not set — privileged commands (/shell, /show, /dir, /restart, /upgrade) are blocked. "+
+		slog.Warn("admin_from is not set — privileged commands (/shell, /show, /dir, /restart, /upgrade, /provider changes, /allow, /alias add|del, ...) are blocked. "+
 			"Set admin_from in config to enable them, or use disabled_commands to hide them.",
 			"project", e.name)
 	}
@@ -1292,20 +1320,29 @@ var privilegedCommands = map[string]bool{
 }
 
 // isPrivilegedCommandInvocation extends the privilegedCommands map to
-// also gate specific destructive subcommands. Currently:
+// also gate specific subcommands that grant host-level power:
 //
-//   - /commands addexec ...    — registers a custom shell-exec command
-//   - /cron    addexec ...     — schedules a recurring shell-exec
-//   - /workspace worktree ...  — creates branches and worktrees, deletes worktrees
+//   - /commands addexec ...   — registers a custom shell-exec command
+//   - /cron addexec ...       — schedules a recurring shell-exec
+//   - /workspace worktree|route|init, /workspace shared route|init —
+//     create worktrees, point the agent at any directory on the host, or
+//     clone an arbitrary repository into base_dir
+//   - /alias add|del ...      — aliases are resolved before the admin check,
+//     so a non-admin alias could redirect a word an admin types
+//   - /allow <tool>           — pre-authorizes a tool for every session
+//   - /provider ...           — everything except the bare listing, list and
+//     current: adds, removes or switches the API endpoint, key and env the
+//     agent process runs with
+//   - /memory global ...      — reads or writes the host-wide memory file
 //
 // The addexec pair effectively creates new admin-only commands at runtime;
 // if a non-admin can call addexec, they can install arbitrary shell commands
-// for any future user to trigger. Sibling subcommands (list, add, del,
-// etc.) remain non-privileged.
+// for any future user to trigger. Read-only siblings (list, show, ...)
+// remain non-privileged.
 //
 // Returns true when the cmdID itself is in privilegedCommands, or when
-// the (cmdID, args[0]) pair matches one of the explicitly-gated
-// subcommands above.
+// the (cmdID, args) pair matches one of the explicitly-gated subcommands
+// above.
 func isPrivilegedCommandInvocation(cmdID string, args []string) bool {
 	if privilegedCommands[cmdID] {
 		return true
@@ -1314,7 +1351,17 @@ func isPrivilegedCommandInvocation(cmdID string, args []string) bool {
 		return false
 	}
 	if cmdID == "workspace" {
-		return workspaceSubCommand(args[0]) == "worktree"
+		switch workspaceSubCommand(args[0]) {
+		case "worktree", "route", "init":
+			return true
+		case "shared":
+			if len(args) < 2 {
+				return false
+			}
+			sub := matchSubCommand(args[1], []string{"init", "bind", "route", "unbind", "list"})
+			return sub == "init" || sub == "route"
+		}
+		return false
 	}
 	sub := strings.ToLower(args[0])
 	switch cmdID {
@@ -1326,9 +1373,56 @@ func isPrivilegedCommandInvocation(cmdID string, args []string) bool {
 		return matchSubCommand(sub, []string{
 			"add", "addexec", "list", "del", "delete", "rm", "remove", "enable", "disable", "mute", "unmute", "setup",
 		}) == "addexec"
+	case "alias":
+		switch matchSubCommand(sub, []string{"list", "add", "del", "delete", "remove"}) {
+		case "add", "del", "delete", "remove":
+			return true
+		}
+		return false
+	case "allow":
+		// Bare /allow lists the allowed tools; any argument adds one.
+		return true
+	case "provider":
+		switch matchSubCommand(sub, []string{
+			"list", "add", "remove", "switch", "current", "clear", "reset", "none",
+		}) {
+		case "list", "current":
+			return false
+		}
+		// add, remove, switch, clear, and "/provider <name>" positional switching.
+		return true
+	case "memory":
+		return matchSubCommand(sub, []string{"add", "global", "show", "help"}) == "global"
 	default:
 		return false
 	}
+}
+
+// effectiveDisabledCmds returns the commands disabled for userID: the
+// project-level disabled_commands plus those of the user's role. A role adds
+// restrictions; it cannot re-enable a command the project disables.
+func (e *Engine) effectiveDisabledCmds(userID string) map[string]bool {
+	e.userRolesMu.RLock()
+	project := e.disabledCmds
+	urm := e.userRoles
+	e.userRolesMu.RUnlock()
+	role := urm.ResolveRole(userID)
+	if role == nil || len(role.DisabledCmds) == 0 {
+		return project
+	}
+	if len(project) == 0 {
+		return role.DisabledCmds
+	}
+	merged := make(map[string]bool, len(project)+len(role.DisabledCmds))
+	for k, v := range project {
+		merged[k] = v
+	}
+	for k, v := range role.DisabledCmds {
+		if v {
+			merged[k] = true
+		}
+	}
+	return merged
 }
 
 // isAdmin checks whether the given user ID is authorized for privileged commands.
@@ -3066,16 +3160,7 @@ func (e *Engine) handleMessage(p Platform, msg *Message) {
 		shellCmd := strings.TrimSpace(content[1:])
 		if shellCmd != "" {
 			// Check disabled / admin just like handleCommand does for "shell"
-			e.userRolesMu.RLock()
-			disabledCmds := e.disabledCmds
-			urm := e.userRoles
-			e.userRolesMu.RUnlock()
-			if urm != nil {
-				if role := urm.ResolveRole(msg.UserID); role != nil {
-					disabledCmds = role.DisabledCmds
-				}
-			}
-			if disabledCmds["shell"] {
+			if e.effectiveDisabledCmds(msg.UserID)["shell"] {
 				e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgCommandDisabled), "!"))
 				return
 			}
@@ -3544,6 +3629,19 @@ func (e *Engine) handlePendingPermission(p Platform, msg *Message, content strin
 		return false
 	}
 found:
+
+	// In a shared session only the user whose turn raised the request, or an
+	// admin, may answer it. Card buttons arrive here as messages carrying the
+	// clicker's ID, so this covers typed and clicked answers alike. The text
+	// is consumed so it does not reach the agent as a prompt either. Empty
+	// content (delivery receipts) keeps its handling below.
+	if strings.TrimSpace(content) != "" && !e.permissionResponderAllowed(pending.RequesterID, msg.UserID) {
+		slog.Info("audit: permission_response_blocked",
+			"user_id", msg.UserID, "platform", msg.Platform, "project", e.name,
+			"request_id", pending.RequestID, "tool", pending.ToolName)
+		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgPermissionNotRequester))
+		return true
+	}
 
 	// AskUserQuestion: interpret user response as an answer, not a permission decision
 	if len(pending.Questions) > 0 {
@@ -5433,6 +5531,7 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 				Resolved:     make(chan struct{}),
 			}
 			state.mu.Lock()
+			pending.RequesterID = state.turnUserID
 			state.pending = pending
 			state.mu.Unlock()
 
@@ -5920,6 +6019,7 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 				state.currentMessageID = queued.messageID
 				state.fromVoice = queued.fromVoice
 				state.currentTurnUserMessageTimeMs = queued.userMessageTimeMs
+				state.turnUserID = queued.userID
 				state.mu.Unlock()
 
 				// Keep the previous message in progress if it left background
@@ -6334,6 +6434,7 @@ func (e *Engine) drainPendingMessages(state *interactiveState, session *Session,
 		state.currentMessageID = queued.messageID
 		state.fromVoice = queued.fromVoice
 		state.currentTurnUserMessageTimeMs = queued.userMessageTimeMs
+		state.turnUserID = queued.userID
 		state.mu.Unlock()
 		queued.leaveQueue()
 
@@ -6549,16 +6650,8 @@ func (e *Engine) handleCommand(p Platform, msg *Message, raw string) bool {
 
 	cmdID := matchPrefix(cmd, builtinCommands)
 
-	// Resolve effective disabled commands: role-based if available, else project-level
-	e.userRolesMu.RLock()
-	disabledCmds := e.disabledCmds
-	urm := e.userRoles
-	e.userRolesMu.RUnlock()
-	if urm != nil {
-		if role := urm.ResolveRole(msg.UserID); role != nil {
-			disabledCmds = role.DisabledCmds
-		}
-	}
+	// Effective disabled commands: project-level plus the user's role.
+	disabledCmds := e.effectiveDisabledCmds(msg.UserID)
 
 	if cmdID != "" && disabledCmds[cmdID] {
 		slog.Info("audit: command_blocked",
@@ -6758,7 +6851,12 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 		return true
 	}
 	bindWorkspace := func(bindingKey, wsName string, successKey MsgKey) bool {
-		wsPath := filepath.Join(e.baseDir, wsName)
+		wsPath, err := workspaceDirUnderBase(e.baseDir, wsName)
+		if err != nil {
+			slog.Info("workspace bind refused", "user_id", msg.UserID, "error", err)
+			e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsBindNotFound, wsName))
+			return false
+		}
 
 		// Check if workspace directory exists
 		if info, err := os.Stat(wsPath); err != nil || !info.IsDir() {
@@ -6797,8 +6895,12 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 			return false
 		}
 
-		repoName := extractRepoName(target)
-		cloneTo := filepath.Join(e.baseDir, repoName)
+		cloneTo, err := workspaceDirUnderBase(e.baseDir, extractRepoName(target))
+		if err != nil {
+			slog.Info("workspace init refused", "user_id", msg.UserID, "error", err)
+			e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsInitInvalidTarget))
+			return false
+		}
 
 		if _, err := os.Stat(cloneTo); err == nil {
 			e.workspaceBindings.Bind(bindingKey, channelKey, "", normalizeWorkspacePath(cloneTo))
@@ -9731,6 +9833,11 @@ func (e *Engine) switchModel(target string) (string, error) {
 // When persistConfig is true, config-backed model/provider changes are saved so
 // reloads keep the new default. Workspace-scoped runtime switches pass false.
 func (e *Engine) switchModelOnAgent(agent Agent, target string, persistConfig bool) (string, error) {
+	// Text /model, model cards and the management API all land here; the
+	// name ends up in the agent's argv.
+	if err := ValidateModelName(target); err != nil {
+		return "", err
+	}
 	switcher, ok := agent.(ModelSwitcher)
 	if !ok {
 		return target, nil
@@ -9992,6 +10099,15 @@ func (e *Engine) cmdMode(p Platform, msg *Message, args []string) {
 	target := strings.ToLower(args[0])
 	if reason := e.modeValidationMessage(switcher, target); reason != "" {
 		e.reply(p, msg.ReplyCtx, reason)
+		return
+	}
+	// The mode applies to the whole project/workspace agent, so a mode that
+	// drops approvals and the sandbox is host-level power.
+	if modeRequiresAdmin(switcher, target) && !e.isAdmin(msg.UserID) {
+		slog.Info("audit: command_blocked",
+			"user_id", msg.UserID, "platform", msg.Platform,
+			"project", e.name, "command", "mode", "mode", target, "reason", "unauthorized")
+		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgAdminRequired, "/mode "+target))
 		return
 	}
 	newMode, appliedLive := e.setSessionMode(switcher, msg.SessionKey, target)
@@ -10715,6 +10831,11 @@ func (e *Engine) cmdProviderAdd(p Platform, msg *Message, switcher ProviderSwitc
 		}
 	}
 
+	if err := ValidateProviderName(prov.Name); err != nil {
+		e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgProviderAddFailed), err.Error()))
+		return
+	}
+
 	// Check for duplicates
 	for _, existing := range switcher.ListProviders() {
 		if existing.Name == prov.Name {
@@ -10834,6 +10955,11 @@ func (e *Engine) handlePendingProviderAdd(p Platform, msg *Message, content stri
 	if state == nil {
 		return false
 	}
+	// Only an admin starts this flow; in a shared chat, someone else's next
+	// message must not complete it with their own name, key or endpoint.
+	if !e.isAdmin(msg.UserID) {
+		return false
+	}
 	state.mu.Lock()
 	pa := state.pendingProviderAdd
 	if pa == nil {
@@ -10883,6 +11009,10 @@ func (e *Engine) handlePendingProviderAdd(p Platform, msg *Message, content stri
 		return false
 	}
 
+	if err := ValidateProviderName(prov.Name); err != nil {
+		e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgProviderAddFailed), err.Error()))
+		return true
+	}
 	for _, existing := range switcher.ListProviders() {
 		if existing.Name == prov.Name {
 			e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgProviderAddFailed), fmt.Sprintf("provider %q already exists", prov.Name)))
@@ -11996,7 +12126,16 @@ func (e *Engine) sendWithCard(p Platform, replyCtx any, card *Card) {
 
 // handleCardNav is called by platforms that support in-place card updates.
 // It routes nav: and act: prefixed actions to the appropriate render function.
+//
+// The clicker is unknown here, so actions that need admin_from are refused;
+// platforms that know the clicker use handleCardNavWithContext.
 func (e *Engine) handleCardNav(action string, sessionKey string) *Card {
+	return e.cardNav(action, sessionKey, nil)
+}
+
+// cardNav implements handleCardNav. clicker is the user who pressed the
+// button, or nil when the platform does not say.
+func (e *Engine) cardNav(action string, sessionKey string, clicker *Message) *Card {
 	var prefix, body string
 	if i := strings.Index(action, ":"); i >= 0 {
 		prefix = action[:i]
@@ -12009,6 +12148,19 @@ func (e *Engine) handleCardNav(action string, sessionKey string) *Card {
 	if i := strings.IndexByte(body, ' '); i >= 0 {
 		cmd = body[:i]
 		args = strings.TrimSpace(body[i+1:])
+	}
+
+	if label := e.cardActionAdminLabel(prefix, cmd, args, sessionKey); label != "" {
+		userID, platform := "", ""
+		if clicker != nil {
+			userID, platform = clicker.UserID, clicker.Platform
+		}
+		if clicker == nil || !e.isAdmin(userID) {
+			slog.Info("audit: card_action_blocked",
+				"user_id", userID, "platform", platform,
+				"project", e.name, "action", prefix+":"+cmd, "reason", "unauthorized")
+			return NewCard().Markdown(e.i18n.Tf(MsgAdminRequired, label)).Buttons(e.cardBackButton()).Build()
+		}
 	}
 
 	if prefix == "act" && cmd == "/model" {
@@ -12104,6 +12256,47 @@ func (e *Engine) handleCardNav(action string, sessionKey string) *Card {
 		return e.renderUpgradeCard()
 	}
 	return nil
+}
+
+// cardActionAdminLabel returns the command to name in the admin-required
+// reply when a nav:/act: card action needs admin_from, or "" when anyone may
+// run it. Card actions run here directly instead of through handleCommand,
+// so this mirrors isPrivilegedCommandInvocation for them. cmd: buttons are
+// dispatched as commands and gated there.
+func (e *Engine) cardActionAdminLabel(prefix, cmd, args, sessionKey string) string {
+	if privilegedCommands[strings.TrimPrefix(cmd, "/")] {
+		// e.g. nav:/dir shows the directory history and act:/dir switches it.
+		return cmd
+	}
+	if prefix != "act" {
+		return ""
+	}
+	switch cmd {
+	case "/provider", "/provider/add":
+		// Switch or clear the active provider / start adding a preset.
+		if args != "" {
+			return "/provider"
+		}
+	case "/provider/add-other", "/provider/link":
+		return "/provider"
+	case "/mode":
+		target := strings.ToLower(args)
+		if target == "" {
+			return ""
+		}
+		agent, _ := e.sessionContextForKey(sessionKey)
+		switcher, ok := agent.(ModeSwitcher)
+		if !ok {
+			return ""
+		}
+		if v, ok := switcher.(ModeValidator); ok && v.ValidateMode(target) != nil {
+			return "" // rejected with the invalid-mode message instead
+		}
+		if modeRequiresAdmin(switcher, target) {
+			return "/mode " + target
+		}
+	}
+	return ""
 }
 
 func (e *Engine) handleModelCardAction(args, sessionKey string) *Card {
@@ -13506,6 +13699,10 @@ func (e *Engine) executeProviderLink(sessionKey, name string) {
 	}
 	if target == nil {
 		slog.Warn("provider link: global provider not found or incompatible agent type", "name", name, "agentType", agentType)
+		return
+	}
+	if err := ValidateProviderName(target.Name); err != nil {
+		slog.Warn("provider link: refusing provider", "error", err)
 		return
 	}
 
@@ -16179,6 +16376,16 @@ func (e *Engine) cmdBind(p Platform, msg *Message, args []string) {
 		return
 	}
 
+	// Relay turns approve every permission request of the target project's
+	// agent, so linking a chat to another project is admin-level.
+	if !e.isAdmin(msg.UserID) {
+		slog.Info("audit: command_blocked",
+			"user_id", msg.UserID, "platform", msg.Platform,
+			"project", e.name, "command", "bind", "reason", "unauthorized")
+		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgAdminRequired, "/bind"))
+		return
+	}
+
 	if otherProject == e.name {
 		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgRelayBindSelf))
 		return
@@ -16763,7 +16970,12 @@ func (e *Engine) handleWorkspaceInitFlow(p Platform, msg *Message, channelName s
 			return false
 		}
 		if e.skipGit {
-			cloneTo := filepath.Join(e.baseDir, channelName)
+			cloneTo, err := workspaceDirUnderBase(e.baseDir, channelName)
+			if err != nil {
+				slog.Warn("workspace init: channel name is not a directory name", "channel", channelName, "error", err)
+				e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsInitInvalidTarget))
+				return true
+			}
 			flow = &workspaceInitFlow{
 				state:       "awaiting_confirm",
 				channelName: channelName,
@@ -16806,6 +17018,15 @@ func (e *Engine) handleWorkspaceInitFlow(p Platform, msg *Message, channelName s
 
 	switch flow.state {
 	case "awaiting_url":
+		// Cloning a repository or binding a host path is what /workspace init
+		// does, so it needs the same admin_from authorization.
+		if (looksLikeAllowedLocalDir || looksLikeGitURL(content)) && !e.isAdmin(msg.UserID) {
+			slog.Info("audit: command_blocked",
+				"user_id", msg.UserID, "platform", msg.Platform,
+				"project", e.name, "command", "workspace", "reason", "unauthorized")
+			e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgAdminRequired, "/workspace init"))
+			return true
+		}
 		// Accept local directory paths: bind directly without cloning.
 		if looksLikeAllowedLocalDir {
 			dirPath, resolveErr := resolveLocalDirPath(content, e.baseDir)
@@ -16835,8 +17056,12 @@ func (e *Engine) handleWorkspaceInitFlow(p Platform, msg *Message, channelName s
 			e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsInitInvalidTarget))
 			return true
 		}
-		repoName := extractRepoName(content)
-		cloneTo := filepath.Join(e.baseDir, repoName)
+		cloneTo, err := workspaceDirUnderBase(e.baseDir, extractRepoName(content))
+		if err != nil {
+			slog.Info("workspace init refused", "user_id", msg.UserID, "error", err)
+			e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsInitInvalidTarget))
+			return true
+		}
 
 		e.initFlowsMu.Lock()
 		flow.repoURL = content
@@ -16974,8 +17199,29 @@ func extractRepoName(url string) string {
 	return "workspace"
 }
 
+// workspaceDirUnderBase joins name onto baseDir and returns the result only
+// when it names a directory inside baseDir: absolute or drive-relative names,
+// the base itself and ".." segments that climb out of it are refused.
+func workspaceDirUnderBase(baseDir, name string) (string, error) {
+	if filepath.IsAbs(name) || filepath.VolumeName(name) != "" {
+		return "", fmt.Errorf("workspace %q: an absolute path is not a workspace name", name)
+	}
+	base := filepath.Clean(baseDir)
+	target := filepath.Join(base, name)
+	rel, err := filepath.Rel(base, target)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("workspace %q is not a directory inside %s", name, base)
+	}
+	return target, nil
+}
+
 func gitClone(repoURL, dest string) error {
-	cmd := exec.Command("git", "clone", repoURL, dest)
+	// Git must never read the URL as an option: refuse a leading "-" and
+	// end option parsing with "--".
+	if strings.HasPrefix(repoURL, "-") {
+		return fmt.Errorf("invalid repository URL %q", repoURL)
+	}
+	cmd := exec.Command("git", "clone", "--", repoURL, dest)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s: %w", strings.TrimSpace(string(output)), err)

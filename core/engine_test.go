@@ -2566,7 +2566,7 @@ func TestEngine_AdminFrom_AdminCanRunShell(t *testing.T) {
 
 func TestEngine_RoleBasedACL_AdminCanRunAll(t *testing.T) {
 	e := newTestEngine()
-	e.SetDisabledCommands([]string{"help", "status"}) // project-level disables
+	e.SetDisabledCommands([]string{"status"}) // project-level disables
 
 	urm := NewUserRoleManager()
 	urm.Configure("member", []RoleInput{
@@ -2584,6 +2584,14 @@ func TestEngine_RoleBasedACL_AdminCanRunAll(t *testing.T) {
 		if strings.Contains(s, "disabled") || strings.Contains(s, "禁用") {
 			t.Errorf("admin should not have /help disabled, got: %s", s)
 		}
+	}
+
+	// A role adds to the project's disabled_commands; it cannot re-enable
+	// a command the project disables.
+	p.clearSent()
+	e.handleCommand(p, msg, "/status")
+	if sent := p.getSent(); len(sent) != 1 || !strings.Contains(sent[0], "disabled") {
+		t.Errorf("project-disabled /status must stay disabled for the admin role, got: %v", sent)
 	}
 }
 
@@ -6255,13 +6263,55 @@ func TestHandleCardNav_DirSelectSwitchesWorkDir(t *testing.T) {
 	e.dirHistory.Add("test", d3)
 
 	sk := "test:user1"
-	_ = e.handleCardNav("act:/dir select 2", sk)
+	e.SetAdminFrom("admin1")
+	admin := &Message{SessionKey: sk, Platform: "test", UserID: "admin1"}
+	_ = e.handleCardNavWithContext("act:/dir select 2", admin)
 	if agent.workDir != d2 {
 		t.Fatalf("workDir = %q, want %q", agent.workDir, d2)
 	}
-	card := e.handleCardNav("nav:/dir 1", sk)
+	card := e.handleCardNavWithContext("nav:/dir 1", admin)
 	if card == nil {
 		t.Fatal("expected dir card after nav")
+	}
+}
+
+// /dir is admin-only; its card actions must check the clicker too, and fail
+// closed when the platform does not say who clicked.
+func TestHandleCardNav_DirRequiresAdmin(t *testing.T) {
+	temp := t.TempDir()
+	d1, d2 := filepath.Join(temp, "a"), filepath.Join(temp, "b")
+	for _, d := range []string{d1, d2} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	dataDir := t.TempDir()
+	agent := &stubWorkDirAgent{workDir: d2}
+	e := NewEngine("test", agent, []Platform{&stubPlatformEngine{n: "test"}}, dataDir, LangEnglish)
+	e.SetDirHistory(NewDirHistory(dataDir))
+	e.dirHistory.Add("test", d1)
+	e.dirHistory.Add("test", d2)
+	e.SetAdminFrom("admin1")
+	sk := "test:user1"
+
+	for name, nav := range map[string]func(string) *Card{
+		"no clicker": func(a string) *Card { return e.handleCardNav(a, sk) },
+		"non-admin": func(a string) *Card {
+			return e.handleCardNavWithContext(a, &Message{SessionKey: sk, Platform: "test", UserID: "user1"})
+		},
+	} {
+		for _, action := range []string{"act:/dir select 2", "nav:/dir 1"} {
+			card := nav(action)
+			if card == nil || !strings.Contains(card.RenderText(), "admin") {
+				t.Fatalf("%s %s: want admin-required card, got %#v", name, action, card)
+			}
+			if strings.Contains(card.RenderText(), d1) {
+				t.Fatalf("%s %s: card leaked directory history: %s", name, action, card.RenderText())
+			}
+		}
+		if agent.workDir != d2 {
+			t.Fatalf("%s: workDir changed to %q", name, agent.workDir)
+		}
 	}
 }
 
@@ -12024,6 +12074,7 @@ func TestWorkspace_Route_ShowsCurrentAndSupportsSpaces(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	e.SetAdminFrom("*") // /workspace route is admin-only
 	msg := &Message{SessionKey: "test:ch1:user1", Content: "/workspace route " + targetDir, ReplyCtx: "ctx"}
 	e.handleCommand(p, msg, msg.Content)
 
@@ -12055,6 +12106,7 @@ func TestWorkspace_Route_RejectsRelativePath(t *testing.T) {
 	bindStore := filepath.Join(t.TempDir(), "bindings.json")
 	e.SetMultiWorkspace(baseDir, bindStore)
 
+	e.SetAdminFrom("*") // /workspace route is admin-only
 	msg := &Message{SessionKey: "test:ch1:user1", Content: "/workspace route relative/path", ReplyCtx: "ctx"}
 	e.handleCommand(p, msg, msg.Content)
 
@@ -12076,6 +12128,7 @@ func TestWorkspace_Route_RejectsNonexistentPath(t *testing.T) {
 	e.SetMultiWorkspace(baseDir, bindStore)
 
 	missingPath := filepath.Join(t.TempDir(), "missing")
+	e.SetAdminFrom("*") // /workspace route is admin-only
 	msg := &Message{SessionKey: "test:ch1:user1", Content: "/workspace route " + missingPath, ReplyCtx: "ctx"}
 	e.handleCommand(p, msg, msg.Content)
 
@@ -12101,6 +12154,7 @@ func TestWorkspace_Route_RejectsFileTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	e.SetAdminFrom("*") // /workspace route is admin-only
 	msg := &Message{SessionKey: "test:ch1:user1", Content: "/workspace route " + fileTarget, ReplyCtx: "ctx"}
 	e.handleCommand(p, msg, msg.Content)
 
@@ -12261,6 +12315,7 @@ func TestWorkspace_SharedRoute_Unbind_List(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	e.SetAdminFrom("user1") // /workspace shared route is admin-only
 	msg := &Message{
 		SessionKey: "test:ch1:user1",
 		Content:    "/workspace shared route " + targetDir,
@@ -12315,6 +12370,7 @@ func TestWorkspace_SharedInit_BindsExistingDir(t *testing.T) {
 	bindStore := filepath.Join(t.TempDir(), "bindings.json")
 	e.SetMultiWorkspace(baseDir, bindStore)
 
+	e.SetAdminFrom("user1") // /workspace shared init is admin-only
 	msg := &Message{
 		SessionKey: "test:ch1:user1",
 		Content:    "/workspace shared init https://github.com/example/repo.git",
@@ -12341,6 +12397,7 @@ func TestWorkspace_Init_LocalDirAbsolute(t *testing.T) {
 	bindStore := filepath.Join(t.TempDir(), "bindings.json")
 	e.SetMultiWorkspace(baseDir, bindStore)
 	e.SetWorkspaceInitAllowLocalPaths(true)
+	e.SetAdminFrom("user1") // /workspace init is admin-only
 
 	msg := &Message{
 		SessionKey: "test:ch1:user1",
@@ -12370,6 +12427,8 @@ func TestWorkspace_Init_LocalDirRelative(t *testing.T) {
 	e.SetMultiWorkspace(baseDir, bindStore)
 	e.SetWorkspaceInitAllowLocalPaths(true)
 
+	e.SetAdminFrom("user1") // /workspace init is admin-only
+
 	// Use relative name — should resolve under baseDir.
 	msg := &Message{
 		SessionKey: "test:ch1:user1",
@@ -12395,6 +12454,7 @@ func TestWorkspace_Init_LocalDirNotFound(t *testing.T) {
 	e.SetMultiWorkspace(baseDir, bindStore)
 	e.SetWorkspaceInitAllowLocalPaths(true)
 
+	e.SetAdminFrom("user1") // /workspace init is admin-only
 	msg := &Message{
 		SessionKey: "test:ch1:user1",
 		Content:    "/workspace init nonexistent-dir",
@@ -12425,6 +12485,7 @@ func TestWorkspace_Init_LocalDirDisabledByDefault(t *testing.T) {
 	}
 	bindStore := filepath.Join(t.TempDir(), "bindings.json")
 	e.SetMultiWorkspace(baseDir, bindStore)
+	e.SetAdminFrom("user1") // /workspace init is admin-only
 
 	msg := &Message{
 		SessionKey: "test:ch1:user1",
@@ -12773,8 +12834,23 @@ func TestCmdMemory_Global_Add_And_Show(t *testing.T) {
 	agent := &stubMemoryAgentFull{projectFile: "", globalFile: globalFile}
 	e := NewEngine("test", agent, []Platform{p}, "", LangEnglish)
 
+	// Non-admins can neither read nor write the host-wide memory file.
+	for _, cmd := range []string{"/memory global add sneaky", "/memory global", "/memory g"} {
+		p.clearSent()
+		msg := &Message{SessionKey: "test:ch:user2", UserID: "user2", Content: cmd, ReplyCtx: "ctx"}
+		e.handleCommand(p, msg, msg.Content)
+		if sent := p.getSent(); len(sent) == 0 || !strings.Contains(sent[0], "admin") {
+			t.Fatalf("%s from non-admin: want admin-required reply, got %v", cmd, sent)
+		}
+	}
+	if _, err := os.Stat(globalFile); !os.IsNotExist(err) {
+		t.Fatalf("non-admin wrote the global memory file (stat err = %v)", err)
+	}
+	p.clearSent()
+	e.SetAdminFrom("user1")
+
 	// Add global memory.
-	msg := &Message{SessionKey: "test:ch:user1", Content: "/memory global add prefer structured logging", ReplyCtx: "ctx"}
+	msg := &Message{SessionKey: "test:ch:user1", UserID: "user1", Content: "/memory global add prefer structured logging", ReplyCtx: "ctx"}
 	e.handleCommand(p, msg, msg.Content)
 
 	sent := p.getSent()
@@ -12790,7 +12866,7 @@ func TestCmdMemory_Global_Add_And_Show(t *testing.T) {
 
 	// Show global memory.
 	p.clearSent()
-	msg = &Message{SessionKey: "test:ch:user1", Content: "/memory global", ReplyCtx: "ctx"}
+	msg = &Message{SessionKey: "test:ch:user1", UserID: "user1", Content: "/memory global", ReplyCtx: "ctx"}
 	e.handleCommand(p, msg, msg.Content)
 
 	sent = p.getSent()

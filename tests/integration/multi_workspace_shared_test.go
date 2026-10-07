@@ -320,7 +320,13 @@ func TestIntegration_ProjectWorkspaceRouteUsesAbsolutePath(t *testing.T) {
 	engine := newIntegrationEngine(t, "project-route", platform, baseDir, bindingStore, filepath.Join(t.TempDir(), "project-route-sessions.json"))
 	_ = engine
 
+	// Routing to an arbitrary path is admin-only (newIntegrationEngine sets
+	// admin_from = "admin").
 	platform.Emit(integrationMessage(platform.Name(), channelID, "user-route", "/workspace route "+routedDir))
+	platform.WaitForOutputContaining(t, "requires admin privilege")
+
+	platform.ClearOutputs()
+	platform.Emit(integrationMessage(platform.Name(), channelID, "admin", "/workspace route "+routedDir))
 	platform.WaitForOutputContaining(t, "Workspace routed")
 
 	platform.ClearOutputs()
@@ -345,7 +351,7 @@ func TestIntegration_SharedWorkspaceRouteLiveSyncAcrossProjects(t *testing.T) {
 	engineB := newIntegrationEngine(t, "project-shared-route-b", platformB, baseDir, bindingStore, filepath.Join(t.TempDir(), "project-shared-route-b-sessions.json"))
 	_ = engineB
 
-	platformA.Emit(integrationMessage(platformA.Name(), channelID, "user-a", "/workspace shared route "+routedDir))
+	platformA.Emit(integrationMessage(platformA.Name(), channelID, "admin", "/workspace shared route "+routedDir))
 	platformA.WaitForOutputContaining(t, "Shared workspace routed")
 
 	platformA.ClearOutputs()

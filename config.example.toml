@@ -738,8 +738,14 @@ name = "my-backend"
 # shell = "/bin/fish"                        # Per-project shell override / 项目级 shell 覆盖
 # shell_profile = "source ~/.config/fish/config.fish"  # Per-project shell profile / 项目级 shell profile
 #
-# admin_from controls who can run privileged commands (/dir, /shell, /restart, /upgrade, /commands addexec, /cron addexec).
-# admin_from 控制谁可以执行特权命令（/dir, /shell, /restart, /upgrade, /commands addexec, /cron addexec）。
+# admin_from controls who can run privileged commands (/dir, /shell, /show, /diff, /restart, /upgrade, /web,
+# /commands addexec, /cron addexec, /provider add|remove|switch|clear, /allow <tool>, /alias add|del,
+# /memory global, /mode to a no-approval mode, /workspace route|init|worktree, /bind <project>),
+# and who besides the requester may answer a permission prompt.
+# admin_from 控制谁可以执行特权命令（/dir, /shell, /show, /diff, /restart, /upgrade, /web,
+# /commands addexec, /cron addexec, /provider add|remove|switch|clear, /allow <工具>, /alias add|del,
+# /memory global, /mode 切到免审批模式, /workspace route|init|worktree, /bind <项目>），
+# 以及除发起人外还有谁可以回应权限请求。
 #
 # admin_from must be defined at the [[projects]] level.
 # Do NOT put it under [projects.platforms.options], or it will be ignored.
@@ -855,17 +861,20 @@ name = "my-backend"
 #
 # When [projects.users] is configured, each user is matched to a role.
 # Roles control which commands are available and the rate limit for that user.
+# A role's disabled_commands add to the project's disabled_commands; a role
+# cannot re-enable a command the project disables.
 # If not configured, behavior is unchanged (backward compatible).
 #
 # 配置 [projects.users] 后，每个用户会被分配到一个角色。
-# 角色控制该用户可用的命令和速率限制。未配置时行为不变（向后兼容）。
+# 角色控制该用户可用的命令和速率限制。角色的 disabled_commands 叠加在项目的
+# disabled_commands 之上，不能重新启用项目已禁用的命令。未配置时行为不变（向后兼容）。
 #
 # [projects.users]
 # default_role = "member"
 #
 # [projects.users.roles.admin]
 # user_ids = ["platform_user_id_1", "platform_user_id_2"]
-# disabled_commands = []                                     # no restrictions
+# disabled_commands = []                                     # nothing beyond the project's list
 # rate_limit = { max_messages = 50, window_secs = 60 }
 #
 # [projects.users.roles.member]
