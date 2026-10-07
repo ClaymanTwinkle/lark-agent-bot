@@ -145,6 +145,32 @@ env_key = "OTHER_KEY"
 	}
 }
 
+// The provider name is written into a TOML table header, so a name that
+// could close the header or start a new line must never reach the file.
+func TestEnsureCodexProviderConfig_RefusesInjectedNames(t *testing.T) {
+	for _, name := range []string{
+		"x]\n[mcp_servers.evil]\ncommand = \"sh\"\n[x",
+		"a]b",
+		`a"b`,
+		"a b",
+		"a\nb",
+	} {
+		home := filepath.Join(t.TempDir(), ".codex")
+		if err := ensureCodexProviderConfig(home, name, "https://example.com/v1", "responses", nil); err == nil {
+			t.Errorf("ensureCodexProviderConfig(%q) = nil, want error", name)
+		}
+		if _, err := os.Stat(filepath.Join(home, "config.toml")); !os.IsNotExist(err) {
+			t.Errorf("%q: config.toml was written (stat err = %v)", name, err)
+		}
+		if _, err := buildProviderSection(name, "", "", nil); err == nil {
+			t.Errorf("buildProviderSection(%q) = nil error", name)
+		}
+		if _, err := upsertProviderSection("[model_providers.ok]\n", name, "[model_providers.ok]\n"); err == nil {
+			t.Errorf("upsertProviderSection(%q) = nil error", name)
+		}
+	}
+}
+
 func TestEnsureCodexProviderConfig_SkipsWhenEmpty(t *testing.T) {
 	err := ensureCodexProviderConfig("", "", "", "", nil)
 	if err != nil {

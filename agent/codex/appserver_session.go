@@ -299,6 +299,11 @@ func (s *appServerSession) connect() error {
 		args = append(args, "-c", fmt.Sprintf("openai_base_url=%q", baseURL))
 	}
 	cmd := exec.CommandContext(s.ctx, s.bin, args...)
+	// cmd.Path is the resolved executable, e.g. the codex.cmd shim npm
+	// installs on Windows, which runs through cmd.exe.
+	if err := core.CheckBatchArgs(cmd.Path, cmd.Args[1:]); err != nil {
+		return fmt.Errorf("codex app-server: %w", err)
+	}
 	cmd.Dir = s.workDir
 	env := append([]string(nil), s.extraEnv...)
 	if s.codexHome != "" {

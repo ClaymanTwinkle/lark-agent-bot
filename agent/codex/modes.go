@@ -73,5 +73,11 @@ func (a *Agent) PermissionModes() []core.PermissionModeInfo {
 	}
 	return append(modes,
 		core.PermissionModeInfo{Key: "read-only", NameKey: core.MsgPermissionReadOnlyName, DescKey: readOnlyDesc},
-		core.PermissionModeInfo{Key: "full-access", NameKey: core.MsgPermissionFullAccessName, DescKey: core.MsgPermissionFullAccessDesc})
+		core.PermissionModeInfo{Key: "full-access", NameKey: core.MsgPermissionFullAccessName, DescKey: core.MsgPermissionFullAccessDesc, Privileged: true})
+}
+
+// NormalizeMode returns the mode key SetMode(mode) would select
+// (core.ModeNormalizer).
+func (a *Agent) NormalizeMode(mode string) string {
+	return normalizeMode(mode)
 }

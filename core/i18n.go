@@ -285,6 +285,7 @@ const (
 	MsgPermissionApproveAll      MsgKey = "permission_approve_all"
 	MsgPermissionDenied          MsgKey = "permission_denied_msg"
 	MsgPermissionHint            MsgKey = "permission_hint"
+	MsgPermissionNotRequester    MsgKey = "permission_not_requester"
 	MsgQuietOn                   MsgKey = "quiet_on"
 	MsgQuietOff                  MsgKey = "quiet_off"
 	MsgDisplayModeCompact        MsgKey = "display_mode_compact"
@@ -1322,6 +1323,13 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "⚠️ 等待權限回應。請回覆 **允許** / **拒絕** / **允許所有**。",
 		LangJapanese:           "⚠️ 権限の応答を待っています。**allow** / **deny** / **allow all** で返信してください。",
 		LangSpanish:            "⚠️ Esperando respuesta de permiso. Responda **allow** / **deny** / **allow all**.",
+	},
+	MsgPermissionNotRequester: {
+		LangEnglish:            "🔒 Only the user who started this task or an admin can answer this permission request.",
+		LangChinese:            "🔒 只有发起此任务的用户或管理员可以回应这个权限请求。",
+		LangTraditionalChinese: "🔒 只有發起此任務的使用者或管理員可以回應這個權限請求。",
+		LangJapanese:           "🔒 この権限リクエストに応答できるのは、このタスクを開始したユーザーまたは管理者だけです。",
+		LangSpanish:            "🔒 Solo el usuario que inició esta tarea o un administrador puede responder a esta solicitud de permiso.",
 	},
 	MsgQuietOn: {
 		LangEnglish:            "🔇 Quiet mode ON — thinking and tool progress messages will be hidden.",

@@ -896,6 +896,12 @@ func (a *Agent) SetMode(mode string) {
 	slog.Info("claudecode: permission mode changed", "mode", a.mode)
 }
 
+// NormalizeMode returns the mode key SetMode(mode) would select, resolving
+// aliases such as "yolo" (core.ModeNormalizer).
+func (a *Agent) NormalizeMode(mode string) string {
+	return normalizePermissionMode(mode)
+}
+
 // GetMode returns the current permission mode.
 func (a *Agent) GetMode() string {
 	a.mu.Lock()
@@ -1038,7 +1044,7 @@ func (a *Agent) PermissionModes() []core.PermissionModeInfo {
 		{Key: "acceptEdits", Name: "Accept Edits", NameZh: "接受编辑", Desc: "Auto-approve file edits, ask for others", DescZh: "自动允许文件编辑，其他需确认"},
 		{Key: "plan", Name: "Plan Mode", NameZh: "计划模式", Desc: "Plan only, no execution until approved", DescZh: "只做规划不执行，审批后再执行"},
 		{Key: "auto", Name: "Auto", NameZh: "自动模式", Desc: "Claude decides when to ask for permission", DescZh: "由 Claude 自动判断何时需要确认"},
-		{Key: "bypassPermissions", Name: "YOLO", NameZh: "YOLO 模式", Desc: "Auto-approve everything", DescZh: "全部自动通过"},
+		{Key: "bypassPermissions", Name: "YOLO", NameZh: "YOLO 模式", Desc: "Auto-approve everything", DescZh: "全部自动通过", Privileged: true},
 		{Key: "dontAsk", Name: "Don't Ask", NameZh: "静默拒绝", Desc: "Auto-deny tools unless pre-approved via allowed_tools or settings.json allow rules", DescZh: "未预授权的工具自动拒绝，不弹确认"},
 	}
 }

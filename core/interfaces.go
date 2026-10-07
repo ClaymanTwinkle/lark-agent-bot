@@ -586,6 +586,14 @@ type ModeValidator interface {
 	ValidateMode(mode string) error
 }
 
+// ModeNormalizer is an optional interface for ModeSwitcher agents that accept
+// aliases for their modes (e.g. "yolo"). NormalizeMode returns the
+// PermissionModeInfo.Key that SetMode(mode) would select, so the engine can
+// apply per-mode policy (see PermissionModeInfo.Privileged) before switching.
+type ModeNormalizer interface {
+	NormalizeMode(mode string) string
+}
+
 // WorkspaceAgentOptionSnapshotter is an optional interface for agents that can
 // export reusable constructor options needed to recreate an equivalent agent in
 // a different workspace. Snapshot values should omit work_dir; the caller is
@@ -619,6 +627,9 @@ type PermissionModeInfo struct {
 	NameZh  string
 	Desc    string
 	DescZh  string
+	// Privileged marks a mode that grants unrestricted host access (no
+	// approvals, no sandbox); switching to it requires admin_from.
+	Privileged bool
 }
 
 // CardStatus represents the visual status of a card header.

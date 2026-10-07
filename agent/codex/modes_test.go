@@ -22,6 +22,21 @@ func TestPermissionModes_MatchCurrentPermissionsWithoutAliases(t *testing.T) {
 	}
 }
 
+// full-access drops approvals and the sandbox, so only it needs admin_from.
+func TestPermissionModes_OnlyFullAccessIsPrivileged(t *testing.T) {
+	for _, backend := range []string{"app_server", "exec"} {
+		a := &Agent{backend: backend}
+		for _, mode := range a.PermissionModes() {
+			if want := mode.Key == "full-access"; mode.Privileged != want {
+				t.Errorf("%s %q: Privileged = %v, want %v", backend, mode.Key, mode.Privileged, want)
+			}
+		}
+		if got := a.NormalizeMode(" Full-Access "); got != "full-access" {
+			t.Errorf("NormalizeMode = %q, want full-access", got)
+		}
+	}
+}
+
 func TestPermissionModes_DefaultAndAutoReviewHaveDifferentReviewers(t *testing.T) {
 	a := &Agent{backend: "app_server"}
 	for _, tc := range []struct{ mode, approval, sandbox, reviewer string }{

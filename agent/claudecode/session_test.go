@@ -1469,3 +1469,24 @@ func TestHandleResultKeepsLiveAssistantUsage(t *testing.T) {
 		t.Errorf("OutputTokens = %d, want 406 (result is authoritative for output)", u.OutputTokens)
 	}
 }
+
+// An npm-installed claude on Windows is a .cmd shim that runs through
+// cmd.exe, which os/exec does not quote for. A spawn whose arguments carry a
+// cmd.exe metacharacter must be refused before anything runs; the shim
+// written here is never executed.
+func TestNewClaudeSession_RefusesBatchShimWithCmdMetacharacters(t *testing.T) {
+	shim := filepath.Join(t.TempDir(), "claude.cmd")
+	if err := os.WriteFile(shim, []byte("@exit 1\r\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := newClaudeSession(context.Background(), t.TempDir(), shim, nil, "",
+		"opus&calc", "", "", "default", "", "", nil, nil, nil, nil, "", false,
+		core.SpawnOptions{}, 0, 0, t.TempDir(), "")
+	if err == nil {
+		_ = cs.Close()
+		t.Fatal("newClaudeSession started a batch shim with a cmd.exe metacharacter in --model")
+	}
+	if !strings.Contains(err.Error(), "batch file") {
+		t.Fatalf("err = %v, want batch-file refusal", err)
+	}
+}

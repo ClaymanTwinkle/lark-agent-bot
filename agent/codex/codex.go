@@ -561,6 +561,12 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 	}
 
 	if provName != "" {
+		// The name is written into config.toml and passed as model_provider;
+		// providers added through any path (config, chat, management API)
+		// meet this check before Codex sees them.
+		if err := core.ValidateProviderName(provName); err != nil {
+			return nil, fmt.Errorf("codex: start session: %w", err)
+		}
 		if err := ensureCodexProviderConfig(codexHome, provName, baseURL, provWireAPI, provHeaders); err != nil {
 			slog.Warn("codex: failed to write provider config", "provider", provName, "error", err)
 		}

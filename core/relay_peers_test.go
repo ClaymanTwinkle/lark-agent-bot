@@ -278,7 +278,19 @@ func TestCmdBind_AcceptsProjectRunningInPeerProcess(t *testing.T) {
 	t.Cleanup(rm.ClosePeers)
 	e.SetRelayManager(rm)
 
-	e.cmdBind(p, &Message{SessionKey: "feishu:chat-1:user-1", ReplyCtx: "ctx"}, []string{"codex-bot"})
+	// Relay turns auto-approve the target's permission requests, so only an
+	// admin may bind.
+	e.SetAdminFrom("user-1")
+	e.cmdBind(p, &Message{SessionKey: "feishu:chat-1:user-2", UserID: "user-2", ReplyCtx: "ctx"}, []string{"codex-bot"})
+	if got := strings.Join(p.getSent(), "\n"); !strings.Contains(got, "admin") {
+		t.Fatalf("non-admin bind reply = %q, want admin-required", got)
+	}
+	if rm.GetBinding("chat-1") != nil {
+		t.Fatal("non-admin /bind created a relay binding")
+	}
+	p.clearSent()
+
+	e.cmdBind(p, &Message{SessionKey: "feishu:chat-1:user-1", UserID: "user-1", ReplyCtx: "ctx"}, []string{"codex-bot"})
 
 	if got := strings.Join(p.getSent(), "\n"); !strings.Contains(got, "Bind successful") {
 		t.Fatalf("reply = %q, want bind success", got)

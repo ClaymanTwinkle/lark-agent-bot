@@ -34,12 +34,18 @@ func MergeEnv(base, extra []string) []string {
 	return append(merged, extra...)
 }
 
-// CheckAllowFrom logs a security warning at startup when allow_from is not
-// configured (defaults to permit-all). Platforms should call this during init.
+// CheckAllowFrom logs a security warning at startup when allow_from permits
+// everyone: not configured (the default) or set to "*". Platforms should call
+// this during init.
 func CheckAllowFrom(platform, allowFrom string) {
-	if strings.TrimSpace(allowFrom) == "" {
+	switch strings.TrimSpace(allowFrom) {
+	case "":
 		slog.Warn("allow_from is not set — all users are permitted. "+
 			"Set allow_from in config to restrict access.",
+			"platform", platform)
+	case "*":
+		slog.Warn("allow_from is \"*\" — all users are permitted to drive an agent that runs on this host. "+
+			"List user IDs in allow_from to restrict access.",
 			"platform", platform)
 	}
 }
