@@ -1,18 +1,13 @@
 package main
 
 import (
-	"archive/tar"
-	"archive/zip"
-	"compress/gzip"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -24,7 +19,6 @@ const (
 	githubRepo   = "ClaymanTwinkle/lark-agent-bot"
 	githubAPI    = "https://api.github.com/repos/" + githubRepo + "/releases/latest"
 	githubAllAPI = "https://api.github.com/repos/" + githubRepo + "/releases"
-	downloadBase = "https://github.com/" + githubRepo + "/releases/download"
 )
 
 // cachedLatestVersion 缓存最新版本信息，避免频繁请求API
@@ -172,45 +166,16 @@ func runUpdate(args []string) {
 	}
 	fmt.Printf("New version available: %s → %s\n", version, label)
 
-	// Try archive format first (tar.gz/zip), then bare binary as fallback
-	archiveAsset := archiveAssetName(latest)
-	archiveURL := fmt.Sprintf("%s/%s/%s", downloadBase, latest, archiveAsset)
-
-	fmt.Printf("Downloading %s ...\n", archiveURL)
-
-	tmpFile, err := downloadToTemp(archiveURL)
-	needExtract := err == nil
-
+	// The archive is checked against the release's checksums.txt before
+	// anything is extracted; an archive it cannot verify is not installed.
+	fmt.Printf("Downloading %s ...\n", core.ReleaseArchiveURL(latest))
+	newBinary, err := core.DownloadReleaseBinary(latest)
 	if err != nil {
-		// Fallback: try bare binary format (older releases)
-		binaryAsset := binaryAssetName(latest)
-		binaryURL := fmt.Sprintf("%s/%s/%s", downloadBase, latest, binaryAsset)
-		fmt.Printf("Archive not found, trying bare binary %s ...\n", binaryURL)
-
-		tmpFile, err = downloadToTemp(binaryURL)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Download failed: %v\n", err)
-			os.Exit(1)
-		}
-	}
-
-	if needExtract {
-		// Downloaded an archive - extract binary
-		extracted, extractErr := extractBinaryFromArchive(tmpFile, archiveAsset)
-		os.Remove(tmpFile) // clean up archive
-		if extractErr != nil {
-			fmt.Fprintf(os.Stderr, "Extract failed: %v\n", extractErr)
-			os.Exit(1)
-		}
-		tmpFile = extracted
-	}
-	defer os.Remove(tmpFile)
-
-	newBinary, err := os.ReadFile(tmpFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Update failed: read downloaded binary: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Update failed: %v\n", err)
 		os.Exit(1)
 	}
+	fmt.Println("SHA-256 matches the release's checksums.txt.")
+
 	installedPath, err := core.InstallBinary(newBinary)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Update failed: %v\n", err)
@@ -305,147 +270,6 @@ func fetchLatestStableRelease() (*githubRelease, error) {
 		return nil, fmt.Errorf("unexpected redirect: %s", loc)
 	}
 	return &githubRelease{TagName: parts[1], HTMLURL: loc}, nil
-}
-
-func binaryAssetName(tag string) string {
-	goos := runtime.GOOS
-	goarch := runtime.GOARCH
-	name := fmt.Sprintf("lark-agent-bot-%s-%s-%s", tag, goos, goarch)
-	if goos == "windows" {
-		name += ".exe"
-	}
-	return name
-}
-
-func archiveAssetName(tag string) string {
-	goos := runtime.GOOS
-	goarch := runtime.GOARCH
-	base := fmt.Sprintf("lark-agent-bot-%s-%s-%s", tag, goos, goarch)
-	if goos == "windows" {
-		return base + ".zip"
-	}
-	return base + ".tar.gz"
-}
-
-// extractBinaryFromArchive extracts the lark-agent-bot binary from a .tar.gz or .zip archive.
-func extractBinaryFromArchive(archivePath, archiveName string) (string, error) {
-	if strings.HasSuffix(archiveName, ".zip") {
-		return extractFromZip(archivePath)
-	}
-	return extractFromTarGz(archivePath)
-}
-
-func extractFromTarGz(archivePath string) (string, error) {
-	f, err := os.Open(archivePath)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		return "", fmt.Errorf("gzip: %w", err)
-	}
-	defer gz.Close()
-
-	tr := tar.NewReader(gz)
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return "", fmt.Errorf("tar: %w", err)
-		}
-		if hdr.Typeflag != tar.TypeReg {
-			continue
-		}
-		if strings.HasPrefix(hdr.Name, "lark-agent-bot") {
-			tmp, err := os.CreateTemp("", "lark-agent-bot-update-*")
-			if err != nil {
-				return "", err
-			}
-			if _, err := io.Copy(tmp, tr); err != nil {
-				tmp.Close()
-				os.Remove(tmp.Name())
-				return "", fmt.Errorf("extract: %w", err)
-			}
-			tmp.Close()
-			return tmp.Name(), nil
-		}
-	}
-	return "", fmt.Errorf("binary not found in archive")
-}
-
-func extractFromZip(archivePath string) (string, error) {
-	r, err := zip.OpenReader(archivePath)
-	if err != nil {
-		return "", fmt.Errorf("zip: %w", err)
-	}
-	defer r.Close()
-
-	for _, f := range r.File {
-		if !strings.HasPrefix(f.Name, "lark-agent-bot") {
-			continue
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return "", err
-		}
-		tmp, err := os.CreateTemp("", "lark-agent-bot-update-*")
-		if err != nil {
-			rc.Close()
-			return "", err
-		}
-		if _, err := io.Copy(tmp, rc); err != nil {
-			tmp.Close()
-			rc.Close()
-			os.Remove(tmp.Name())
-			return "", fmt.Errorf("extract: %w", err)
-		}
-		rc.Close()
-		tmp.Close()
-		return tmp.Name(), nil
-	}
-	return "", fmt.Errorf("binary not found in archive")
-}
-
-func downloadToTemp(url string) (string, error) {
-	client := &http.Client{
-		Timeout: 5 * time.Minute,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 10 {
-				return fmt.Errorf("too many redirects")
-			}
-			return nil
-		},
-	}
-
-	resp, err := client.Get(url)
-	if err != nil {
-		return "", fmt.Errorf("download: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("download returned HTTP %d", resp.StatusCode)
-	}
-
-	tmp, err := os.CreateTemp("", "lark-agent-bot-update-*")
-	if err != nil {
-		return "", err
-	}
-
-	size, err := io.Copy(tmp, resp.Body)
-	if err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
-		return "", fmt.Errorf("write: %w", err)
-	}
-	tmp.Close()
-
-	fmt.Printf("Downloaded %.1f MB\n", float64(size)/1024/1024)
-	return tmp.Name(), nil
 }
 
 func checkUpdate(args []string) {
