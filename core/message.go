@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -270,21 +271,58 @@ func writeAtomicNoOverwrite(dir, name string, data []byte) bool {
 }
 
 // sanitizeAttachmentFileName reduces a user-supplied attachment filename to a
-// safe basename suitable for joining into an attachment directory. It strips
-// any directory components (both `/` and `\`, the latter so Linux strips
-// Windows-style paths too) and rejects parent / current-directory references.
-// Returns "" when the input cannot produce a safe basename, so callers can
-// fall back to a generated name.
+// safe basename suitable for joining into an attachment directory. The rules
+// are the same on every OS, since the files may be copied to Windows later:
+//
+//   - directory components are stripped, for both `/` and `\` separators;
+//   - `:` becomes `_`, so the name cannot address an NTFS alternate data
+//     stream ("a.txt:hidden") or a drive ("C:a.txt");
+//   - trailing dots and spaces are dropped, as Windows drops them;
+//   - a Windows device name (CON, NUL, COM1, LPT¹, ...; see
+//     isWindowsDeviceName), with or without an extension, gets a "_" prefix
+//     so it names a file instead of opening the device.
+//
+// Returns "" when no usable name remains (empty, ".", ".." or only dots and
+// spaces), so callers can fall back to a generated name.
 func sanitizeAttachmentFileName(name string) string {
-	// Normalize backslashes to forward slashes so filepath.Base on any OS
-	// strips Windows-style separators in attacker-supplied paths too.
-	name = filepath.ToSlash(name)
-	name = strings.ReplaceAll(name, "\\", "/")
-	name = filepath.Base(name)
-	if name == "" || name == "." || name == ".." {
+	name = strings.ReplaceAll(name, ":", "_")
+	// path.Base rather than filepath.Base: on Windows filepath.Base also
+	// strips volume names ("C:", "//host/share"), so the same name came out
+	// differently on different OSes.
+	name = path.Base(strings.ReplaceAll(name, `\`, "/"))
+	name = strings.TrimRight(name, ". ")
+	if name == "" || name == "/" {
 		return ""
 	}
+	if isWindowsDeviceName(name) {
+		name = "_" + name
+	}
 	return name
+}
+
+// isWindowsDeviceName reports whether Windows opens a device instead of a
+// file for the file name name: CON, PRN, AUX, NUL, COM0-COM9, LPT0-LPT9, COM
+// or LPT followed by a superscript ¹ ² ³, and CONIN$ / CONOUT$, in any case,
+// also with an extension or spaces before it ("nul.txt", "CON .log"). This
+// is the standard library's Windows check plus COM0 and LPT0, which
+// Microsoft's naming rules also reserve.
+func isWindowsDeviceName(name string) bool {
+	stem, _, _ := strings.Cut(name, ".")
+	stem = strings.TrimRight(stem, " ")
+	for _, reserved := range []string{"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} {
+		if strings.EqualFold(stem, reserved) {
+			return true
+		}
+	}
+	if len(stem) < 4 || !(strings.EqualFold(stem[:3], "COM") || strings.EqualFold(stem[:3], "LPT")) {
+		return false
+	}
+	switch suffix := stem[3:]; suffix {
+	case "¹", "²", "³":
+		return true
+	default:
+		return len(suffix) == 1 && '0' <= suffix[0] && suffix[0] <= '9'
+	}
 }
 
 // AppendFileRefs appends file path references to a prompt string.
