@@ -314,7 +314,7 @@ func isWindowsDeviceName(name string) bool {
 			return true
 		}
 	}
-	if len(stem) < 4 || !(strings.EqualFold(stem[:3], "COM") || strings.EqualFold(stem[:3], "LPT")) {
+	if len(stem) < 4 || (!strings.EqualFold(stem[:3], "COM") && !strings.EqualFold(stem[:3], "LPT")) {
 		return false
 	}
 	switch suffix := stem[3:]; suffix {
