@@ -214,6 +214,13 @@ const (
 const (
 	MsgSetupScanQR                     MsgKey = "setup_scan_qr"
 	MsgCLIWebNotBuilt                  MsgKey = "cli_web_not_built"
+	MsgCLIWebConfigCreated             MsgKey = "cli_web_config_created"
+	MsgCLIWebStartBot                  MsgKey = "cli_web_start_bot"
+	MsgCLIWebEnabling                  MsgKey = "cli_web_enabling"
+	MsgCLIWebEnabled                   MsgKey = "cli_web_enabled"
+	MsgCLIWebRestartBot                MsgKey = "cli_web_restart_bot"
+	MsgCLIWebOpening                   MsgKey = "cli_web_opening"
+	MsgCLIWebOpenFailed                MsgKey = "cli_web_open_failed"
 	MsgCLIDoctorConfigMissing          MsgKey = "cli_doctor_config_missing"
 	MsgCLIDoctorConfigInvalid          MsgKey = "cli_doctor_config_invalid"
 	MsgCLIDoctorConfigOK               MsgKey = "cli_doctor_config_ok"
@@ -934,6 +941,55 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "目前的 lark-agent-bot 建置不包含 Web 管理後台。請使用正式發佈的執行檔，或用 `make build` 建置（會先建置 Web 管理後台）。",
 		LangJapanese:           "この lark-agent-bot のビルドには Web 管理画面が含まれていません。リリース版のバイナリを使うか、`make build` でビルドしてください（先に Web 管理画面をビルドします）。",
 		LangSpanish:            "Esta compilación de lark-agent-bot no incluye la administración web. Usa un binario publicado o compila con `make build`, que compila antes la administración web.",
+	},
+	MsgCLIWebConfigCreated: {
+		LangEnglish:            "Created a default config at %s.",
+		LangChinese:            "已在 %s 创建默认配置。",
+		LangTraditionalChinese: "已在 %s 建立預設設定。",
+		LangJapanese:           "既定の設定を %s に作成しました。",
+		LangSpanish:            "Configuración por defecto creada en %s.",
+	},
+	MsgCLIWebStartBot: {
+		LangEnglish:            "Start lark-agent-bot to serve the web admin, then finish the setup there, or add a Feishu/Lark bot by scanning a QR code: lark-agent-bot feishu setup --project my-project",
+		LangChinese:            "启动 lark-agent-bot 后即可打开 Web 管理后台，在里面完成剩下的配置；也可以扫码创建飞书/Lark 机器人：lark-agent-bot feishu setup --project my-project",
+		LangTraditionalChinese: "啟動 lark-agent-bot 後即可開啟 Web 管理後台，在裡面完成其餘設定；也可以掃碼建立飛書/Lark 機器人：lark-agent-bot feishu setup --project my-project",
+		LangJapanese:           "lark-agent-bot を起動すると Web 管理画面が開けるので、残りの設定はそこで行ってください。QR コードをスキャンして Feishu/Lark ボットを作成することもできます：lark-agent-bot feishu setup --project my-project",
+		LangSpanish:            "Inicia lark-agent-bot para servir la administración web y termina allí la configuración, o crea un bot de Feishu/Lark escaneando un código QR: lark-agent-bot feishu setup --project my-project",
+	},
+	MsgCLIWebEnabling: {
+		LangEnglish:            "The web admin is off. Turning it on...",
+		LangChinese:            "Web 管理后台未开启，正在开启……",
+		LangTraditionalChinese: "Web 管理後台未開啟，正在開啟……",
+		LangJapanese:           "Web 管理画面がオフです。オンにしています……",
+		LangSpanish:            "La administración web está desactivada. Activándola...",
+	},
+	MsgCLIWebEnabled: {
+		LangEnglish:            "Web admin turned on at port %d in %s.",
+		LangChinese:            "已在 %[2]s 中开启 Web 管理后台，端口 %[1]d。",
+		LangTraditionalChinese: "已在 %[2]s 中開啟 Web 管理後台，連接埠 %[1]d。",
+		LangJapanese:           "%[2]s で Web 管理画面をオンにしました（ポート %[1]d）。",
+		LangSpanish:            "Administración web activada en el puerto %d, en %s.",
+	},
+	MsgCLIWebRestartBot: {
+		LangEnglish:            "Restart lark-agent-bot for the change to take effect.",
+		LangChinese:            "重启 lark-agent-bot 后生效。",
+		LangTraditionalChinese: "重新啟動 lark-agent-bot 後生效。",
+		LangJapanese:           "lark-agent-bot を再起動すると反映されます。",
+		LangSpanish:            "Reinicia lark-agent-bot para aplicar el cambio.",
+	},
+	MsgCLIWebOpening: {
+		LangEnglish:            "Opening %s",
+		LangChinese:            "正在打开 %s",
+		LangTraditionalChinese: "正在開啟 %s",
+		LangJapanese:           "%s を開いています",
+		LangSpanish:            "Abriendo %s",
+	},
+	MsgCLIWebOpenFailed: {
+		LangEnglish:            "\nCould not open a browser. Open this URL in your browser:\n  %s\n\nlark-agent-bot must be running: it serves the web admin on port %d.",
+		LangChinese:            "\n无法自动打开浏览器，请在浏览器中打开：\n  %s\n\nlark-agent-bot 需要在运行：Web 管理后台由它在端口 %d 上提供。",
+		LangTraditionalChinese: "\n無法自動開啟瀏覽器，請在瀏覽器中開啟：\n  %s\n\nlark-agent-bot 需要在執行：Web 管理後台由它在連接埠 %d 上提供。",
+		LangJapanese:           "\nブラウザを開けませんでした。次の URL をブラウザで開いてください：\n  %s\n\nlark-agent-bot が起動している必要があります（ポート %d で Web 管理画面を提供します）。",
+		LangSpanish:            "\nNo se pudo abrir un navegador. Abre esta URL en tu navegador:\n  %s\n\nlark-agent-bot debe estar en ejecución: sirve la administración web en el puerto %d.",
 	},
 	MsgCLIDoctorConfigMissing: {
 		LangEnglish:            "Config file %s not found. Run lark-agent-bot once to create a starter config, or create a bot with: %s",

@@ -3510,3 +3510,69 @@ func TestRemoveGlobalProvider_CleansUpProviderRefs(t *testing.T) {
 		t.Errorf("proj2 provider_refs: want [], got %v", refs2)
 	}
 }
+
+// EnableWebAdmin used to rewrite the whole file, dropping every comment and
+// writing out each unset field.
+func TestEnableWebAdminKeepsTheRestOfTheFile(t *testing.T) {
+	writeTestConfig(t, `# keep this comment
+language = "en"
+
+[[projects]]
+name = "demo"   # and this one
+
+[projects.agent]
+type = "claudecode"
+
+[[projects.platforms]]
+type = "feishu"
+
+[projects.platforms.options]
+app_id = "cli_test"
+app_secret = "secret"
+
+[bridge]
+# bridge notes
+enabled = false
+port = 9999
+`)
+
+	result, err := EnableWebAdmin("mgmt-token", "bridge-token")
+	if err != nil {
+		t.Fatalf("EnableWebAdmin: %v", err)
+	}
+	if result.AlreadyEnabled || result.ManagementPort != 9820 || result.ManagementToken != "mgmt-token" ||
+		result.BridgePort != 9999 || result.BridgeToken != "bridge-token" {
+		t.Fatalf("result = %+v", result)
+	}
+
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, want := range []string{"# keep this comment", `name = "demo"   # and this one`, "# bridge notes"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("config lost %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, `data_dir = ""`) {
+		t.Errorf("config gained unset fields:\n%s", text)
+	}
+
+	cfg, err := Load(ConfigPath)
+	if err != nil {
+		t.Fatalf("Load: %v\n%s", err, text)
+	}
+	if cfg.Management.Enabled == nil || !*cfg.Management.Enabled || cfg.Management.Port != 9820 ||
+		cfg.Management.Token != "mgmt-token" || len(cfg.Management.CORSOrigins) != 1 || cfg.Management.CORSOrigins[0] != "*" {
+		t.Errorf("management = %+v", cfg.Management)
+	}
+	if cfg.Bridge.Enabled == nil || !*cfg.Bridge.Enabled || cfg.Bridge.Port != 9999 || cfg.Bridge.Token != "bridge-token" {
+		t.Errorf("bridge = %+v", cfg.Bridge)
+	}
+
+	again, err := EnableWebAdmin("other", "other")
+	if err != nil || !again.AlreadyEnabled || again.ManagementToken != "mgmt-token" {
+		t.Fatalf("second EnableWebAdmin = %+v, %v", again, err)
+	}
+}
