@@ -91,7 +91,7 @@ codex --version
 
 ## Step 3: Create config.toml
 
-> **💡 Recommended: Use the Web UI** — After installing, run `lark-agent-bot web` to configure the web admin and open the dashboard in your browser. You can visually create projects, add Feishu / Lark bots, manage API providers, and even chat with your agent directly from the browser — no need to edit TOML files by hand. **Note:** `lark-agent-bot web` only configures and opens the browser — you still need to run `lark-agent-bot` separately to start the service. On a new install it also creates the default config, with the agent's `work_dir` set to the folder you run it in, so run it from your project folder.
+> **💡 Recommended: Use the Web UI** — After installing, run `lark-agent-bot web` to configure the web admin, start the bot if needed, and open the dashboard once ready. You can visually create projects, add Feishu / Lark bots, manage API providers, and chat with your agent directly from the browser. Keep the terminal open when it starts the bot. If a bot is already running with web disabled, restart that bot and run `web` again. On a new install it also creates the default config, with the agent's `work_dir` set to the folder you run it in, so run it from your project folder.
 
 If you prefer manual configuration, lark-agent-bot looks for config in this order:
 1. `-config <path>` flag (explicit)
@@ -236,11 +236,10 @@ See the Lark example in [config.example.toml](config.example.toml) for all optio
 **Open the Web UI (recommended):**
 
 ```bash
-lark-agent-bot web    # configure web admin & open browser (does NOT start lark-agent-bot)
-lark-agent-bot        # start the service
+lark-agent-bot web    # enable web admin, start if needed, open browser once ready
 ```
 
-> **Note:** `lark-agent-bot web` only configures the web admin and opens the dashboard in your browser — it does **not** start the lark-agent-bot service itself. You still need to run `lark-agent-bot` (or `lark-agent-bot --config <path>`) separately to actually start the bridge. Think of it as two steps: configure first, then run.
+> **Note:** If this command starts the bot, keep the terminal open; Ctrl+C stops it. An existing bot with web disabled must be restarted before the dashboard can open. Use `web --config <path>` to select the same config as your bot. `web --no-browser` only writes the configuration and prints the URL/token; it does not start the service.
 
 **Normal startup:**
 

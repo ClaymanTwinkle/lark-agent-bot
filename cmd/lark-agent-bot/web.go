@@ -1,13 +1,18 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/ClaymanTwinkle/lark-agent-bot/config"
 	"github.com/ClaymanTwinkle/lark-agent-bot/core"
@@ -17,13 +22,16 @@ import (
 var (
 	webAssetsAvailable = core.WebAssetsAvailable
 	openWebBrowser     = openBrowser
+	runWebBot          = func(configPath string, ready func() bool) {
+		runBot(rootCLIOptions{configPath: configPath}, nil, nil, ready)
+	}
 )
 
 const webUsage = `Usage: lark-agent-bot web [--config <path>] [--no-browser]
 
-Turn on the web admin in the config file if it is off, then open it in a
-browser. The running bot serves the web admin: restart lark-agent-bot after
-it is turned on.
+Enable the web admin and open it once the server is ready. If the bot is
+not running, start it in this terminal (Ctrl+C stops it). If a running bot
+needs the new settings, restart that bot, then run this command again.
 
 On a new install this creates the default config first. A project whose
 work_dir is still the default config's placeholder gets the current folder.
@@ -31,7 +39,7 @@ work_dir is still the default config's placeholder gets the current folder.
 Flags:
   --config <path>    Config file (default: ./config.toml, then
                      ~/.lark-agent-bot/config.toml)
-  -n, --no-browser   Print the URL and token instead of opening a browser
+  -n, --no-browser   Configure and print URL/token only; do not start the bot
   -h, --help         Show this help
 `
 
@@ -44,7 +52,7 @@ func parseWebArgs(args []string) (webOptions, error) {
 	var opts webOptions
 	fs := flag.NewFlagSet("web", flag.ContinueOnError)
 	fs.StringVar(&opts.configPath, "config", "", "config file")
-	fs.BoolVar(&opts.noBrowser, "no-browser", false, "print the URL and token instead of opening a browser")
+	fs.BoolVar(&opts.noBrowser, "no-browser", false, "configure and print URL/token without starting the bot")
 	fs.BoolVar(&opts.noBrowser, "n", false, "alias of --no-browser")
 	err := parseCommandFlags(fs, args)
 	return opts, err
@@ -68,13 +76,11 @@ func webCommand(args []string) int {
 	}
 	// The web admin is how a new install gets set up, so create the starter
 	// config the first time, like a plain `lark-agent-bot` run does.
-	created := false
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		if err := bootstrapConfig(configPath); err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating config: %v\n", err)
 			return 1
 		}
-		created = true
 		fmt.Println(cliText(configPath, core.MsgCLIWebConfigCreated, configPath))
 	}
 
@@ -95,31 +101,17 @@ func webCommand(args []string) int {
 		return 1
 	}
 
-	mgmtEnabled := cfg.Management.Enabled != nil && *cfg.Management.Enabled
-	port := cfg.Management.Port
-	if port == 0 {
-		port = 9820
-	}
-	token := cfg.Management.Token
-
-	if !mgmtEnabled {
+	if cfg.Management.Enabled == nil || !*cfg.Management.Enabled {
 		fmt.Println(cliText(configPath, core.MsgCLIWebEnabling))
-
-		mgmtToken := core.GenerateToken(16)
-		bridgeToken := core.GenerateToken(16)
-		result, err := config.EnableWebAdmin(mgmtToken, bridgeToken)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error enabling web admin: %v\n", err)
-			return 1
-		}
-		port = result.ManagementPort
-		token = result.ManagementToken
+	}
+	result, err := config.EnableWebAdmin(core.GenerateToken(16), core.GenerateToken(16))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error enabling web admin: %v\n", err)
+		return 1
+	}
+	port, token := result.ManagementPort, result.ManagementToken
+	if !result.AlreadyEnabled {
 		fmt.Println(cliText(configPath, core.MsgCLIWebEnabled, port, configPath))
-		if created {
-			fmt.Println(cliText(configPath, core.MsgCLIWebStartBot))
-		} else {
-			fmt.Println(cliText(configPath, core.MsgCLIWebRestartBot))
-		}
 	}
 
 	baseURL := fmt.Sprintf("http://localhost:%d", port)
@@ -127,9 +119,41 @@ func webCommand(args []string) int {
 	if opts.noBrowser {
 		fmt.Printf("URL:   %s\n", baseURL)
 		fmt.Printf("Token: %s\n", token)
+		fmt.Println(cliText(configPath, core.MsgCLIWebManualStart, commandArg(configPath)))
 		return 0
 	}
+	return openOrServeWeb(configPath, baseURL, token, port)
+}
 
+func openOrServeWeb(configPath, baseURL, token string, port int) int {
+	ready, err := probeWebAdmin(baseURL, token)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, cliText(configPath, core.MsgCLIWebUnavailable, baseURL, err))
+		return 1
+	}
+	if ready {
+		openReadyWeb(configPath, baseURL, token, port)
+		return 0
+	}
+	if runningInstancePID(configPath) != 0 {
+		fmt.Fprintln(os.Stderr, cliText(configPath, core.MsgCLIWebRunningNeedsRestart, configPath))
+		return 1
+	}
+	fmt.Println(cliText(configPath, core.MsgCLIWebStarting, configPath))
+	code := 1
+	runWebBot(configPath, func() bool {
+		if err := waitWebAdmin(baseURL, token, 5*time.Second); err != nil {
+			fmt.Fprintln(os.Stderr, cliText(configPath, core.MsgCLIWebUnavailable, baseURL, err))
+			return false
+		}
+		openReadyWeb(configPath, baseURL, token, port)
+		code = 0
+		return true
+	})
+	return code
+}
+
+func openReadyWeb(configPath, baseURL, token string, port int) {
 	loginURL := fmt.Sprintf("%s/login?token=%s",
 		baseURL, url.QueryEscape(token))
 
@@ -137,7 +161,70 @@ func webCommand(args []string) int {
 	if err := openWebBrowser(loginURL); err != nil {
 		fmt.Println(cliText(configPath, core.MsgCLIWebOpenFailed, loginURL, port))
 	}
-	return 0
+}
+
+// probeWebAdmin bypasses proxies and redirects so a local management token
+// cannot be forwarded elsewhere. A listening but incompatible server is an
+// error, not a reason to start a second bot on the same port.
+func probeWebAdmin(baseURL, token string) (bool, error) {
+	transport := &http.Transport{DialContext: (&net.Dialer{Timeout: time.Second}).DialContext}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{
+		Transport: transport, Timeout: time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/status", nil)
+	if err != nil {
+		return false, fmt.Errorf("create web status request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := client.Do(req)
+	if err != nil {
+		// Only failure to connect means there is no service. Read timeouts
+		// and other HTTP failures must not launch another instance.
+		if ue, ok := err.(*url.Error); ok {
+			if ne, ok := ue.Err.(*net.OpError); ok && ne.Op == "dial" {
+				return false, nil
+			}
+		}
+		return false, fmt.Errorf("request web status: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("web status: HTTP %d", resp.StatusCode)
+	}
+	var status struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Bridge struct {
+				Enabled bool `json:"enabled"`
+			} `json:"bridge"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&status); err != nil {
+		return false, fmt.Errorf("decode web status: %w", err)
+	}
+	if !status.OK || !status.Data.Bridge.Enabled {
+		return false, fmt.Errorf("web status: management or bridge is not ready")
+	}
+	return true, nil
+}
+
+func waitWebAdmin(baseURL, token string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		ready, err := probeWebAdmin(baseURL, token)
+		if err != nil {
+			return err
+		}
+		if ready {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("web server did not start at %s", baseURL)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // fillStarterWorkDirs points every project that still has the starter

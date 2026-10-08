@@ -215,12 +215,14 @@ const (
 	MsgSetupScanQR                     MsgKey = "setup_scan_qr"
 	MsgCLIWebNotBuilt                  MsgKey = "cli_web_not_built"
 	MsgCLIWebConfigCreated             MsgKey = "cli_web_config_created"
-	MsgCLIWebStartBot                  MsgKey = "cli_web_start_bot"
 	MsgCLIWebEnabling                  MsgKey = "cli_web_enabling"
 	MsgCLIWebEnabled                   MsgKey = "cli_web_enabled"
-	MsgCLIWebRestartBot                MsgKey = "cli_web_restart_bot"
 	MsgCLIWebOpening                   MsgKey = "cli_web_opening"
 	MsgCLIWebOpenFailed                MsgKey = "cli_web_open_failed"
+	MsgCLIWebStarting                  MsgKey = "cli_web_starting"
+	MsgCLIWebManualStart               MsgKey = "cli_web_manual_start"
+	MsgCLIWebRunningNeedsRestart       MsgKey = "cli_web_running_needs_restart"
+	MsgCLIWebUnavailable               MsgKey = "cli_web_unavailable"
 	MsgCLIDoctorConfigMissing          MsgKey = "cli_doctor_config_missing"
 	MsgCLIDoctorConfigInvalid          MsgKey = "cli_doctor_config_invalid"
 	MsgCLIDoctorConfigOK               MsgKey = "cli_doctor_config_ok"
@@ -935,6 +937,34 @@ var messages = map[MsgKey]map[Language]string{
 		LangJapanese:           "Feishu/Lark のモバイルアプリでこの QR コードをスキャンし、ボットの作成と承認を完了してください：",
 		LangSpanish:            "Escanea este código QR con la aplicación móvil de Feishu/Lark para crear y autorizar el bot:",
 	},
+	MsgCLIWebStarting: {
+		LangEnglish:            "Starting lark-agent-bot with %s. The browser will open when ready. Keep this terminal open; Ctrl+C stops the bot.",
+		LangChinese:            "正在使用 %s 启动 lark-agent-bot，就绪后会打开浏览器。请保持此终端开启，按 Ctrl+C 停止服务。",
+		LangTraditionalChinese: "正在使用 %s 啟動 lark-agent-bot，就緒後會開啟瀏覽器。請保持此終端開啟，按 Ctrl+C 停止服務。",
+		LangJapanese:           "%s で lark-agent-bot を起動しています。準備ができたらブラウザを開きます。この端末を開いたままにしてください。Ctrl+C で停止します。",
+		LangSpanish:            "Iniciando lark-agent-bot con %s. El navegador se abrirá cuando esté listo. Mantén esta terminal abierta; Ctrl+C detiene el bot.",
+	},
+	MsgCLIWebManualStart: {
+		LangEnglish:            "Configuration only; no server was started. Start it with: lark-agent-bot --config %s (restart the bot if already running).",
+		LangChinese:            "这里只完成配置，尚未启动服务。启动命令：lark-agent-bot --config %s（如机器人已运行，请重启该机器人）。",
+		LangTraditionalChinese: "這裡只完成設定，尚未啟動服務。啟動指令：lark-agent-bot --config %s（如機器人已執行，請重新啟動該機器人）。",
+		LangJapanese:           "設定のみ完了しました。サーバーは起動していません。起動コマンド: lark-agent-bot --config %s（すでに動作中なら再起動してください）。",
+		LangSpanish:            "Solo se configuró; no se inició el servidor. Inícialo con: lark-agent-bot --config %s (reinicia el bot si ya está en ejecución).",
+	},
+	MsgCLIWebRunningNeedsRestart: {
+		LangEnglish:            "A bot using %s is already running without a ready web server. Restart that bot to apply the web settings, then run web again.",
+		LangChinese:            "使用 %s 的机器人已在运行，但 Web 服务尚未就绪。请重启该机器人使 Web 配置生效，再运行 web。",
+		LangTraditionalChinese: "使用 %s 的機器人已在執行，但 Web 服務尚未就緒。請重新啟動該機器人使 Web 設定生效，再執行 web。",
+		LangJapanese:           "%s を使うボットは動作中ですが、Web サーバーは準備できていません。ボットを再起動して Web 設定を反映し、web を再実行してください。",
+		LangSpanish:            "Ya hay un bot usando %s, pero el servidor web no está listo. Reinicia ese bot para aplicar la configuración web y ejecuta web de nuevo.",
+	},
+	MsgCLIWebUnavailable: {
+		LangEnglish:            "Web admin at %s is not ready: %v. Check the port and token in the selected config; restart its bot if the web settings changed.",
+		LangChinese:            "%s 的 Web 管理后台尚不可用：%v。请检查所选配置的端口和令牌；如修改了 Web 配置，请重启对应机器人。",
+		LangTraditionalChinese: "%s 的 Web 管理後台尚無法使用：%v。請檢查所選設定的連接埠和權杖；如修改了 Web 設定，請重新啟動對應機器人。",
+		LangJapanese:           "%s の Web 管理画面は準備できていません: %v。選択した設定のポートとトークンを確認し、Web 設定を変更した場合はボットを再起動してください。",
+		LangSpanish:            "La administración web en %s no está lista: %v. Revisa el puerto y el token de la configuración seleccionada; reinicia su bot si cambiaste la configuración web.",
+	},
 	MsgCLIWebNotBuilt: {
 		LangEnglish:            "The web admin is not in this build of lark-agent-bot. Use a release binary, or build with `make build`, which builds the web admin first.",
 		LangChinese:            "当前 lark-agent-bot 构建不包含 Web 管理后台。请使用发布版二进制，或用 `make build` 构建（会先构建 Web 管理后台）。",
@@ -949,13 +979,6 @@ var messages = map[MsgKey]map[Language]string{
 		LangJapanese:           "既定の設定を %s に作成しました。",
 		LangSpanish:            "Configuración por defecto creada en %s.",
 	},
-	MsgCLIWebStartBot: {
-		LangEnglish:            "Start lark-agent-bot to serve the web admin, then finish the setup there, or add a Feishu/Lark bot by scanning a QR code: lark-agent-bot feishu setup --project my-project",
-		LangChinese:            "启动 lark-agent-bot 后即可打开 Web 管理后台，在里面完成剩下的配置；也可以扫码创建飞书/Lark 机器人：lark-agent-bot feishu setup --project my-project",
-		LangTraditionalChinese: "啟動 lark-agent-bot 後即可開啟 Web 管理後台，在裡面完成其餘設定；也可以掃碼建立飛書/Lark 機器人：lark-agent-bot feishu setup --project my-project",
-		LangJapanese:           "lark-agent-bot を起動すると Web 管理画面が開けるので、残りの設定はそこで行ってください。QR コードをスキャンして Feishu/Lark ボットを作成することもできます：lark-agent-bot feishu setup --project my-project",
-		LangSpanish:            "Inicia lark-agent-bot para servir la administración web y termina allí la configuración, o crea un bot de Feishu/Lark escaneando un código QR: lark-agent-bot feishu setup --project my-project",
-	},
 	MsgCLIWebEnabling: {
 		LangEnglish:            "The web admin is off. Turning it on...",
 		LangChinese:            "Web 管理后台未开启，正在开启……",
@@ -969,13 +992,6 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "已在 %[2]s 中開啟 Web 管理後台，連接埠 %[1]d。",
 		LangJapanese:           "%[2]s で Web 管理画面をオンにしました（ポート %[1]d）。",
 		LangSpanish:            "Administración web activada en el puerto %d, en %s.",
-	},
-	MsgCLIWebRestartBot: {
-		LangEnglish:            "Restart lark-agent-bot for the change to take effect.",
-		LangChinese:            "重启 lark-agent-bot 后生效。",
-		LangTraditionalChinese: "重新啟動 lark-agent-bot 後生效。",
-		LangJapanese:           "lark-agent-bot を再起動すると反映されます。",
-		LangSpanish:            "Reinicia lark-agent-bot para aplicar el cambio.",
 	},
 	MsgCLIWebOpening: {
 		LangEnglish:            "Opening %s",

@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -3508,6 +3509,41 @@ func TestRemoveGlobalProvider_CleansUpProviderRefs(t *testing.T) {
 	refs2 := cfg.Projects[1].Agent.ProviderRefs
 	if len(refs2) != 0 {
 		t.Errorf("proj2 provider_refs: want [], got %v", refs2)
+	}
+}
+
+// Enabled sections without tokens were left unusable by web setup.
+func TestEnableWebAdminRepairsMissingTokens(t *testing.T) {
+	for _, managementToken := range []string{"", "keep-management"} {
+		t.Run(managementToken, func(t *testing.T) {
+			writeTestConfig(t, fmt.Sprintf("[management]\nenabled = true\ntoken = %q\n[bridge]\nenabled = true\n", managementToken))
+			result, err := EnableWebAdmin("new-management", "new-bridge")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := managementToken
+			if want == "" {
+				want = "new-management"
+			}
+			if result.AlreadyEnabled || result.ManagementToken != want || result.BridgeToken != "new-bridge" {
+				t.Fatalf("tokens were not repaired: %+v", result)
+			}
+			again, err := EnableWebAdmin("other-management", "other-bridge")
+			if err != nil || !again.AlreadyEnabled || again.ManagementToken != want || again.BridgeToken != "new-bridge" {
+				t.Fatalf("tokens were not persisted: %+v, %v", again, err)
+			}
+		})
+	}
+}
+
+func TestValidate_BridgeProvidesPlatformForWebOnlyProjects(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		cfg := &Config{Projects: []ProjectConfig{{Name: "web", Agent: AgentConfig{Type: "test"}}}}
+		cfg.Bridge.Enabled = &enabled
+		err := cfg.validate()
+		if (err == nil) != enabled {
+			t.Errorf("bridge enabled=%v: validation error=%v", enabled, err)
+		}
 	}
 }
 

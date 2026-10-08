@@ -295,6 +295,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	runBot(rootOpts, logWriter, logCloser, nil)
+}
+
+// runBot is shared by the normal entrypoint and `web`. onStarted runs once
+// startup has installed the HTTP handlers; it may wait for listener readiness.
+func runBot(rootOpts rootCLIOptions, logWriter io.Writer, logCloser io.Closer, onStarted func() bool) {
 	// A service launcher that starts the bot again after a restart exit sets
 	// this (see daemon.RestartExitCodeEnv). Unset it so agents and the
 	// commands they run do not inherit it.
@@ -1298,13 +1304,16 @@ func main() {
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
 
 	var restartReq *core.RestartRequest
-	select {
-	case <-sigCh:
-	case req := <-core.RestartCh:
-		restartReq = &req
-		slog.Info("restart requested via /restart command", "session", req.SessionKey, "platform", req.Platform)
+	if onStarted == nil || onStarted() {
+		select {
+		case <-sigCh:
+		case req := <-core.RestartCh:
+			restartReq = &req
+			slog.Info("restart requested via /restart command", "session", req.SessionKey, "platform", req.Platform)
+		}
 	}
 	if restartReq != nil && restartReq.WaitIdle {
 		restartReq = awaitIdleForRestart(*restartReq, processWork, core.RestartCh, sigCh, restartIdlePollInterval)

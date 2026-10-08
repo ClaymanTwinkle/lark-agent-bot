@@ -1112,7 +1112,10 @@ func (c *Config) validateInternal(permissive bool) error {
 		if proj.Agent.Type == "" {
 			return fmt.Errorf("config: %s.agent.type is required", prefix)
 		}
-		if len(proj.Platforms) == 0 && !permissive {
+		// The bridge adds a platform to every project at runtime, including
+		// projects used only through the web dashboard.
+		bridgeEnabled := c.Bridge.Enabled != nil && *c.Bridge.Enabled
+		if len(proj.Platforms) == 0 && !permissive && !bridgeEnabled {
 			return fmt.Errorf("config: %s needs at least one [[projects.platforms]]", prefix)
 		}
 		for j, p := range proj.Platforms {
@@ -3622,7 +3625,9 @@ func EnableWebAdmin(mgmtToken, bridgeToken string) (*WebSetupResult, error) {
 	mgmtEnabled := cfg.Management.Enabled != nil && *cfg.Management.Enabled
 	bridgeEnabled := cfg.Bridge.Enabled != nil && *cfg.Bridge.Enabled
 
-	if mgmtEnabled && bridgeEnabled {
+	managementChanged := !mgmtEnabled || cfg.Management.Token == ""
+	bridgeChanged := !bridgeEnabled || cfg.Bridge.Token == ""
+	if !managementChanged && !bridgeChanged {
 		return &WebSetupResult{
 			ManagementPort:  orDefault(cfg.Management.Port, 9820),
 			ManagementToken: cfg.Management.Token,
@@ -3634,7 +3639,7 @@ func EnableWebAdmin(mgmtToken, bridgeToken string) (*WebSetupResult, error) {
 
 	t := true
 	changed := false
-	if !mgmtEnabled {
+	if managementChanged {
 		cfg.Management.Enabled = &t
 		if cfg.Management.Port == 0 {
 			cfg.Management.Port = 9820
@@ -3647,7 +3652,7 @@ func EnableWebAdmin(mgmtToken, bridgeToken string) (*WebSetupResult, error) {
 		}
 		changed = true
 	}
-	if !bridgeEnabled {
+	if bridgeChanged {
 		cfg.Bridge.Enabled = &t
 		if cfg.Bridge.Port == 0 {
 			cfg.Bridge.Port = 9810
@@ -3662,7 +3667,7 @@ func EnableWebAdmin(mgmtToken, bridgeToken string) (*WebSetupResult, error) {
 	}
 
 	if changed {
-		if err := writeWebAdminSections(cfg, !mgmtEnabled, !bridgeEnabled); err != nil {
+		if err := writeWebAdminSections(cfg, managementChanged, bridgeChanged); err != nil {
 			return nil, fmt.Errorf("save config: %w", err)
 		}
 	}
