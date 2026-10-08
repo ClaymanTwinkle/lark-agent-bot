@@ -270,7 +270,8 @@ func TestIntegration_SharedWorkspaceBindingLiveSyncAcrossProjects(t *testing.T) 
 
 	platformB.ClearOutputs()
 	platformB.Emit(integrationMessage(platformB.Name(), channelID, "user-b", "after shared unbind"))
-	platformB.WaitForOutputContaining(t, "No workspace found for this channel")
+	picker := platformB.WaitForOutputContaining(t, "No workspace bound to this channel")
+	require.Contains(t, picker, "shared-workspace", "unbound chat must offer the existing projects")
 }
 
 func TestIntegration_ProjectWorkspaceOverridesSharedAcrossProjects(t *testing.T) {
