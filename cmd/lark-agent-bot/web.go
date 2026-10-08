@@ -25,6 +25,9 @@ Turn on the web admin in the config file if it is off, then open it in a
 browser. The running bot serves the web admin: restart lark-agent-bot after
 it is turned on.
 
+On a new install this creates the default config first. A project whose
+work_dir is still the default config's placeholder gets the current folder.
+
 Flags:
   --config <path>    Config file (default: ./config.toml, then
                      ~/.lark-agent-bot/config.toml)
@@ -63,9 +66,16 @@ func webCommand(args []string) int {
 		fmt.Fprintln(os.Stderr, cliText(configPath, core.MsgCLIWebNotBuilt))
 		return 1
 	}
+	// The web admin is how a new install gets set up, so create the starter
+	// config the first time, like a plain `lark-agent-bot` run does.
+	created := false
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "Config file not found: %s\nRun lark-agent-bot first to create a default config.\n", configPath)
-		return 1
+		if err := bootstrapConfig(configPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating config: %v\n", err)
+			return 1
+		}
+		created = true
+		fmt.Println(cliText(configPath, core.MsgCLIWebConfigCreated, configPath))
 	}
 
 	// Use LoadPermissive so `lark-agent-bot web` works even before any platforms
@@ -77,6 +87,14 @@ func webCommand(args []string) int {
 	}
 	config.ConfigPath = configPath
 
+	// lark-agent-bot cannot start, and so cannot serve the web admin, while a
+	// project keeps the starter's placeholder work_dir. Feishu setup fills it
+	// with the current folder; do the same here.
+	if err := fillStarterWorkDirs(configPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Error setting work_dir: %v\n", err)
+		return 1
+	}
+
 	mgmtEnabled := cfg.Management.Enabled != nil && *cfg.Management.Enabled
 	port := cfg.Management.Port
 	if port == 0 {
@@ -85,7 +103,7 @@ func webCommand(args []string) int {
 	token := cfg.Management.Token
 
 	if !mgmtEnabled {
-		fmt.Println("Web admin is not enabled. Configuring...")
+		fmt.Println(cliText(configPath, core.MsgCLIWebEnabling))
 
 		mgmtToken := core.GenerateToken(16)
 		bridgeToken := core.GenerateToken(16)
@@ -96,8 +114,12 @@ func webCommand(args []string) int {
 		}
 		port = result.ManagementPort
 		token = result.ManagementToken
-		fmt.Printf("Web admin configured on port %d in %s.\n", port, configPath)
-		fmt.Println("Restart lark-agent-bot for the changes to take effect.")
+		fmt.Println(cliText(configPath, core.MsgCLIWebEnabled, port, configPath))
+		if created {
+			fmt.Println(cliText(configPath, core.MsgCLIWebStartBot))
+		} else {
+			fmt.Println(cliText(configPath, core.MsgCLIWebRestartBot))
+		}
 	}
 
 	baseURL := fmt.Sprintf("http://localhost:%d", port)
@@ -111,14 +133,25 @@ func webCommand(args []string) int {
 	loginURL := fmt.Sprintf("%s/login?token=%s",
 		baseURL, url.QueryEscape(token))
 
-	fmt.Printf("Opening: %s\n", baseURL)
+	fmt.Println(cliText(configPath, core.MsgCLIWebOpening, baseURL))
 	if err := openWebBrowser(loginURL); err != nil {
-		fmt.Printf("\nCould not open browser automatically.\n")
-		fmt.Printf("Open this URL in your browser:\n")
-		fmt.Printf("  %s/login?token=%s\n", baseURL, token)
-		fmt.Printf("\nNote: make sure lark-agent-bot is running (it hosts the web admin on port %d).\n", port)
+		fmt.Println(cliText(configPath, core.MsgCLIWebOpenFailed, loginURL, port))
 	}
 	return 0
+}
+
+// fillStarterWorkDirs points every project that still has the starter
+// placeholder work_dir at the current folder, and says so.
+func fillStarterWorkDirs(configPath string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get current folder: %w", err)
+	}
+	filled, err := config.FillStarterWorkDirs(cwd)
+	for _, project := range filled {
+		fmt.Println(cliText(configPath, core.MsgSetupWorkDirFilled, project, cwd))
+	}
+	return err
 }
 
 func openBrowser(rawURL string) error {

@@ -2202,6 +2202,37 @@ func renameProjectRaw(raw string, idx int, name string) (string, error) {
 	return string(data), nil
 }
 
+// FillStarterWorkDirs sets work_dir to workDir in every project that still has
+// the starter placeholder, leaving the rest of the file as it is, and returns
+// the names of the projects it changed. A project that keeps the placeholder
+// cannot start.
+func FillStarterWorkDirs(workDir string) ([]string, error) {
+	configMu.Lock()
+	defer configMu.Unlock()
+	if ConfigPath == "" {
+		return nil, fmt.Errorf("config path not set")
+	}
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("read config: %w", err)
+	}
+	cfg := &Config{}
+	if err := toml.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("parse config: %w", err)
+	}
+	var filled []string
+	for _, proj := range cfg.Projects {
+		if stringOption(proj.Agent.Options["work_dir"]) != StarterWorkDir {
+			continue
+		}
+		if err := patchProjectAgentOption(proj.Name, "work_dir", workDir); err != nil {
+			return filled, fmt.Errorf("fill work_dir of project %q: %w", proj.Name, err)
+		}
+		filled = append(filled, proj.Name)
+	}
+	return filled, nil
+}
+
 // fillStarterProject replaces what the starter config left as placeholders and
 // returns the project's agent type. A placeholder work_dir is never usable, so
 // it is filled for any project; the starter's agent settings are only defaults,
@@ -3631,7 +3662,7 @@ func EnableWebAdmin(mgmtToken, bridgeToken string) (*WebSetupResult, error) {
 	}
 
 	if changed {
-		if err := saveConfig(cfg); err != nil {
+		if err := writeWebAdminSections(cfg, !mgmtEnabled, !bridgeEnabled); err != nil {
 			return nil, fmt.Errorf("save config: %w", err)
 		}
 	}
@@ -3643,6 +3674,43 @@ func EnableWebAdmin(mgmtToken, bridgeToken string) (*WebSetupResult, error) {
 		BridgeToken:     cfg.Bridge.Token,
 		AlreadyEnabled:  false,
 	}, nil
+}
+
+// writeWebAdminSections writes the [management] and/or [bridge] settings
+// EnableWebAdmin turned on into the config file in place. Rewriting the whole
+// config would drop its comments, which is all a new install's starter config
+// has to explain itself. The caller must hold configMu.
+func writeWebAdminSections(cfg *Config, management, bridge bool) error {
+	type field struct{ section, key, value string }
+	var fields []field
+	add := func(section string, port int, token string, origins []string) {
+		fields = append(fields,
+			field{section, "enabled", "true"},
+			field{section, "port", strconv.Itoa(port)},
+			field{section, "token", quoteTomlString(token)},
+			field{section, "cors_origins", tomlStringArray(origins)})
+	}
+	if management {
+		add("management", cfg.Management.Port, cfg.Management.Token, cfg.Management.CORSOrigins)
+	}
+	if bridge {
+		add("bridge", cfg.Bridge.Port, cfg.Bridge.Token, cfg.Bridge.CORSOrigins)
+	}
+	for _, f := range fields {
+		if err := patchSectionField(f.section, f.key, f.value); err != nil {
+			return fmt.Errorf("set %s.%s: %w", f.section, f.key, err)
+		}
+	}
+	return nil
+}
+
+// tomlStringArray renders values as a TOML array of strings.
+func tomlStringArray(values []string) string {
+	quoted := make([]string, len(values))
+	for i, v := range values {
+		quoted[i] = quoteTomlString(v)
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
 }
 
 func orDefault(v, d int) int {
