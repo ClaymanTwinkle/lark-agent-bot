@@ -6946,7 +6946,7 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 	case "":
 		b, bindingKey, usable := e.lookupEffectiveWorkspaceBinding(channelKey)
 		if !usable {
-			e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsNoBinding))
+			e.replyWorkspacePicker(p, msg, 1)
 		} else {
 			replyWorkspaceInfo(b, bindingKey)
 		}
@@ -7038,7 +7038,7 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 			if e.workspaceBindings.Lookup(sharedWorkspaceBindingsKey, channelKey) != nil {
 				e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsSharedOnlyHint))
 			} else {
-				e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsNoBinding))
+				e.replyWorkspacePicker(p, msg, 1)
 			}
 			return
 		}
@@ -16969,6 +16969,15 @@ func (e *Engine) handleWorkspaceInitFlow(p Platform, msg *Message, channelName s
 		if strings.HasPrefix(content, "/") && !looksLikeAllowedLocalDir {
 			return false
 		}
+		if e.bindTypedWorkspace(p, msg, content) {
+			return true
+		}
+		// Ordinary chat should offer existing projects, not enter a clone
+		// conversation or interpret every greeting as a local directory.
+		if !e.isWorkspaceInitTarget(content) {
+			e.replyWorkspacePicker(p, msg, 1)
+			return true
+		}
 		if e.skipGit {
 			cloneTo, err := workspaceDirUnderBase(e.baseDir, channelName)
 			if err != nil {
@@ -16987,22 +16996,11 @@ func (e *Engine) handleWorkspaceInitFlow(p Platform, msg *Message, channelName s
 			e.reply(p, msg.ReplyCtx, fmt.Sprintf("I'll mkdir `%s` and bind it to this channel. OK? (yes/no)", channelName))
 			return true
 		}
+		// The target is handled in this call. Only the yes/no step is stored,
+		// so a rejected target cannot capture the next chat message.
 		flow = &workspaceInitFlow{
 			state:       "awaiting_url",
 			channelName: channelName,
-		}
-		e.initFlowsMu.Lock()
-		e.initFlows[channelKey] = flow
-		e.initFlowsMu.Unlock()
-		// If the first message is already a path or URL, process it now;
-		// otherwise show the hint and wait for the next message.
-		if !looksLikeAllowedLocalDir && !looksLikeGitURL(content) {
-			hintKey := MsgWsNotFoundHintGitOnly
-			if e.workspaceInitAllowLocalPaths {
-				hintKey = MsgWsNotFoundHint
-			}
-			e.reply(p, msg.ReplyCtx, e.i18n.T(hintKey))
-			return true
 		}
 	}
 
@@ -17041,9 +17039,6 @@ func (e *Engine) handleWorkspaceInitFlow(p Platform, msg *Message, channelName s
 			}
 			projectKey := "project:" + e.name
 			e.workspaceBindings.Bind(projectKey, channelKey, flow.channelName, normalizeWorkspacePath(dirPath))
-			e.initFlowsMu.Lock()
-			delete(e.initFlows, channelKey)
-			e.initFlowsMu.Unlock()
 			e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsBindSuccess, dirPath))
 			return true
 		}
@@ -17067,6 +17062,7 @@ func (e *Engine) handleWorkspaceInitFlow(p Platform, msg *Message, channelName s
 		flow.repoURL = content
 		flow.cloneTo = cloneTo
 		flow.state = "awaiting_confirm"
+		e.initFlows[channelKey] = flow
 		e.initFlowsMu.Unlock()
 
 		e.reply(p, msg.ReplyCtx, fmt.Sprintf(

@@ -47,6 +47,210 @@ func pickerItems(card *Card) []CardListItem {
 	return items
 }
 
+func TestWorkspacePicker_UnboundMessagesOfferSelection(t *testing.T) {
+	for _, content := range []string{"你好，帮我看看项目", "hello", "/workspace", "/ws", "/workspace unbind", "/workspace worktree"} {
+		for _, localPaths := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/localPaths=%t", content, localPaths), func(t *testing.T) {
+				p := &workspacePickerPlatform{stubPlatformEngine: stubPlatformEngine{n: "test"}}
+				e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangChinese)
+				root := t.TempDir()
+				if err := os.Mkdir(filepath.Join(root, "项目 A"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				e.SetMultiWorkspace(root, filepath.Join(t.TempDir(), "bindings.json"))
+				e.workspaceInitAllowLocalPaths = localPaths
+				e.SetAdminFrom("user")
+				t.Cleanup(func() { _ = e.Stop() })
+				e.ReceiveMessage(p, &Message{SessionKey: "test:group:user", Platform: "test", UserID: "user", Content: content, ReplyCtx: "ctx"})
+				items := pickerItems(p.lastCard(t))
+				if len(items) != 1 || items[0].Text != "项目 A" || !strings.HasPrefix(items[0].BtnValue, "act:/workspace select ") {
+					t.Fatalf("expected actionable project choice, got %+v", items)
+				}
+				if len(p.getSent()) != 1 {
+					t.Fatalf("expected one guided reply, got %v", p.getSent())
+				}
+			})
+		}
+	}
+}
+
+func TestWorkspacePicker_UnboundChatTextFallback(t *testing.T) {
+	p := &stubPlatformEngine{n: "test"}
+	e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "project A"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e.SetMultiWorkspace(root, filepath.Join(t.TempDir(), "bindings.json"))
+	t.Cleanup(func() { _ = e.Stop() })
+	e.ReceiveMessage(p, &Message{SessionKey: "test:group:user", Platform: "test", UserID: "user", Content: "hello", ReplyCtx: "ctx"})
+	got := strings.Join(p.getSent(), "\n")
+	if !strings.Contains(got, "project A") || !strings.Contains(got, "/workspace bind") {
+		t.Fatalf("text fallback must list projects and explain how to choose: %q", got)
+	}
+}
+
+func TestWorkspacePicker_UnboundChatRecoveryAndPermissions(t *testing.T) {
+	for _, scenario := range []string{"empty", "missing binding", "disabled", "skip git"} {
+		t.Run(scenario, func(t *testing.T) {
+			p := &workspacePickerPlatform{stubPlatformEngine: stubPlatformEngine{n: "test"}}
+			e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
+			root := t.TempDir()
+			e.SetMultiWorkspace(root, filepath.Join(t.TempDir(), "bindings.json"))
+			t.Cleanup(func() { _ = e.Stop() })
+			if scenario != "empty" {
+				if err := os.Mkdir(filepath.Join(root, "project A"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			switch scenario {
+			case "missing binding":
+				e.workspaceBindings.Bind("project:test", "test:group", "gone", filepath.Join(root, "gone"))
+			case "disabled":
+				e.SetDisabledCommands([]string{"workspace"})
+			case "skip git":
+				e.skipGit = true
+			}
+			msg := &Message{SessionKey: "test:group:user", Platform: "test", UserID: "user", Content: "hello", ReplyCtx: "ctx"}
+			// Repeating ordinary chat must not get trapped in the URL init flow.
+			for i := 0; i < 2; i++ {
+				p.clearSent()
+				e.ReceiveMessage(p, msg)
+				got := strings.Join(p.getSent(), "\n")
+				if scenario == "disabled" {
+					if len(p.cards) != 0 || !strings.Contains(got, e.i18n.Tf(MsgCommandDisabled, "/workspace")) {
+						t.Fatalf("disabled workspace must not expose a picker: %q", got)
+					}
+				} else if scenario == "empty" {
+					if !strings.Contains(p.lastCard(t).RenderText(), e.i18n.T(MsgWsPickerEmpty)) || !strings.Contains(got, "/workspace init") {
+						t.Fatalf("empty picker must explain next steps: %q", got)
+					}
+				} else if items := pickerItems(p.lastCard(t)); len(items) != 1 || items[0].Text != "project A" {
+					t.Fatalf("expected recovery picker, got %+v", items)
+				}
+			}
+		})
+	}
+}
+
+func TestWorkspacePicker_ExplicitInitTargetsKeepInitFlow(t *testing.T) {
+	for _, target := range []string{"https://example.com/repo.git", "project A/sub", "./missing"} {
+		t.Run(target, func(t *testing.T) {
+			p := &workspacePickerPlatform{stubPlatformEngine: stubPlatformEngine{n: "test"}}
+			e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
+			root := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(root, "project A", "sub"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			e.SetMultiWorkspace(root, filepath.Join(t.TempDir(), "bindings.json"))
+			e.workspaceInitAllowLocalPaths = true
+			e.SetAdminFrom("user")
+			t.Cleanup(func() { _ = e.Stop() })
+			e.ReceiveMessage(p, &Message{SessionKey: "test:group:user", Platform: "test", UserID: "user", Content: target, ReplyCtx: "ctx"})
+			got := strings.Join(p.getSent(), "\n")
+			want := "yes/no"
+			switch target {
+			case "project A/sub":
+				// The engine reports the resolved path; Windows CI temp dirs are 8.3 short names.
+				dir, err := filepath.EvalSymlinks(filepath.Join(root, "project A", "sub"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				want = e.i18n.Tf(MsgWsBindSuccess, dir)
+			case "./missing":
+				want = e.i18n.Tf(MsgWsInitDirNotFound, target)
+			}
+			if len(p.cards) != 0 || !strings.Contains(got, want) {
+				t.Fatalf("explicit init target must retain its flow: got %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestWorkspacePicker_RejectedInitTargetDoesNotCaptureChat(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		admin      bool
+		localPaths bool
+		target     string
+	}{
+		{"non-admin URL", false, false, "https://example.com/repo.git"},
+		{"non-admin URL with local paths", false, true, "https://example.com/repo.git"},
+		{"missing directory", true, true, "./missing"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &workspacePickerPlatform{stubPlatformEngine: stubPlatformEngine{n: "test"}}
+			e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
+			root := t.TempDir()
+			if err := os.Mkdir(filepath.Join(root, "project A"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			e.SetMultiWorkspace(root, filepath.Join(t.TempDir(), "bindings.json"))
+			e.workspaceInitAllowLocalPaths = tc.localPaths
+			if tc.admin {
+				e.SetAdminFrom("user")
+			}
+			t.Cleanup(func() { _ = e.Stop() })
+			for _, content := range []string{tc.target, "hello"} {
+				e.ReceiveMessage(p, &Message{SessionKey: "test:group:user", Platform: "test", UserID: "user", Content: content, ReplyCtx: "ctx"})
+			}
+			p.mu.Lock()
+			cards := len(p.cards)
+			p.mu.Unlock()
+			if items := pickerItems(p.lastCard(t)); cards != 1 || len(items) != 1 || items[0].Text != "project A" {
+				t.Fatalf("chat after a rejected target must offer projects, got %d cards, items %+v", cards, items)
+			}
+			e.initFlowsMu.Lock()
+			defer e.initFlowsMu.Unlock()
+			if len(e.initFlows) != 0 {
+				t.Fatalf("a rejected target left init state behind: %+v", e.initFlows)
+			}
+		})
+	}
+}
+
+func TestWorkspacePicker_TypedProjectNameBindsWithoutAdmin(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		localPaths bool
+		disabled   bool
+	}{
+		{"git-only init", false, false},
+		{"local paths", true, false},
+		{"workspace disabled", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &workspacePickerPlatform{stubPlatformEngine: stubPlatformEngine{n: "test"}}
+			e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
+			root := t.TempDir()
+			if err := os.Mkdir(filepath.Join(root, "project A"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			e.SetMultiWorkspace(root, filepath.Join(t.TempDir(), "bindings.json"))
+			e.workspaceInitAllowLocalPaths = tc.localPaths
+			if tc.disabled {
+				e.SetDisabledCommands([]string{"workspace"})
+			}
+			t.Cleanup(func() { _ = e.Stop() })
+			// No admin_from: choosing a listed project is not /workspace init.
+			msg := &Message{SessionKey: "test:group:user", Platform: "test", UserID: "user", Content: "project A", ReplyCtx: "ctx"}
+			e.ReceiveMessage(p, msg)
+			got := strings.Join(p.getSent(), "\n")
+			b := e.workspaceBindings.Lookup("project:test", effectiveWorkspaceChannelKey(msg))
+			if tc.disabled {
+				if b != nil || !strings.Contains(got, e.i18n.Tf(MsgCommandDisabled, "/workspace")) {
+					t.Fatalf("disabled workspace must not bind: binding %+v, reply %q", b, got)
+				}
+				return
+			}
+			want := normalizeWorkspacePath(filepath.Join(root, "project A"))
+			if b == nil || b.Workspace != want || got != e.i18n.Tf(MsgWsBindSuccess, "project A") {
+				t.Fatalf("typed project name: binding %+v, reply %q", b, got)
+			}
+		})
+	}
+}
+
 func TestWorkspacePicker_HelpUsesInPlaceActions(t *testing.T) {
 	e := NewEngine("test", &stubAgent{}, nil, "", LangEnglish)
 	e.SetMultiWorkspace(t.TempDir(), filepath.Join(t.TempDir(), "bindings.json"))

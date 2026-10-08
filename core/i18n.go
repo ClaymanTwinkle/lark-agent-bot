@@ -760,6 +760,7 @@ const (
 	MsgWsPickerStale             MsgKey = "ws_picker_stale"
 	MsgWsNotEnabled              MsgKey = "ws_not_enabled"
 	MsgWsNoBinding               MsgKey = "ws_no_binding"
+	MsgWsPickerStartHint         MsgKey = "ws_picker_start_hint"
 	MsgWsInfo                    MsgKey = "ws_info"
 	MsgWsInfoShared              MsgKey = "ws_info_shared"
 	MsgWsUsage                   MsgKey = "ws_usage"
@@ -783,8 +784,6 @@ const (
 	MsgWsSharedListEmpty         MsgKey = "ws_shared_list_empty"
 	MsgWsSharedListTitle         MsgKey = "ws_shared_list_title"
 	MsgWsSharedOnlyHint          MsgKey = "ws_shared_only_hint"
-	MsgWsNotFoundHint            MsgKey = "ws_not_found_hint"
-	MsgWsNotFoundHintGitOnly     MsgKey = "ws_not_found_hint_git_only"
 	MsgWsResolutionError         MsgKey = "ws_resolution_error"
 	MsgWsCloneProgress           MsgKey = "ws_clone_progress"
 	MsgWsCloneSuccess            MsgKey = "ws_clone_success"
@@ -4733,11 +4732,18 @@ var messages = map[MsgKey]map[Language]string{
 		LangSpanish:            "Vinculado actualmente: `%s`",
 	},
 	MsgWsPickerEmpty: {
-		LangEnglish:            "No project directories found under this root.",
-		LangChinese:            "此根目录下暂无可选的项目文件夹。",
-		LangTraditionalChinese: "此根目錄下暫無可選的專案資料夾。",
-		LangJapanese:           "この親フォルダーに選択可能なプロジェクトがありません。",
-		LangSpanish:            "No hay carpetas de proyectos disponibles aquí.",
+		LangEnglish:            "No projects are available yet. Ask an administrator to add a project folder under the root above, then use /bind to refresh, or initialize a repository with /workspace init <git-url>.",
+		LangChinese:            "暂时没有可选项目。请管理员在上面的根目录下添加项目文件夹，再发送 /bind 刷新；也可由管理员使用 /workspace init <仓库地址> 初始化项目。",
+		LangTraditionalChinese: "暫時沒有可選專案。請管理員在上面的根目錄下新增專案資料夾，再傳送 /bind 重新整理；也可由管理員使用 /workspace init <倉庫網址> 初始化專案。",
+		LangJapanese:           "選択できるプロジェクトがありません。管理者に上記フォルダーへの追加を依頼し、/bind で更新してください。管理者は /workspace init <git-url> でリポジトリを初期化することもできます。",
+		LangSpanish:            "Aún no hay proyectos. Pida a un administrador que añada una carpeta bajo la raíz indicada y use /bind para actualizar, o que inicialice un repositorio con /workspace init <git-url>.",
+	},
+	MsgWsPickerStartHint: {
+		LangEnglish:            "Choose a project below to get started. After binding, send your request again to continue.",
+		LangChinese:            "先在下方选择一个项目。绑定后，重新发送刚才的需求即可继续。",
+		LangTraditionalChinese: "請先在下方選擇一個專案。綁定後，重新傳送剛才的需求即可繼續。",
+		LangJapanese:           "まず下からプロジェクトを選択してください。紐づけた後、先ほどのリクエストをもう一度送信すると続行できます。",
+		LangSpanish:            "Elija un proyecto abajo para empezar. Tras vincularlo, vuelva a enviar su solicitud para continuar.",
 	},
 	MsgWsPickerSelect: {
 		LangEnglish:            "Bind",
@@ -4941,20 +4947,6 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "當前生效的工作區來自 shared 層。請使用 `/workspace shared unbind` 解除綁定。",
 		LangJapanese:           "現在有効なワークスペースは shared レイヤー由来です。解除するには `/workspace shared unbind` を使用してください。",
 		LangSpanish:            "El workspace efectivo actual proviene de la capa shared. Usa `/workspace shared unbind` para quitarlo.",
-	},
-	MsgWsNotFoundHint: {
-		LangEnglish:            "No workspace found for this channel. Send a git repo URL, a local directory path, or use `/workspace init <url-or-path>`.",
-		LangChinese:            "此频道未找到工作区。请发送 git 仓库地址或本地目录路径，或使用 `/workspace init <仓库地址或目录路径>`。",
-		LangTraditionalChinese: "此頻道未找到工作區。請發送 git 倉庫地址或本地目錄路徑，或使用 `/workspace init <倉庫地址或目錄路徑>`。",
-		LangJapanese:           "このチャンネルにワークスペースが見つかりません。git URL またはローカルディレクトリパスを送信するか、`/workspace init <urlまたはパス>` を使用してください。",
-		LangSpanish:            "No se encontró workspace para este canal. Envía una URL de repo git, una ruta de directorio local, o usa `/workspace init <url-o-ruta>`.",
-	},
-	MsgWsNotFoundHintGitOnly: {
-		LangEnglish:            "No workspace found for this channel. Send a git repo URL or use `/workspace init <git-url>`.",
-		LangChinese:            "此频道未找到工作区。请发送 git 仓库地址，或使用 `/workspace init <git仓库地址>`。",
-		LangTraditionalChinese: "此頻道未找到工作區。請發送 git 倉庫地址，或使用 `/workspace init <git倉庫地址>`。",
-		LangJapanese:           "このチャンネルにワークスペースが見つかりません。git URL を送信するか、`/workspace init <git-url>` を使用してください。",
-		LangSpanish:            "No se encontró workspace para este canal. Envía una URL de repo git o usa `/workspace init <git-url>`.",
 	},
 	MsgWsResolutionError: {
 		LangEnglish:            "Workspace resolution error: %v",
