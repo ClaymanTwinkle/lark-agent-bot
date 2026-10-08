@@ -109,7 +109,7 @@ lark-agent-bot --config /path/to.toml   # 指定配置文件
 lark-agent-bot daemon install           # 安装为系统服务（systemd / launchd / schtasks）
 ```
 
-启动后在飞书里给机器人发消息即可。Web 管理后台默认关闭：运行一次 `lark-agent-bot web` 开启并打开它（默认地址 `http://localhost:9820`），然后重启 lark-agent-bot 生效。
+启动后在飞书里给机器人发消息即可。Web 管理后台默认关闭：运行 `lark-agent-bot web` 会开启后台（默认地址 `http://localhost:9820`），必要时在当前终端启动机器人，等服务就绪后打开浏览器。请保持该终端开启。如果机器人已在运行但尚未开启 Web，请重启它使配置生效，再运行 `web`。记得使用与机器人相同的 `--config <path>`。
 
 ## 常用命令
 

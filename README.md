@@ -110,7 +110,7 @@ lark-agent-bot --config /path/to.toml   # explicit config file
 lark-agent-bot daemon install           # install as a service (systemd / launchd / schtasks)
 ```
 
-Then message the bot in Feishu. The web admin is off by default: run `lark-agent-bot web` once to enable it (`http://localhost:9820` by default) and open it, then restart lark-agent-bot.
+Then message the bot in Feishu. The web admin is off by default: `lark-agent-bot web` enables it (`http://localhost:9820` by default), starts the bot in the terminal if needed, and opens the browser once ready. Keep that terminal open. If the bot is already running with web disabled, restart it to apply the settings, then run `web` again. Use the same `--config <path>` as your bot.
 
 ## Chat commands
 
