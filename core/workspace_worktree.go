@@ -155,7 +155,7 @@ func excludeWorktreeDir(ctx context.Context, root string) error {
 func (e *Engine) handleWorktreeCommand(p Platform, msg *Message, channelKey string, args []string) {
 	b, _, usable := e.lookupEffectiveWorkspaceBinding(channelKey)
 	if !usable {
-		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsNoBinding))
+		e.replyWorkspacePicker(p, msg, 1)
 		return
 	}
 	current := normalizeWorkspacePath(b.Workspace)

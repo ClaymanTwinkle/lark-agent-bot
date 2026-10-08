@@ -480,20 +480,14 @@ func TestWorkspaceInitFlow_CloneNeedsAdmin(t *testing.T) {
 	e := newTestEngineWithMultiWorkspace(t, t.TempDir())
 	e.SetAdminFrom("boss")
 	p := &mockWorkspacePlatform{}
-	channelKey := workspaceChannelKey(p.Name(), "C1")
-	e.initFlowsMu.Lock()
-	e.initFlows[channelKey] = &workspaceInitFlow{state: "awaiting_url", channelName: "chan"}
-	e.initFlowsMu.Unlock()
-
 	msg := &Message{SessionKey: "mock:C1:user1", UserID: "user1", Content: "https://example.com/org/repo.git"}
 	if !e.handleWorkspaceInitFlow(p, msg, "chan") {
 		t.Fatal("the URL must be consumed")
 	}
 	e.initFlowsMu.Lock()
-	flow := e.initFlows[channelKey]
-	e.initFlowsMu.Unlock()
-	if flow == nil || flow.state != "awaiting_url" || flow.repoURL != "" {
-		t.Fatalf("non-admin URL advanced the clone flow: %+v", flow)
+	defer e.initFlowsMu.Unlock()
+	if len(e.initFlows) != 0 {
+		t.Fatalf("non-admin URL started the clone flow: %+v", e.initFlows)
 	}
 }
 

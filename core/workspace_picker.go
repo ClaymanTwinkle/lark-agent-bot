@@ -7,11 +7,33 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 )
 
 const workspacePickerPageSize = 8
+
+// Bare names are valid local targets only when they identify a directory.
+// Explicit paths retain the init flow's validation and error messages.
+func (e *Engine) isWorkspaceInitTarget(content string) bool {
+	if looksLikeGitURL(content) {
+		return true
+	}
+	if !e.workspaceInitAllowLocalPaths || !looksLikeLocalDir(content) {
+		return false
+	}
+	if filepath.IsAbs(content) || filepath.VolumeName(content) != "" || content == "~" ||
+		strings.HasPrefix(content, "~/") || strings.HasPrefix(content, "./") || strings.HasPrefix(content, "../") {
+		return true
+	}
+	dir, err := resolveLocalDirPath(content, e.baseDir)
+	if err != nil {
+		return false
+	}
+	info, err := os.Stat(dir)
+	return err == nil && info.IsDir()
+}
 
 // List only immediate, visible directories. Do not follow links out of the
 // configured project root. Actions carry names, never unstable list indexes.
@@ -30,6 +52,10 @@ func (e *Engine) availableWorkspaces() ([]string, error) {
 }
 
 func (e *Engine) replyWorkspacePicker(p Platform, msg *Message, page int) {
+	if e.effectiveDisabledCmds(msg.UserID)["workspace"] {
+		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgCommandDisabled, "/workspace"))
+		return
+	}
 	card, err := e.workspacePickerCard(effectiveWorkspaceChannelKey(msg), page)
 	if err != nil {
 		slog.Warn("workspace picker failed", "error", err)
@@ -62,6 +88,9 @@ func (e *Engine) workspacePickerCard(channelKey string, page int) (*Card, error)
 		cb.Markdown(e.i18n.Tf(MsgWsPickerCurrent, current))
 	} else {
 		cb.Markdown(e.i18n.T(MsgWsNoBinding))
+		if len(names) > 0 {
+			cb.Markdown(e.i18n.T(MsgWsPickerStartHint))
+		}
 	}
 	if len(names) == 0 {
 		cb.Markdown(e.i18n.T(MsgWsPickerEmpty))
@@ -95,26 +124,56 @@ func (e *Engine) bindWorkspaceSelection(msg *Message, args []string) (string, in
 	if len(args) != 1 {
 		return "", 1, errWorkspaceSelectionStale
 	}
-	decoded, decodeErr := base64.RawURLEncoding.DecodeString(args[0])
-	names, err := e.availableWorkspaces()
+	decoded, err := base64.RawURLEncoding.DecodeString(args[0])
+	if err != nil {
+		return "", 1, errWorkspaceSelectionStale
+	}
+	name := string(decoded)
+	bound, err := e.bindAvailableWorkspace(msg, name)
 	if err != nil {
 		return "", 1, err
 	}
-	if decodeErr == nil {
-		for _, name := range names {
-			if name == string(decoded) {
-				key := effectiveWorkspaceChannelKey(msg)
-				channelName := ""
-				if binding, _, usable := e.lookupEffectiveWorkspaceBinding(key); usable {
-					channelName = binding.ChannelName
-				}
-				e.workspaceBindings.Bind("project:"+e.name, key, channelName, normalizeWorkspacePath(filepath.Join(e.baseDir, name)))
-				// The newly bound project is now the first item on page one.
-				return name, 1, nil
-			}
-		}
+	if !bound {
+		return "", 1, errWorkspaceSelectionStale
 	}
-	return "", 1, errWorkspaceSelectionStale
+	// The newly bound project is now the first item on page one.
+	return name, 1, nil
+}
+
+// Bind only a project the picker lists, so buttons and typed names share one
+// path. Reports false when name is not listed.
+func (e *Engine) bindAvailableWorkspace(msg *Message, name string) (bool, error) {
+	names, err := e.availableWorkspaces()
+	if err != nil {
+		return false, err
+	}
+	if !slices.Contains(names, name) {
+		return false, nil
+	}
+	key := effectiveWorkspaceChannelKey(msg)
+	channelName := ""
+	if binding, _, usable := e.lookupEffectiveWorkspaceBinding(key); usable {
+		channelName = binding.ChannelName
+	}
+	e.workspaceBindings.Bind("project:"+e.name, key, channelName, normalizeWorkspacePath(filepath.Join(e.baseDir, name)))
+	return true, nil
+}
+
+// A chat message naming a listed project chooses it like the picker button.
+// That is not /workspace init, so it needs no admin rights.
+func (e *Engine) bindTypedWorkspace(p Platform, msg *Message, content string) bool {
+	if e.effectiveDisabledCmds(msg.UserID)["workspace"] {
+		return false
+	}
+	bound, err := e.bindAvailableWorkspace(msg, content)
+	if err != nil {
+		slog.Warn("workspace bind by name failed", "error", err)
+		return false
+	}
+	if bound {
+		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsBindSuccess, content))
+	}
+	return bound
 }
 
 func (e *Engine) workspaceSelectionError(err error) string {

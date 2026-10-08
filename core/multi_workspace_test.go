@@ -473,11 +473,10 @@ func TestWorkspaceInitFlow_SlashCommandCleansUpExistingFlow(t *testing.T) {
 	channelID := "C010"
 	channelKey := workspaceChannelKey(p.Name(), channelID)
 
-	// Seed a flow in "awaiting_url" state to simulate a prior regular message
-	// that triggered the init flow.
+	// Seed the clone confirmation, the only init state kept between messages.
 	e.initFlowsMu.Lock()
 	e.initFlows[channelKey] = &workspaceInitFlow{
-		state:       "awaiting_url",
+		state:       "awaiting_confirm",
 		channelName: "test-channel",
 	}
 	e.initFlowsMu.Unlock()

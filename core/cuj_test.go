@@ -2509,6 +2509,23 @@ func TestCUJ_H6_ProjectPickerBindsOnlyCurrentChat(t *testing.T) {
 	if got := pickerItems(p.lastCard(t))[0].BtnText; got != e.i18n.T(MsgWsPickerSelected) {
 		t.Fatalf("current project button = %q", got)
 	}
+
+	t.Run("UnboundChatOffersProjectPicker", func(t *testing.T) {
+		// A first-time user should discover projects without knowing /bind.
+		send("group-c", "帮我看看这个项目")
+		assertReply(e.i18n.T(MsgWsPickerStartHint))
+		items := pickerItems(p.lastCard(t))
+		if len(items) != 2 {
+			t.Fatalf("expected available projects on first chat, got %+v", items)
+		}
+		// Exercise the text equivalent of the button through ReceiveMessage.
+		send("group-c", strings.TrimPrefix(items[0].BtnValue, "act:"))
+		assertReply(e.i18n.Tf(MsgWsBindSuccess, "project A"))
+		send("group-c", "/workspace")
+		assertReply(normalizeWorkspacePath(filepath.Join(root, "project A")))
+		send("group-b", "/workspace")
+		assertReply(normalizeWorkspacePath(filepath.Join(root, "项目  B")))
+	})
 }
 
 func TestCUJ_H4_FeishuTopicsKeepWorkspaceBindingsIsolated(t *testing.T) {
