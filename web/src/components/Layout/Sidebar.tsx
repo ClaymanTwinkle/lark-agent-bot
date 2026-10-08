@@ -47,11 +47,11 @@ export default function Sidebar() {
       >
         {collapsed ? (
           <span className="text-base font-bold tracking-tighter text-gray-900 dark:text-white">
-            CC
+            LAB
           </span>
         ) : (
           <span className="text-base font-bold tracking-tight text-gray-900 dark:text-white">
-            CC<span className="text-accent">-</span>Connect
+            Lark<span className="text-accent">-</span>Agent<span className="text-accent">-</span>Bot
           </span>
         )}
       </div>
