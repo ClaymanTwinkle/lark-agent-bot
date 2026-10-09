@@ -404,6 +404,9 @@ type Engine struct {
 	// takes effect at the next restart; "" when none is pending.
 	pendingAgentTypeMu sync.Mutex
 	pendingAgentType   string
+	// configAccessMu serializes /config changes to admin_from, allow_from and
+	// disabled_commands, which read the current list and write a new one.
+	configAccessMu sync.Mutex
 
 	hooks              *HookManager
 	cronScheduler      *CronScheduler
@@ -1365,9 +1368,10 @@ var privilegedCommands = map[string]bool{
 //     current: adds, removes or switches the API endpoint, key and env the
 //     agent process runs with
 //   - /memory global ...      — reads or writes the host-wide memory file
-//   - /config project, /config [set] <project key> ... — opens the project
-//     page or changes a project setting (reply footer, inject_sender, agent
-//     type) for everyone; display settings and /config get stay open
+//   - /config project|access, /config [set] <project key> ...,
+//     /config admin|allow|disable|enable ... — open the admin pages or change
+//     project settings, admin_from, allow_from or disabled_commands for
+//     everyone; display settings and /config get stay open
 //
 // The addexec pair effectively creates new admin-only commands at runtime;
 // if a non-admin can call addexec, they can install arbitrary shell commands
@@ -12216,7 +12220,7 @@ func (e *Engine) cardNav(action string, sessionKey string, clicker *Message) *Ca
 				"user_id", userID, "project", e.name, "action", prefix+":"+cmd, "reason", "disabled")
 			return NewCard().Markdown(fmt.Sprintf(e.i18n.T(MsgCommandDisabled), "/config")).Buttons(e.cardBackButton()).Build()
 		}
-		return e.handleConfigCardAction(args, sessionKey, clicker != nil && e.isAdmin(clicker.UserID))
+		return e.handleConfigCardAction(args, sessionKey, clicker)
 	}
 
 	if prefix == "act" && cmd == "/mode" {
@@ -12281,7 +12285,7 @@ func (e *Engine) cardNav(action string, sessionKey string, clicker *Message) *Ca
 		return e.renderAliasCard()
 	case "/config":
 		page, _ := parseConfigPage(args)
-		return e.renderConfigCard(page, clicker != nil && e.isAdmin(clicker.UserID), "")
+		return e.renderConfigCard(page, clicker, "")
 	case "/skills":
 		return e.skillsCardForSession(sessionKey)
 	case "/doctor":
@@ -13984,13 +13988,14 @@ func (e *Engine) renderAliasCard() *Card {
 }
 
 // renderConfigCard shows a dropdown per item on page; picking a value sends
-// act:/config <key> <value>. Admins also get buttons to switch pages.
-// result, when set, reports the last change.
-func (e *Engine) renderConfigCard(page configPage, admin bool, result string) *Card {
+// act:/config <key> <value>. viewer is who opened or clicked the card, nil
+// when unknown; admins also get buttons to switch pages. result, when set,
+// reports the last change.
+func (e *Engine) renderConfigCard(page configPage, viewer *Message, result string) *Card {
 	isZh := e.i18n.IsZhLike()
 	cb := NewCard().Title(e.i18n.T(MsgCardTitleConfig), "grey").
 		Markdown(result)
-	if admin {
+	if viewer != nil && e.isAdmin(viewer.UserID) {
 		cb.ButtonsEqual(e.configPageButtons(page)...)
 	}
 	for _, item := range e.configPageItems(page) {
@@ -14005,6 +14010,8 @@ func (e *Engine) renderConfigCard(page configPage, admin bool, result string) *C
 				Buttons(PrimaryBtn(e.i18n.T(MsgConfigRestartButton), "act:/config "+configRestartAction))
 		}
 		cb.Note(e.i18n.T(MsgConfigProjectHint))
+	case configPageAccess:
+		e.renderConfigAccess(cb, viewer)
 	default:
 		cb.Note(e.i18n.T(MsgConfigCardHint))
 		if !e.hasAdmin() {
@@ -14034,16 +14041,20 @@ func configCardAction(key, value string) string {
 	return "act:/config " + key + " " + value
 }
 
-// handleConfigCardAction applies "<key> <value>" or "restart" from the config
-// card and re-renders the item's page with the outcome. Admin-only actions
-// are refused before this by cardActionAdminLabel.
-func (e *Engine) handleConfigCardAction(args, sessionKey string, admin bool) *Card {
+// handleConfigCardAction applies "<key> <value>", "restart" or a members and
+// permissions change from the config card and re-renders the page with the
+// outcome. viewer is the clicker, nil when unknown. Admin-only actions are
+// refused before this by cardActionAdminLabel.
+func (e *Engine) handleConfigCardAction(args, sessionKey string, viewer *Message) *Card {
 	fields := strings.Fields(args)
 	if len(fields) == 1 && strings.EqualFold(fields[0], configRestartAction) {
-		return e.renderConfigCard(configPageProject, admin, e.configRestart(sessionKey))
+		return e.renderConfigCard(configPageProject, viewer, e.configRestart(sessionKey))
+	}
+	if len(fields) > 0 && viewer != nil && isConfigAccessAction(fields[0]) {
+		return e.renderConfigCard(configPageAccess, viewer, e.configAccessChange(viewer, fields))
 	}
 	if len(fields) != 2 {
-		return e.renderConfigCard(configPageDisplay, admin, "")
+		return e.renderConfigCard(configPageDisplay, viewer, "")
 	}
 	key := strings.ToLower(fields[0])
 	for _, item := range e.configItems() {
@@ -14052,11 +14063,11 @@ func (e *Engine) handleConfigCardAction(args, sessionKey string, admin bool) *Ca
 		}
 		if err := item.setFunc(fields[1]); err != nil {
 			slog.Warn("config card: set failed", "key", key, "value", fields[1], "error", err)
-			return e.renderConfigCard(item.page, admin, e.i18n.Tf(MsgError, err))
+			return e.renderConfigCard(item.page, viewer, e.i18n.Tf(MsgError, err))
 		}
-		return e.renderConfigCard(item.page, admin, e.i18n.Tf(MsgConfigUpdated, key, item.getFunc()))
+		return e.renderConfigCard(item.page, viewer, e.i18n.Tf(MsgConfigUpdated, key, item.getFunc()))
 	}
-	return e.renderConfigCard(configPageDisplay, admin, e.i18n.Tf(MsgConfigKeyNotFound, key))
+	return e.renderConfigCard(configPageDisplay, viewer, e.i18n.Tf(MsgConfigKeyNotFound, key))
 }
 
 func (e *Engine) renderSkillsCard(registry *SkillRegistry) *Card {
@@ -15410,6 +15421,10 @@ func (e *Engine) cmdConfig(p Platform, msg *Message, args []string) {
 		// handleCommand has already refused admin pages to non-admins.
 		admin := e.isAdmin(msg.UserID)
 		if !supportsCards(p) {
+			if page == configPageAccess {
+				e.reply(p, msg.ReplyCtx, e.configAccessText(msg))
+				return
+			}
 			isZh := e.i18n.IsZhLike()
 			var sb strings.Builder
 			sb.WriteString(e.i18n.T(MsgConfigTitle))
@@ -15424,7 +15439,11 @@ func (e *Engine) cmdConfig(p Platform, msg *Message, args []string) {
 			return
 		}
 
-		e.replyWithCard(p, msg.ReplyCtx, e.renderConfigCard(page, admin, ""))
+		e.replyWithCard(p, msg.ReplyCtx, e.renderConfigCard(page, msg, ""))
+		return
+	}
+	if isConfigAccessAction(args[0]) {
+		e.reply(p, msg.ReplyCtx, e.configAccessChange(msg, args))
 		return
 	}
 

@@ -2208,3 +2208,23 @@ func TestFlushImageBatchForSession_NoBatchIsSafe(t *testing.T) {
 		t.Fatalf("imageBatch size = %d, want 0", n)
 	}
 }
+
+// TestCoreMentions asserts that mentioned users reach core with their open_id,
+// so "/config admin add @Name" can store an ID; the bot and mentions without
+// an open_id (e.g. @all) are left out.
+func TestCoreMentions(t *testing.T) {
+	text := "@_user_1 /config admin add @_user_2 @_all"
+	mentions := []*larkim.MentionEvent{
+		{Key: strPtr("@_user_1"), Id: &larkim.UserId{OpenId: strPtr("bot123")}, Name: strPtr("Bot")},
+		{Key: strPtr("@_user_2"), Id: &larkim.UserId{OpenId: strPtr("ou_ann")}, Name: strPtr("Ann Lee")},
+		{Key: strPtr("@_all"), Name: strPtr("所有人")},
+	}
+	got := coreMentions(mentions, "bot123")
+	if len(got) != 1 || got[0] != (core.Mention{ID: "ou_ann", Name: "Ann Lee"}) {
+		t.Fatalf("coreMentions = %+v, want only Ann Lee", got)
+	}
+	// The name core matches must be the one stripMentions leaves in the text.
+	if content := stripMentions(text, mentions, "bot123"); !strings.Contains(content, "@"+got[0].Name) {
+		t.Fatalf("content %q does not contain @%s", content, got[0].Name)
+	}
+}

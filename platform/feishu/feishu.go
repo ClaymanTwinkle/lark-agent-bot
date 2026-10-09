@@ -152,7 +152,7 @@ type Platform struct {
 	doneEmoji                  string
 	queuedEmoji                string
 	allowFromMu                sync.RWMutex
-	allowFrom                  string // read through getAllowFrom; SetAllowFrom changes it at runtime
+	allowFrom                  string // read through AllowFrom; SetAllowFrom changes it at runtime
 	allowChat                  string
 	groupOnly                  bool
 	groupReplyAll              bool
@@ -581,10 +581,40 @@ func (p *Platform) SetAllowFrom(allowFrom string) {
 	}
 }
 
-func (p *Platform) getAllowFrom() string {
+// AllowFrom returns the current allow_from user list.
+func (p *Platform) AllowFrom() string {
 	p.allowFromMu.RLock()
 	defer p.allowFromMu.RUnlock()
 	return p.allowFrom
+}
+
+// ResolveUserName returns a user's display name, or "" when it cannot be
+// looked up. It implements core.UserNameResolver.
+func (p *Platform) ResolveUserName(userID string) string {
+	if name := p.resolveUserName(userID); name != userID {
+		return name
+	}
+	return ""
+}
+
+// coreMentions lists the users mentioned in a message, without the bot, so
+// core can resolve "@Name" in the text to a user ID.
+func coreMentions(mentions []*larkim.MentionEvent, botOpenID string) []core.Mention {
+	var out []core.Mention
+	for _, m := range mentions {
+		if m == nil || m.Id == nil || m.Id.OpenId == nil || *m.Id.OpenId == "" {
+			continue
+		}
+		if botOpenID != "" && *m.Id.OpenId == botOpenID {
+			continue
+		}
+		name := ""
+		if m.Name != nil {
+			name = *m.Name
+		}
+		out = append(out, core.Mention{ID: *m.Id.OpenId, Name: name})
+	}
+	return out
 }
 
 func (p *Platform) ProgressStyle() string { return p.progressStyle }
@@ -943,7 +973,7 @@ func (p *Platform) onCardAction(event *callback.CardActionTriggerEvent) (*callba
 	// that clicking a card button (cmd:/perm:/nav:/act:/askq:) cannot bypass
 	// the per-user allowlist when the chat-level allow_chat filter admits the
 	// chat (Issue cc-connect#1852).
-	if userID == "" || !core.AllowList(p.getAllowFrom(), userID) {
+	if userID == "" || !core.AllowList(p.AllowFrom(), userID) {
 		slog.Debug(p.tag()+": card action from unauthorized user", "user", userID)
 		return nil, nil
 	}
@@ -1937,7 +1967,7 @@ func (p *Platform) onMessage(ctx context.Context, event *larkim.P2MessageReceive
 	}
 
 	fromBot := isBotSenderType(senderType)
-	if !core.AllowList(p.getAllowFrom(), userID) {
+	if !core.AllowList(p.AllowFrom(), userID) {
 		switch {
 		case fromBot && p.isPeerBotSender(userID):
 			slog.Info(p.tag()+": accepting a task from a peer bot", "sender_id", userID, "chat_id", chatID)
@@ -2057,6 +2087,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 	}
 	historyText := p.formatGroupHistory(groupHistoryCtx)
 	dispatchCore := func(msg *core.Message) {
+		msg.Mentions = coreMentions(mentions, p.getBotOpenID())
 		if historyText != "" {
 			msg.ExtraContent = joinFeishuExtraContent(historyText, msg.ExtraContent)
 			msg.OnAccepted = groupHistoryCtx.onAccepted
@@ -5848,7 +5879,7 @@ func (p *Platform) onBotMenu(event *larkapplication.P2BotMenuV6) error {
 		return nil
 	}
 
-	if !core.AllowList(p.getAllowFrom(), userID) {
+	if !core.AllowList(p.AllowFrom(), userID) {
 		slog.Debug(p.tag()+": menu event from unauthorized user", "user", userID, "event_key", eventKey)
 		return nil
 	}
@@ -5886,7 +5917,7 @@ func (p *Platform) onBotChatEntered(event *larkim.P2ChatAccessEventBotP2pChatEnt
 		return
 	}
 	userID := stringValue(event.Event.OperatorId.OpenId)
-	if userID == "" || !core.AllowList(p.getAllowFrom(), userID) || p.groupOnly {
+	if userID == "" || !core.AllowList(p.AllowFrom(), userID) || p.groupOnly {
 		return
 	}
 	p.dmChats.remember(userID, stringValue(event.Event.ChatId))

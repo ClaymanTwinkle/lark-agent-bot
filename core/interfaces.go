@@ -329,7 +329,15 @@ type CardRefresher interface {
 // AllowFromUpdater is implemented by platforms whose allow_from user list can
 // change while running. Platforms without it read allow_from only at startup.
 type AllowFromUpdater interface {
+	AllowFrom() string
 	SetAllowFrom(allowFrom string)
+}
+
+// UserNameResolver is implemented by platforms that can look up a user's
+// display name, e.g. to label the IDs in admin_from on the /config card.
+// It returns "" or the ID itself when the name is unknown.
+type UserNameResolver interface {
+	ResolveUserName(userID string) string
 }
 
 // MessageHandler is called by platforms when a new message arrives.
