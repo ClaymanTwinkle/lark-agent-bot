@@ -6133,6 +6133,114 @@ func TestCmdConfig_UsesLegacyTextOnPlatformWithoutCardSupport(t *testing.T) {
 	}
 }
 
+// configCardSelect returns the config card dropdown for key.
+func configCardSelect(t *testing.T, card *Card, key string) CardSelect {
+	t.Helper()
+	for _, el := range card.Elements {
+		if sel, ok := el.(CardSelect); ok && strings.HasPrefix(sel.InitValue, "act:/config "+key+" ") {
+			return sel
+		}
+	}
+	t.Fatalf("config card has no dropdown for %q", key)
+	return CardSelect{}
+}
+
+func TestConfigCard_ShowsDropdownPerItem(t *testing.T) {
+	e := NewEngine("test", &stubAgent{}, nil, "", LangEnglish)
+
+	card := e.handleCardNav("nav:/config", "feishu:chat1:user1")
+
+	selects := 0
+	for _, el := range card.Elements {
+		if _, ok := el.(CardSelect); ok {
+			selects++
+		}
+	}
+	if want := len(e.configItems()); selects != want {
+		t.Fatalf("dropdowns = %d, want %d", selects, want)
+	}
+	if got := configCardSelect(t, card, "mode").InitValue; got != "act:/config mode full" {
+		t.Fatalf("mode initial option = %q, want full", got)
+	}
+}
+
+func TestConfigCard_SelectAppliesAndSavesValue(t *testing.T) {
+	e := NewEngine("test", &stubAgent{}, nil, "", LangEnglish)
+	var savedMode string
+	e.SetDisplaySaveFunc(func(mode *string, _ *bool, _, _ *int, _ *bool) error {
+		if mode != nil {
+			savedMode = *mode
+		}
+		return nil
+	})
+
+	card := e.handleCardNav("act:/config mode compact", "feishu:chat1:user1")
+
+	if e.display.Mode != "compact" || e.display.ThinkingMessages || e.display.ToolMessages {
+		t.Fatalf("display = %+v, want compact without thinking/tool messages", e.display)
+	}
+	if savedMode != "compact" {
+		t.Fatalf("saved mode = %q, want compact", savedMode)
+	}
+	if got := configCardSelect(t, card, "thinking_messages").InitValue; got != "act:/config thinking_messages false" {
+		t.Fatalf("thinking_messages initial option = %q, want false after mode change", got)
+	}
+	md, ok := card.Elements[0].(CardMarkdown)
+	if !ok || !strings.Contains(md.Content, "`mode` → `compact`") {
+		t.Fatalf("first element = %#v, want update confirmation", card.Elements[0])
+	}
+}
+
+func TestConfigCard_InvalidValueKeepsConfig(t *testing.T) {
+	e := NewEngine("test", &stubAgent{}, nil, "", LangEnglish)
+	before := e.display.ThinkingMaxLen
+
+	card := e.handleCardNav("act:/config thinking_max_len abc", "feishu:chat1:user1")
+
+	if e.display.ThinkingMaxLen != before {
+		t.Fatalf("thinking_max_len = %d, want unchanged %d", e.display.ThinkingMaxLen, before)
+	}
+	md, ok := card.Elements[0].(CardMarkdown)
+	if !ok || !strings.Contains(md.Content, "invalid integer") {
+		t.Fatalf("first element = %#v, want the set error", card.Elements[0])
+	}
+}
+
+func TestConfigCard_DisabledCommandBlocksChange(t *testing.T) {
+	e := NewEngine("test", &stubAgent{}, nil, "", LangEnglish)
+	e.SetDisabledCommands([]string{"config"})
+
+	card := e.handleCardNavWithContext("act:/config mode quiet", &Message{
+		SessionKey: "feishu:chat1:user1", Platform: "feishu", UserID: "user1",
+	})
+
+	if e.display.Mode != "full" {
+		t.Fatalf("mode = %q, want unchanged full", e.display.Mode)
+	}
+	md, ok := card.Elements[0].(CardMarkdown)
+	if !ok || !strings.Contains(md.Content, "/config") {
+		t.Fatalf("first element = %#v, want the disabled-command notice", card.Elements[0])
+	}
+}
+
+func TestConfigCard_KeepsCustomLengthSelectable(t *testing.T) {
+	e := NewEngine("test", &stubAgent{}, nil, "", LangEnglish)
+	e.display.ThinkingMaxLen = 250
+
+	sel := configCardSelect(t, e.renderConfigCard(""), "thinking_max_len")
+
+	if sel.InitValue != "act:/config thinking_max_len 250" {
+		t.Fatalf("initial option = %q, want 250", sel.InitValue)
+	}
+	found := false
+	for _, opt := range sel.Options {
+		found = found || opt.Value == sel.InitValue
+	}
+	if !found {
+		t.Fatalf("options %+v do not include the current value", sel.Options)
+	}
+}
+
 func TestCmdAlias_UsesLegacyTextOnPlatformWithoutCardSupport(t *testing.T) {
 	p := &stubPlatformEngine{n: "plain"}
 	e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
