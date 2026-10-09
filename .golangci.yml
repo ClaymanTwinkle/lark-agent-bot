@@ -9,8 +9,6 @@ linters:
     - govet
     - ineffassign
     - staticcheck
-
-issues:
   exclusions:
     rules:
       - path: _test\.go
