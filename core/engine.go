@@ -12167,6 +12167,21 @@ func (e *Engine) cardNav(action string, sessionKey string, clicker *Message) *Ca
 		return e.handleModelCardAction(args, sessionKey)
 	}
 
+	if prefix == "act" && cmd == "/config" {
+		// The config card writes settings, so it honors disabled_commands
+		// like /config set does.
+		userID := extractUserID(sessionKey)
+		if clicker != nil {
+			userID = clicker.UserID
+		}
+		if e.effectiveDisabledCmds(userID)["config"] {
+			slog.Info("audit: card_action_blocked",
+				"user_id", userID, "project", e.name, "action", prefix+":"+cmd, "reason", "disabled")
+			return NewCard().Markdown(fmt.Sprintf(e.i18n.T(MsgCommandDisabled), "/config")).Buttons(e.cardBackButton()).Build()
+		}
+		return e.handleConfigCardAction(args)
+	}
+
 	if prefix == "act" && cmd == "/mode" {
 		agent, _ := e.sessionContextForKey(sessionKey)
 		if switcher, ok := agent.(ModeSwitcher); ok {
@@ -12228,7 +12243,7 @@ func (e *Engine) cardNav(action string, sessionKey string, clicker *Message) *Ca
 	case "/alias":
 		return e.renderAliasCard()
 	case "/config":
-		return e.renderConfigCard()
+		return e.renderConfigCard("")
 	case "/skills":
 		return e.skillsCardForSession(sessionKey)
 	case "/doctor":
@@ -13926,21 +13941,61 @@ func (e *Engine) renderAliasCard() *Card {
 		Build()
 }
 
-func (e *Engine) renderConfigCard() *Card {
-	items := e.configItems()
+// renderConfigCard shows a dropdown per config item; picking a value sends
+// act:/config <key> <value>. result, when set, reports the last change.
+func (e *Engine) renderConfigCard(result string) *Card {
 	isZh := e.i18n.IsZhLike()
-
-	var sb strings.Builder
-	sb.WriteString(e.i18n.T(MsgConfigTitle))
-	for _, item := range items {
-		sb.WriteString(fmt.Sprintf("`%s` = `%s`\n  %s\n\n", item.key, item.getFunc(), item.description(isZh)))
+	cb := NewCard().Title(e.i18n.T(MsgCardTitleConfig), "grey").
+		Markdown(result)
+	for _, item := range e.configItems() {
+		cur := item.getFunc()
+		cb.Markdown(fmt.Sprintf("**%s**\n%s", item.key, item.description(isZh)))
+		cb.Select(e.i18n.T(MsgConfigSelectPlaceholder), configCardOptions(item, cur), configCardAction(item.key, cur))
 	}
-
-	return NewCard().Title(e.i18n.T(MsgCardTitleConfig), "grey").
-		Markdown(sb.String()).
-		Note(e.i18n.T(MsgConfigHint)).
+	return cb.Note(e.i18n.T(MsgConfigCardHint)).
 		Buttons(e.cardBackButton()).
 		Build()
+}
+
+// configCardOptions lists the item's choices, adding the current value when
+// it is not one of them (e.g. a length set with /config) so the dropdown
+// still shows it.
+func configCardOptions(item configItem, cur string) []CardSelectOption {
+	opts := make([]CardSelectOption, 0, len(item.choices)+1)
+	found := false
+	for _, c := range item.choices {
+		found = found || c.value == cur
+		opts = append(opts, CardSelectOption{Text: c.label, Value: configCardAction(item.key, c.value)})
+	}
+	if !found {
+		opts = append(opts, CardSelectOption{Text: cur, Value: configCardAction(item.key, cur)})
+	}
+	return opts
+}
+
+func configCardAction(key, value string) string {
+	return "act:/config " + key + " " + value
+}
+
+// handleConfigCardAction applies "<key> <value>" from the config card and
+// re-renders it with the outcome.
+func (e *Engine) handleConfigCardAction(args string) *Card {
+	fields := strings.Fields(args)
+	if len(fields) != 2 {
+		return e.renderConfigCard("")
+	}
+	key := strings.ToLower(fields[0])
+	for _, item := range e.configItems() {
+		if item.key != key {
+			continue
+		}
+		if err := item.setFunc(fields[1]); err != nil {
+			slog.Warn("config card: set failed", "key", key, "value", fields[1], "error", err)
+			return e.renderConfigCard(e.i18n.Tf(MsgError, err))
+		}
+		return e.renderConfigCard(e.i18n.Tf(MsgConfigUpdated, key, item.getFunc()))
+	}
+	return e.renderConfigCard(e.i18n.Tf(MsgConfigKeyNotFound, key))
 }
 
 func (e *Engine) renderSkillsCard(registry *SkillRegistry) *Card {
@@ -15110,6 +15165,14 @@ type configItem struct {
 	descZh  string // zh description
 	getFunc func() string
 	setFunc func(string) error
+	// choices are the values the config card offers in a dropdown.
+	choices []configChoice
+}
+
+// configChoice is one value of a configItem dropdown.
+type configChoice struct {
+	value string
+	label string
 }
 
 func (ci configItem) description(isZh bool) string {
@@ -15119,12 +15182,34 @@ func (ci configItem) description(isZh bool) string {
 	return ci.desc
 }
 
+// configMaxLenPresets are the lengths the config card offers for the
+// *_max_len items; other values are set with /config <key> <n>.
+var configMaxLenPresets = []int{0, 100, 200, 300, 500, 1000, 2000}
+
 func (e *Engine) configItems() []configItem {
+	boolChoices := []configChoice{
+		{value: "true", label: e.i18n.T(MsgConfigOn)},
+		{value: "false", label: e.i18n.T(MsgConfigOff)},
+	}
+	lenChoices := make([]configChoice, 0, len(configMaxLenPresets))
+	for _, n := range configMaxLenPresets {
+		label := strconv.Itoa(n)
+		if n == 0 {
+			label = e.i18n.T(MsgConfigNoTruncation)
+		}
+		lenChoices = append(lenChoices, configChoice{value: strconv.Itoa(n), label: label})
+	}
+
 	return []configItem{
 		{
 			key:    "mode",
 			desc:   "Display mode: full, compact, quiet",
 			descZh: "显示模式: full, compact, quiet",
+			choices: []configChoice{
+				{value: "full", label: "full"},
+				{value: "compact", label: "compact"},
+				{value: "quiet", label: "quiet"},
+			},
 			getFunc: func() string {
 				if e.display.Mode == "" {
 					return "full"
@@ -15153,9 +15238,10 @@ func (e *Engine) configItems() []configItem {
 			},
 		},
 		{
-			key:    "thinking_messages",
-			desc:   "Whether thinking messages are shown (true/false)",
-			descZh: "是否显示思考消息 (true/false)",
+			key:     "thinking_messages",
+			desc:    "Whether thinking messages are shown (true/false)",
+			descZh:  "是否显示思考消息 (true/false)",
+			choices: boolChoices,
 			getFunc: func() string {
 				return fmt.Sprintf("%t", e.display.ThinkingMessages)
 			},
@@ -15172,9 +15258,10 @@ func (e *Engine) configItems() []configItem {
 			},
 		},
 		{
-			key:    "thinking_max_len",
-			desc:   "Max chars for thinking messages (0=no truncation)",
-			descZh: "思考消息最大长度 (0=不截断)",
+			key:     "thinking_max_len",
+			desc:    "Max chars for thinking messages (0=no truncation)",
+			descZh:  "思考消息最大长度 (0=不截断)",
+			choices: lenChoices,
 			getFunc: func() string {
 				return fmt.Sprintf("%d", e.display.ThinkingMaxLen)
 			},
@@ -15194,9 +15281,10 @@ func (e *Engine) configItems() []configItem {
 			},
 		},
 		{
-			key:    "tool_messages",
-			desc:   "Whether tool progress messages are shown (true/false)",
-			descZh: "是否显示工具进度消息 (true/false)",
+			key:     "tool_messages",
+			desc:    "Whether tool progress messages are shown (true/false)",
+			descZh:  "是否显示工具进度消息 (true/false)",
+			choices: boolChoices,
 			getFunc: func() string {
 				return fmt.Sprintf("%t", e.display.ToolMessages)
 			},
@@ -15213,9 +15301,10 @@ func (e *Engine) configItems() []configItem {
 			},
 		},
 		{
-			key:    "tool_max_len",
-			desc:   "Max chars for tool use messages (0=no truncation)",
-			descZh: "工具消息最大长度 (0=不截断)",
+			key:     "tool_max_len",
+			desc:    "Max chars for tool use messages (0=no truncation)",
+			descZh:  "工具消息最大长度 (0=不截断)",
+			choices: lenChoices,
 			getFunc: func() string {
 				return fmt.Sprintf("%d", e.display.ToolMaxLen)
 			},
@@ -15252,7 +15341,7 @@ func (e *Engine) cmdConfig(p Platform, msg *Message, args []string) {
 			return
 		}
 
-		e.replyWithCard(p, msg.ReplyCtx, e.renderConfigCard())
+		e.replyWithCard(p, msg.ReplyCtx, e.renderConfigCard(""))
 		return
 	}
 

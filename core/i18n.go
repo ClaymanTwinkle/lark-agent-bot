@@ -561,6 +561,12 @@ const (
 	MsgConfigKeyNotFound MsgKey = "config_key_not_found"
 	MsgConfigReloaded    MsgKey = "config_reloaded"
 
+	MsgConfigCardHint          MsgKey = "config_card_hint"
+	MsgConfigSelectPlaceholder MsgKey = "config_select_placeholder"
+	MsgConfigOn                MsgKey = "config_on"
+	MsgConfigOff               MsgKey = "config_off"
+	MsgConfigNoTruncation      MsgKey = "config_no_truncation"
+
 	MsgDoctorRunning MsgKey = "doctor_running"
 	MsgDoctorTitle   MsgKey = "doctor_title"
 	MsgDoctorSummary MsgKey = "doctor_summary"
@@ -3664,6 +3670,41 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "✅ 配置已重新載入\n\n顯示設定已更新：%v\nProvider 已同步：%d 個\n自訂命令已同步：%d 個",
 		LangJapanese:           "✅ 設定をリロードしました\n\n表示設定更新: %v\nプロバイダ同期: %d 件\nコマンド同期: %d 件",
 		LangSpanish:            "✅ Configuración recargada\n\nPantalla actualizada: %v\nProveedores sincronizados: %d\nComandos sincronizados: %d",
+	},
+	MsgConfigCardHint: {
+		LangEnglish:            "A selected value applies right away and is saved. For another length send `/config thinking_max_len 250`.",
+		LangChinese:            "选中即生效并保存。其他长度可发送 `/config thinking_max_len 250`。",
+		LangTraditionalChinese: "選取即生效並儲存。其他長度可傳送 `/config thinking_max_len 250`。",
+		LangJapanese:           "選択するとすぐに反映・保存されます。他の長さは `/config thinking_max_len 250` を送信してください。",
+		LangSpanish:            "El valor elegido se aplica al instante y se guarda. Para otra longitud envíe `/config thinking_max_len 250`.",
+	},
+	MsgConfigSelectPlaceholder: {
+		LangEnglish:            "Select a value",
+		LangChinese:            "选择取值",
+		LangTraditionalChinese: "選擇取值",
+		LangJapanese:           "値を選択",
+		LangSpanish:            "Seleccione un valor",
+	},
+	MsgConfigOn: {
+		LangEnglish:            "On",
+		LangChinese:            "开启",
+		LangTraditionalChinese: "開啟",
+		LangJapanese:           "オン",
+		LangSpanish:            "Activado",
+	},
+	MsgConfigOff: {
+		LangEnglish:            "Off",
+		LangChinese:            "关闭",
+		LangTraditionalChinese: "關閉",
+		LangJapanese:           "オフ",
+		LangSpanish:            "Desactivado",
+	},
+	MsgConfigNoTruncation: {
+		LangEnglish:            "0 (no truncation)",
+		LangChinese:            "0（不截断）",
+		LangTraditionalChinese: "0（不截斷）",
+		LangJapanese:           "0（切り捨てなし）",
+		LangSpanish:            "0 (sin truncar)",
 	},
 	MsgDoctorRunning: {
 		LangEnglish:            "🏥 Running diagnostics...",
