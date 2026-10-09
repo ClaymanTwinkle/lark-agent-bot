@@ -599,6 +599,23 @@ const (
 	MsgConfigCannotDisableConfig     MsgKey = "config_cannot_disable_config"
 	MsgConfigNotDisabled             MsgKey = "config_not_disabled"
 
+	MsgConfigWorkspaceTitle           MsgKey = "config_workspace_title"
+	MsgConfigWorkspaceSingle          MsgKey = "config_workspace_single"
+	MsgConfigWorkspaceMulti           MsgKey = "config_workspace_multi"
+	MsgConfigWorkspaceToMulti         MsgKey = "config_workspace_to_multi"
+	MsgConfigWorkspaceToSingle        MsgKey = "config_workspace_to_single"
+	MsgConfigWorkspaceConfirmMulti    MsgKey = "config_workspace_confirm_multi"
+	MsgConfigWorkspaceConfirmSingle   MsgKey = "config_workspace_confirm_single"
+	MsgConfigWorkspaceOtherDir        MsgKey = "config_workspace_other_dir"
+	MsgConfigWorkspaceConfirmButton   MsgKey = "config_workspace_confirm_button"
+	MsgConfigWorkspacePickDir         MsgKey = "config_workspace_pick_dir"
+	MsgConfigWorkspacePickPlaceholder MsgKey = "config_workspace_pick_placeholder"
+	MsgConfigWorkspaceSaved           MsgKey = "config_workspace_saved"
+	MsgConfigWorkspaceTextConfirm     MsgKey = "config_workspace_text_confirm"
+	MsgConfigWorkspaceUsage           MsgKey = "config_workspace_usage"
+	MsgConfigCancel                   MsgKey = "config_cancel"
+	MsgConfigRestartPending           MsgKey = "config_restart_pending"
+
 	MsgDoctorRunning MsgKey = "doctor_running"
 	MsgDoctorTitle   MsgKey = "doctor_title"
 	MsgDoctorSummary MsgKey = "doctor_summary"
@@ -796,7 +813,7 @@ const (
 	MsgWsPickerSelected          MsgKey = "ws_picker_selected"
 	MsgWsPickerHint              MsgKey = "ws_picker_hint"
 	MsgWsPickerStale             MsgKey = "ws_picker_stale"
-	MsgWsNotEnabled              MsgKey = "ws_not_enabled"
+	MsgWsSingleModeHint          MsgKey = "ws_single_mode_hint"
 	MsgWsNoBinding               MsgKey = "ws_no_binding"
 	MsgWsPickerStartHint         MsgKey = "ws_picker_start_hint"
 	MsgWsInfo                    MsgKey = "ws_info"
@@ -3934,6 +3951,118 @@ var messages = map[MsgKey]map[Language]string{
 		LangJapanese:           "`/%s` は無効になっていません。",
 		LangSpanish:            "`/%s` no está desactivado.",
 	},
+	MsgConfigWorkspaceTitle: {
+		LangEnglish:            "**Workspace mode**",
+		LangChinese:            "**工作区模式**",
+		LangTraditionalChinese: "**工作區模式**",
+		LangJapanese:           "**ワークスペースモード**",
+		LangSpanish:            "**Modo de espacio de trabajo**",
+	},
+	MsgConfigWorkspaceSingle: {
+		LangEnglish:            "Single workspace: every chat works in `%s`.",
+		LangChinese:            "单工作区：所有聊天都在 `%s` 里工作。",
+		LangTraditionalChinese: "單工作區：所有聊天都在 `%s` 裡工作。",
+		LangJapanese:           "シングルワークスペース：すべてのチャットが `%s` で作業します。",
+		LangSpanish:            "Un solo espacio de trabajo: todos los chats trabajan en `%s`.",
+	},
+	MsgConfigWorkspaceMulti: {
+		LangEnglish:            "Multi-workspace: each chat chooses a project under `%s`.",
+		LangChinese:            "多工作区：每个聊天在 `%s` 下面选自己的项目。",
+		LangTraditionalChinese: "多工作區：每個聊天在 `%s` 下面選自己的專案。",
+		LangJapanese:           "マルチワークスペース：各チャットが `%s` 内のプロジェクトを選びます。",
+		LangSpanish:            "Multiespacio: cada chat elige un proyecto dentro de `%s`.",
+	},
+	MsgConfigWorkspaceToMulti: {
+		LangEnglish:            "Switch to multi-workspace",
+		LangChinese:            "切换到多工作区",
+		LangTraditionalChinese: "切換到多工作區",
+		LangJapanese:           "マルチワークスペースに切り替え",
+		LangSpanish:            "Cambiar a multiespacio",
+	},
+	MsgConfigWorkspaceToSingle: {
+		LangEnglish:            "Switch to single workspace",
+		LangChinese:            "切换到单工作区",
+		LangTraditionalChinese: "切換到單工作區",
+		LangJapanese:           "シングルワークスペースに切り替え",
+		LangSpanish:            "Cambiar a un solo espacio",
+	},
+	MsgConfigWorkspaceConfirmMulti: {
+		LangEnglish:            "Switch to **multi-workspace** mode with the project root `%s`?\n- work_dir is removed from the config.\n- Every chat then chooses a project under this directory, this one included.\n- Sessions of the current mode do not appear in the new mode. Their files stay, and switching back finds them.\n- The bot restarts once the tasks in progress finish.",
+		LangChinese:            "切换到**多工作区**模式，项目根目录 `%s`？\n- 配置里的 work_dir 会删掉。\n- 之后每个聊天（包括这个）都要在这个目录下选项目。\n- 当前模式下的会话不会出现在新模式里；会话文件还在，切回来能找到。\n- 等进行中的任务结束后重启。",
+		LangTraditionalChinese: "切換到**多工作區**模式，專案根目錄 `%s`？\n- 設定裡的 work_dir 會刪掉。\n- 之後每個聊天（包括這個）都要在這個目錄下選專案。\n- 目前模式下的會話不會出現在新模式裡；會話檔案還在，切回來能找到。\n- 等進行中的任務結束後重新啟動。",
+		LangJapanese:           "プロジェクトのルートを `%s` にして**マルチワークスペース**モードに切り替えますか？\n- 設定の work_dir は削除されます。\n- このチャットを含め、各チャットがこのディレクトリ内のプロジェクトを選び直します。\n- 現在のモードのセッションは新しいモードには表示されません。ファイルは残り、元に戻すと見つかります。\n- 実行中のタスクが終わってから再起動します。",
+		LangSpanish:            "¿Cambiar al modo **multiespacio** con la raíz de proyectos `%s`?\n- work_dir se quita de la configuración.\n- Después cada chat, este incluido, elige un proyecto dentro de este directorio.\n- Las sesiones del modo actual no aparecen en el nuevo. Sus archivos se conservan y vuelven al regresar.\n- El bot se reinicia cuando terminen las tareas en curso.",
+	},
+	MsgConfigWorkspaceConfirmSingle: {
+		LangEnglish:            "Switch to **single workspace** mode with the working directory `%s`?\n- mode is removed from the config; base_dir is kept for switching back.\n- Every chat then works in this directory.\n- Sessions of the current mode do not appear in the new mode. Their files stay, and switching back finds them.\n- The bot restarts once the tasks in progress finish.",
+		LangChinese:            "切换到**单工作区**模式，工作目录 `%s`？\n- 配置里的 mode 会删掉；base_dir 保留，方便再切回去。\n- 之后所有聊天都在这个目录里工作。\n- 当前模式下的会话不会出现在新模式里；会话文件还在，切回来能找到。\n- 等进行中的任务结束后重启。",
+		LangTraditionalChinese: "切換到**單工作區**模式，工作目錄 `%s`？\n- 設定裡的 mode 會刪掉；base_dir 保留，方便再切回去。\n- 之後所有聊天都在這個目錄裡工作。\n- 目前模式下的會話不會出現在新模式裡；會話檔案還在，切回來能找到。\n- 等進行中的任務結束後重新啟動。",
+		LangJapanese:           "作業ディレクトリを `%s` にして**シングルワークスペース**モードに切り替えますか？\n- 設定の mode は削除されます。base_dir は元に戻せるよう残ります。\n- すべてのチャットがこのディレクトリで作業します。\n- 現在のモードのセッションは新しいモードには表示されません。ファイルは残り、元に戻すと見つかります。\n- 実行中のタスクが終わってから再起動します。",
+		LangSpanish:            "¿Cambiar al modo de **un solo espacio de trabajo** con el directorio `%s`?\n- mode se quita de la configuración; base_dir se conserva para poder volver.\n- Después todos los chats trabajan en este directorio.\n- Las sesiones del modo actual no aparecen en el nuevo. Sus archivos se conservan y vuelven al regresar.\n- El bot se reinicia cuando terminen las tareas en curso.",
+	},
+	MsgConfigWorkspaceOtherDir: {
+		LangEnglish:            "For another directory send `/config workspace %s <absolute path>`.",
+		LangChinese:            "要用别的目录，发 `/config workspace %s <绝对路径>`。",
+		LangTraditionalChinese: "要用別的目錄，傳送 `/config workspace %s <絕對路徑>`。",
+		LangJapanese:           "別のディレクトリにするには `/config workspace %s <絶対パス>` を送信してください。",
+		LangSpanish:            "Para otro directorio envía `/config workspace %s <ruta absoluta>`.",
+	},
+	MsgConfigWorkspaceConfirmButton: {
+		LangEnglish:            "Confirm and restart",
+		LangChinese:            "确认并重启",
+		LangTraditionalChinese: "確認並重新啟動",
+		LangJapanese:           "確定して再起動",
+		LangSpanish:            "Confirmar y reiniciar",
+	},
+	MsgConfigWorkspacePickDir: {
+		LangEnglish:            "This chat has no project bound. Choose the directory every chat will work in:",
+		LangChinese:            "这个聊天还没绑定项目。选择之后所有聊天都在里面工作的目录：",
+		LangTraditionalChinese: "這個聊天還沒綁定專案。選擇之後所有聊天都在裡面工作的目錄：",
+		LangJapanese:           "このチャットにはプロジェクトが紐づいていません。すべてのチャットが作業するディレクトリを選んでください：",
+		LangSpanish:            "Este chat no tiene un proyecto vinculado. Elige el directorio en el que trabajarán todos los chats:",
+	},
+	MsgConfigWorkspacePickPlaceholder: {
+		LangEnglish:            "Choose a project",
+		LangChinese:            "选择项目",
+		LangTraditionalChinese: "選擇專案",
+		LangJapanese:           "プロジェクトを選択",
+		LangSpanish:            "Elige un proyecto",
+	},
+	MsgConfigWorkspaceSaved: {
+		LangEnglish:            "✅ Workspace mode is saved to the config and takes effect after the restart.",
+		LangChinese:            "✅ 工作区模式已写入配置，重启后生效。",
+		LangTraditionalChinese: "✅ 工作區模式已寫入設定，重新啟動後生效。",
+		LangJapanese:           "✅ ワークスペースモードを設定に保存しました。再起動後に反映されます。",
+		LangSpanish:            "✅ El modo de espacio de trabajo está guardado y se aplica tras el reinicio.",
+	},
+	MsgConfigWorkspaceTextConfirm: {
+		LangEnglish:            "To switch, send `/config workspace %s %s confirm`.",
+		LangChinese:            "确认切换请发 `/config workspace %s %s confirm`。",
+		LangTraditionalChinese: "確認切換請傳送 `/config workspace %s %s confirm`。",
+		LangJapanese:           "切り替えるには `/config workspace %s %s confirm` を送信してください。",
+		LangSpanish:            "Para cambiar, envía `/config workspace %s %s confirm`.",
+	},
+	MsgConfigWorkspaceUsage: {
+		LangEnglish:            "Usage (admins): `/config workspace multi [project root]` or `/config workspace single [working directory]`",
+		LangChinese:            "用法（管理员）：`/config workspace multi [项目根目录]` 或 `/config workspace single [工作目录]`",
+		LangTraditionalChinese: "用法（管理員）：`/config workspace multi [專案根目錄]` 或 `/config workspace single [工作目錄]`",
+		LangJapanese:           "使い方（管理者）：`/config workspace multi [プロジェクトのルート]` または `/config workspace single [作業ディレクトリ]`",
+		LangSpanish:            "Uso (administradores): `/config workspace multi [raíz de proyectos]` o `/config workspace single [directorio de trabajo]`",
+	},
+	MsgConfigCancel: {
+		LangEnglish:            "Cancel",
+		LangChinese:            "取消",
+		LangTraditionalChinese: "取消",
+		LangJapanese:           "キャンセル",
+		LangSpanish:            "Cancelar",
+	},
+	MsgConfigRestartPending: {
+		LangEnglish:            "A restart is already queued; the change takes effect with it.",
+		LangChinese:            "已经有一次重启在排队，改动会随那次重启生效。",
+		LangTraditionalChinese: "已經有一次重新啟動在排隊，改動會隨那次重新啟動生效。",
+		LangJapanese:           "再起動はすでに予約されています。変更はその再起動で反映されます。",
+		LangSpanish:            "Ya hay un reinicio en cola; el cambio se aplicará con él.",
+	},
 	MsgConfigNoAdminHint: {
 		LangEnglish:            "No admin is set (admin_from is empty), so nobody can change project settings in chat. Set admin_from on the web admin's project page, or send /whoami, add your User ID to admin_from in the config file and send /config reload.",
 		LangChinese:            "还没有管理员（admin_from 为空），所以聊天里没人能改项目设置。可以在 web 管理后台的项目页设置 admin_from；或者发 /whoami 查到自己的 User ID，写进配置文件的 admin_from，再发 /config reload。",
@@ -5063,12 +5192,12 @@ var messages = map[MsgKey]map[Language]string{
 		LangJapanese:           "このプロジェクトは選択できません。/bind で一覧を更新してください。",
 		LangSpanish:            "Este proyecto ya no está disponible. Use /bind para actualizar la lista.",
 	},
-	MsgWsNotEnabled: {
-		LangEnglish:            "Workspace commands are only available in multi-workspace mode.",
-		LangChinese:            "工作区命令仅在多工作区模式下可用。",
-		LangTraditionalChinese: "工作區命令僅在多工作區模式下可用。",
-		LangJapanese:           "ワークスペースコマンドはマルチワークスペースモードでのみ使用できます。",
-		LangSpanish:            "Los comandos de workspace solo están disponibles en modo multi-workspace.",
+	MsgWsSingleModeHint: {
+		LangEnglish:            "This project is in single-workspace mode, so workspace commands are not available. An admin can switch it to multi-workspace mode under /config → Project.",
+		LangChinese:            "当前是单工作区模式，用不了工作区命令。管理员可以在 /config → 项目 里切换到多工作区。",
+		LangTraditionalChinese: "目前是單工作區模式，用不了工作區指令。管理員可以在 /config → 專案 裡切換到多工作區。",
+		LangJapanese:           "このプロジェクトはシングルワークスペースモードのため、ワークスペースコマンドは使えません。管理者は /config → プロジェクト でマルチワークスペースモードに切り替えられます。",
+		LangSpanish:            "Este proyecto está en modo de un solo espacio de trabajo, así que los comandos de workspace no están disponibles. Un administrador puede cambiarlo a modo multiespacio en /config → Proyecto.",
 	},
 	MsgWsNoBinding: {
 		LangEnglish:            "No workspace bound to this channel.",

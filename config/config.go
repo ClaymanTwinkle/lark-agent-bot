@@ -667,13 +667,23 @@ func load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read config file: %w", err)
 	}
-	cfg := &Config{Log: LogConfig{Level: "info"}}
-	unknown, err := decodeConfig(data, cfg)
+	cfg, unknown, err := parseConfigData(data)
 	if err != nil {
-		return nil, fmt.Errorf("parse config: %w", err)
+		return nil, err
 	}
 	// Warn, don't fail: a config that started before must keep starting.
 	warnUnknownKeys(path, unknown)
+	return cfg, nil
+}
+
+// parseConfigData decodes config file content the way load does, returning
+// the keys this version does not know. It does not validate.
+func parseConfigData(data []byte) (*Config, []string, error) {
+	cfg := &Config{Log: LogConfig{Level: "info"}}
+	unknown, err := decodeConfig(data, cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse config: %w", err)
+	}
 	resolveEnvInConfig(cfg)
 	expandHomeInConfig(cfg)
 	if cfg.DataDir == "" {
@@ -688,7 +698,7 @@ func load(path string) (*Config, error) {
 		cfg.AttachmentSend = "on"
 	}
 	cfg.ResolveProviderRefs()
-	return cfg, nil
+	return cfg, unknown, nil
 }
 
 // LoadPermissive loads the config file and performs all validation except the
@@ -2616,37 +2626,37 @@ func patchProjectAgentOption(projectName, key, value string) error {
 	}
 
 	lines, hadTrailing := splitConfigLines(raw)
-	spans := buildRawProjectSpans(lines)
-	if projectIdx >= len(spans) {
+	if projectIdx >= len(buildRawProjectSpans(lines)) {
 		return fmt.Errorf("project %q located in parsed config but not raw file", projectName)
 	}
-	projSpan := spans[projectIdx]
-
-	if projSpan.agentOptionsStart < 0 {
-		// [projects.agent.options] doesn't exist; create it.
-		insertAt := projSpan.agentEnd + 1
-		if projSpan.agentStart < 0 {
-			// [projects.agent] also doesn't exist; insert after [[projects]] header + name line
-			insertAt = projSpan.start + 1
-			for ln := projSpan.start + 1; ln <= projSpan.end; ln++ {
-				if isAnyTableHeader(lines[ln]) {
-					insertAt = ln
-					break
-				}
-				insertAt = ln + 1
-			}
-			block := []string{"", "[projects.agent]", "type = \"claudecode\"", "", "[projects.agent.options]"}
-			lines = insertLines(lines, insertAt, block)
-		} else {
-			block := []string{"", "[projects.agent.options]"}
-			lines = insertLines(lines, insertAt, block)
-		}
-		spans = buildRawProjectSpans(lines)
-		projSpan = spans[projectIdx]
-	}
-
+	lines = ensureProjectAgentOptions(lines, projectIdx)
+	projSpan := buildRawProjectSpans(lines)[projectIdx]
 	lines = upsertTomlStringKey(lines, projSpan.agentOptionsStart+1, projSpan.agentOptionsEnd, key, value)
 	return writeRawConfig(joinConfigLines(lines, hadTrailing))
+}
+
+// ensureProjectAgentOptions adds a [projects.agent.options] table (and
+// [projects.agent] if missing) to the projectIdx-th project when it has none.
+func ensureProjectAgentOptions(lines []string, projectIdx int) []string {
+	projSpan := buildRawProjectSpans(lines)[projectIdx]
+	if projSpan.agentOptionsStart >= 0 {
+		return lines
+	}
+	insertAt := projSpan.agentEnd + 1
+	if projSpan.agentStart < 0 {
+		// [projects.agent] also doesn't exist; insert after [[projects]] header + name line
+		insertAt = projSpan.start + 1
+		for ln := projSpan.start + 1; ln <= projSpan.end; ln++ {
+			if isAnyTableHeader(lines[ln]) {
+				insertAt = ln
+				break
+			}
+			insertAt = ln + 1
+		}
+		block := []string{"", "[projects.agent]", "type = \"claudecode\"", "", "[projects.agent.options]"}
+		return insertLines(lines, insertAt, block)
+	}
+	return insertLines(lines, insertAt, []string{"", "[projects.agent.options]"})
 }
 
 // patchProjectAgentType sets type under [projects.agent] for the given project,

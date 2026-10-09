@@ -204,7 +204,7 @@ func (e *Engine) handleCardNavWithContext(action string, msg *Message) *Card {
 		return NewCard().Markdown(text).Buttons(DefaultBtn(e.i18n.T(MsgCardBack), "nav:/workspace bind")).Build()
 	}
 	if !e.multiWorkspace {
-		return errorCard(e.i18n.T(MsgWsNotEnabled))
+		return errorCard(e.i18n.T(MsgWsSingleModeHint))
 	}
 	// Match command authorization using the clicker's identity, not the user
 	// who originally opened the card (shared group/topic cards can differ).
