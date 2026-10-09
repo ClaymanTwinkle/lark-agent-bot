@@ -28,20 +28,27 @@ func (e *Engine) SetWorkspaceModeSaver(fn func(multi bool, dir string) error) {
 	e.workspaceModeSaver = fn
 }
 
+var (
+	// ErrWorkspaceModeUnavailable: no saver is set, so the mode cannot be switched.
+	ErrWorkspaceModeUnavailable = errors.New("switching the workspace mode is not available")
+	// ErrWorkspaceDirInvalid: the directory for the new mode is not an existing absolute path.
+	ErrWorkspaceDirInvalid = errors.New("invalid workspace directory")
+)
+
 // SwitchWorkspaceMode writes the project's workspace mode to the config file:
 // in multi-workspace mode dir is base_dir, in single-workspace mode work_dir.
 // It takes effect at the next restart, which the caller requests. A working
 // directory left by /dir is cleared, since it would override the new one.
 func (e *Engine) SwitchWorkspaceMode(multi bool, dir string) error {
 	if e.workspaceModeSaver == nil {
-		return errors.New("switching the workspace mode is not available")
+		return ErrWorkspaceModeUnavailable
 	}
 	if !filepath.IsAbs(dir) {
-		return fmt.Errorf("%q is not an absolute path", dir)
+		return fmt.Errorf("%w: %q is not an absolute path", ErrWorkspaceDirInvalid, dir)
 	}
 	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
-		return fmt.Errorf("%q is not a directory", dir)
+		return fmt.Errorf("%w: %q is not a directory", ErrWorkspaceDirInvalid, dir)
 	}
 	if err := e.workspaceModeSaver(multi, filepath.Clean(dir)); err != nil {
 		return fmt.Errorf("save workspace mode: %w", err)

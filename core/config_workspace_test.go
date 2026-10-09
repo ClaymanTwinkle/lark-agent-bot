@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type workspaceModeSwitch struct {
@@ -222,5 +223,70 @@ func TestWorkspaceCommand_SingleModeExplainsSwitch(t *testing.T) {
 	e.handleCommand(cards, &Message{SessionKey: "test:chat1:boss", Platform: "test", UserID: "boss", ReplyCtx: "ctx"}, "/workspace")
 	if card := cards.lastCard(t); !cardHasAction(card, "nav:/config project") {
 		t.Fatalf("admins must get a button to the project page: %q", card.RenderText())
+	}
+}
+
+func TestMgmt_ProjectWorkspaceMode(t *testing.T) {
+	_, ts, e := testManagementServer(t, "tok")
+	root := t.TempDir()
+	workDir := filepath.Join(root, "app")
+	if err := os.Mkdir(workDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e.agent = &stubWorkDirAgent{workDir: workDir}
+	url := ts.URL + "/api/v1/projects/test-project/workspace-mode"
+
+	r := mgmtPost(t, url, "tok", map[string]any{"multi": true, "dir": root})
+	if r.OK || !strings.Contains(r.Error, "not available") {
+		t.Fatalf("without a saver the switch is unavailable: %+v", r)
+	}
+
+	var saved []workspaceModeSwitch
+	e.SetWorkspaceModeSaver(func(multi bool, dir string) error {
+		saved = append(saved, workspaceModeSwitch{multi, dir})
+		return nil
+	})
+
+	detail := mgmtGet(t, ts.URL+"/api/v1/projects/test-project", "tok")
+	if !strings.Contains(string(detail.Data), `"suggested_base_dir":`) {
+		t.Fatalf("single-workspace detail must suggest a base_dir: %s", detail.Data)
+	}
+
+	r = mgmtPost(t, url, "tok", map[string]any{"multi": true, "dir": filepath.Join(root, "missing")})
+	if r.OK || !strings.Contains(r.Error, "not a directory") || len(saved) != 0 {
+		t.Fatalf("a missing directory must be refused before saving: %+v", r)
+	}
+
+	r = mgmtPost(t, url, "tok", map[string]any{"multi": true, "dir": root})
+	if !r.OK || !strings.Contains(string(r.Data), `"restart_required":true`) {
+		t.Fatalf("switch: %+v", r)
+	}
+	if len(saved) != 1 || saved[0] != (workspaceModeSwitch{true, root}) {
+		t.Fatalf("saved = %+v", saved)
+	}
+
+	e.SetWorkspaceModeSaver(func(bool, string) error { return errors.New("config has unknown keys") })
+	if r = mgmtPost(t, url, "tok", map[string]any{"multi": true, "dir": root}); r.OK || !strings.Contains(r.Error, "config has unknown keys") {
+		t.Fatalf("a save error must be reported: %+v", r)
+	}
+}
+
+func TestMgmt_RestartWaitsForWork(t *testing.T) {
+	_, ts, e := testManagementServer(t, "tok")
+	e.SetUpgradeRestartWait(30*time.Minute, func() int { return 2 })
+	drainRestartCh(t)
+
+	r := mgmtPost(t, ts.URL+"/api/v1/restart", "tok", map[string]any{"wait": true})
+	if !r.OK || !strings.Contains(string(r.Data), `"busy":2`) || !strings.Contains(string(r.Data), `"max_wait_mins":30`) {
+		t.Fatalf("restart with wait: %+v %s", r, r.Data)
+	}
+	req, ok := takeRestart()
+	if !ok || !req.WaitIdle || req.MaxWait != 30*time.Minute {
+		t.Fatalf("restart request = %+v, %t; want one that waits for work in progress", req, ok)
+	}
+
+	r = mgmtPost(t, ts.URL+"/api/v1/restart", "tok", nil)
+	if req, ok := takeRestart(); !r.OK || !ok || req.WaitIdle {
+		t.Fatalf("a restart without wait must not wait: %+v %+v", r, req)
 	}
 }

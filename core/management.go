@@ -476,15 +476,33 @@ func (m *ManagementServer) handleRestart(w http.ResponseWriter, r *http.Request)
 	var body struct {
 		SessionKey string `json:"session_key"`
 		Platform   string `json:"platform"`
+		// Wait holds the restart until work in progress finishes, like the
+		// restart after /upgrade, instead of cutting it off.
+		Wait bool `json:"wait"`
 	}
 	// Body is optional; ignore decode errors from empty body
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 	}
 
+	req := RestartRequest{SessionKey: body.SessionKey, Platform: body.Platform}
+	busy := 0
+	if body.Wait {
+		// Any engine will do: they count work across the whole process.
+		m.mu.RLock()
+		for _, e := range m.engines {
+			req, busy = e.newRestartRequest(body.SessionKey, body.Platform, true)
+			break
+		}
+		m.mu.RUnlock()
+	}
 	select {
-	case RestartCh <- RestartRequest{SessionKey: body.SessionKey, Platform: body.Platform}:
-		mgmtOK(w, "restart initiated")
+	case RestartCh <- req:
+		mgmtJSON(w, http.StatusOK, map[string]any{
+			"message":       "restart initiated",
+			"busy":          busy,
+			"max_wait_mins": int(req.MaxWait / time.Minute),
+		})
 	default:
 		mgmtError(w, http.StatusConflict, "restart already in progress")
 	}
@@ -663,8 +681,39 @@ func (m *ManagementServer) handleProjectRoutes(w http.ResponseWriter, r *http.Re
 		m.handleProjectHeartbeat(w, r, projName, rest)
 	case "users":
 		m.handleProjectUsers(w, r, engine)
+	case "workspace-mode":
+		m.handleProjectWorkspaceMode(w, r, engine)
 	default:
 		mgmtError(w, http.StatusNotFound, "not found")
+	}
+}
+
+// handleProjectWorkspaceMode switches the project between single- and
+// multi-workspace mode in the config file: POST {"multi": bool, "dir": path}.
+// It takes effect after a restart, which the caller requests.
+func (m *ManagementServer) handleProjectWorkspaceMode(w http.ResponseWriter, r *http.Request, e *Engine) {
+	if r.Method != http.MethodPost {
+		mgmtError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var body struct {
+		Multi bool   `json:"multi"`
+		Dir   string `json:"dir"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		mgmtDecodeError(w, err)
+		return
+	}
+	err := e.SwitchWorkspaceMode(body.Multi, strings.TrimSpace(body.Dir))
+	switch {
+	case errors.Is(err, ErrWorkspaceDirInvalid):
+		mgmtError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, ErrWorkspaceModeUnavailable):
+		mgmtError(w, http.StatusNotImplemented, err.Error())
+	case err != nil:
+		mgmtError(w, http.StatusInternalServerError, err.Error())
+	default:
+		mgmtJSON(w, http.StatusOK, map[string]any{"message": "workspace mode saved", "restart_required": true})
 	}
 }
 
@@ -746,6 +795,9 @@ func (m *ManagementServer) handleProjectDetail(w http.ResponseWriter, r *http.Re
 		data["multi_workspace"] = e.multiWorkspace
 		if e.multiWorkspace {
 			data["base_dir"] = e.baseDir
+		} else {
+			// What switching to multi-workspace mode offers as base_dir.
+			data["suggested_base_dir"] = e.workspaceModeDefaultDir(true, nil)
 		}
 
 		if m.getProjectConfig != nil {

@@ -22,6 +22,8 @@ export interface ProjectDetail {
   // must not be sent back.
   multi_workspace?: boolean;
   base_dir?: string;
+  // Single-workspace mode: the base_dir that switching to multi-workspace offers.
+  suggested_base_dir?: string;
   show_context_indicator?: boolean;
   show_workdir_indicator?: boolean;
   reply_footer?: boolean;
@@ -63,6 +65,11 @@ export const listAgentTypes = () => api.get<{ agents: string[]; platforms: strin
 export const listProjects = () => api.get<{ projects: ProjectSummary[] }>('/projects');
 export const getProject = (name: string) => api.get<ProjectDetail>(`/projects/${name}`);
 export const updateProject = (name: string, body: ProjectSettingsUpdate) => api.patch(`/projects/${name}`, body);
+
+// Writes the workspace mode to the config: dir is base_dir for multi-workspace
+// mode, work_dir for single. It takes effect after a restart.
+export const setWorkspaceMode = (name: string, body: { multi: boolean; dir: string }) =>
+  api.post<{ message: string; restart_required: boolean }>(`/projects/${name}/workspace-mode`, body);
 
 export const addPlatformToProject = (projectName: string, body: {
   type: string; options: Record<string, any>; work_dir?: string; agent_type?: string;
