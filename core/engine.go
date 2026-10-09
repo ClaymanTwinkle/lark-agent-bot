@@ -397,6 +397,13 @@ type Engine struct {
 
 	displaySaveFunc  func(mode *string, thinkingMessages *bool, thinkingMaxLen, toolMaxLen *int, toolMessages *bool) error
 	configReloadFunc func() (*ConfigReloadResult, error)
+	// projectSettingsSaver writes project settings changed from the /config
+	// card to the config file, the same way the web admin saves them.
+	projectSettingsSaver func(ProjectSettingsUpdate) error
+	// pendingAgentType is the agent type saved from the /config card that
+	// takes effect at the next restart; "" when none is pending.
+	pendingAgentTypeMu sync.Mutex
+	pendingAgentType   string
 
 	hooks              *HookManager
 	cronScheduler      *CronScheduler
@@ -1189,6 +1196,12 @@ func (e *Engine) SetDisplaySaveFunc(fn func(mode *string, thinkingMessages *bool
 	e.displaySaveFunc = fn
 }
 
+// SetProjectSettingsSaver sets how project settings changed in chat are
+// written to the config file. Without it they apply only until restart.
+func (e *Engine) SetProjectSettingsSaver(fn func(ProjectSettingsUpdate) error) {
+	e.projectSettingsSaver = fn
+}
+
 // ConfigReloadResult describes what was updated by a config reload.
 type ConfigReloadResult struct {
 	DisplayUpdated   bool
@@ -1334,6 +1347,9 @@ var privilegedCommands = map[string]bool{
 //     current: adds, removes or switches the API endpoint, key and env the
 //     agent process runs with
 //   - /memory global ...      — reads or writes the host-wide memory file
+//   - /config project, /config [set] <project key> ... — opens the project
+//     page or changes a project setting (reply footer, inject_sender, agent
+//     type) for everyone; display settings and /config get stay open
 //
 // The addexec pair effectively creates new admin-only commands at runtime;
 // if a non-admin can call addexec, they can install arbitrary shell commands
@@ -1393,6 +1409,9 @@ func isPrivilegedCommandInvocation(cmdID string, args []string) bool {
 		return true
 	case "memory":
 		return matchSubCommand(sub, []string{"add", "global", "show", "help"}) == "global"
+	case "config":
+		// The project page and its settings; display settings stay open.
+		return isConfigAdminInvocation(args)
 	default:
 		return false
 	}
@@ -12179,7 +12198,7 @@ func (e *Engine) cardNav(action string, sessionKey string, clicker *Message) *Ca
 				"user_id", userID, "project", e.name, "action", prefix+":"+cmd, "reason", "disabled")
 			return NewCard().Markdown(fmt.Sprintf(e.i18n.T(MsgCommandDisabled), "/config")).Buttons(e.cardBackButton()).Build()
 		}
-		return e.handleConfigCardAction(args)
+		return e.handleConfigCardAction(args, sessionKey, clicker != nil && e.isAdmin(clicker.UserID))
 	}
 
 	if prefix == "act" && cmd == "/mode" {
@@ -12243,7 +12262,8 @@ func (e *Engine) cardNav(action string, sessionKey string, clicker *Message) *Ca
 	case "/alias":
 		return e.renderAliasCard()
 	case "/config":
-		return e.renderConfigCard("")
+		page, _ := parseConfigPage(args)
+		return e.renderConfigCard(page, clicker != nil && e.isAdmin(clicker.UserID), "")
 	case "/skills":
 		return e.skillsCardForSession(sessionKey)
 	case "/doctor":
@@ -12281,6 +12301,10 @@ func (e *Engine) cardNav(action string, sessionKey string, clicker *Message) *Ca
 func (e *Engine) cardActionAdminLabel(prefix, cmd, args, sessionKey string) string {
 	if privilegedCommands[strings.TrimPrefix(cmd, "/")] {
 		// e.g. nav:/dir shows the directory history and act:/dir switches it.
+		return cmd
+	}
+	if cmd == "/config" && isConfigAdminInvocation(strings.Fields(args)) {
+		// The project page and its settings; the display page stays open.
 		return cmd
 	}
 	if prefix != "act" {
@@ -13941,20 +13965,35 @@ func (e *Engine) renderAliasCard() *Card {
 		Build()
 }
 
-// renderConfigCard shows a dropdown per config item; picking a value sends
-// act:/config <key> <value>. result, when set, reports the last change.
-func (e *Engine) renderConfigCard(result string) *Card {
+// renderConfigCard shows a dropdown per item on page; picking a value sends
+// act:/config <key> <value>. Admins also get buttons to switch pages.
+// result, when set, reports the last change.
+func (e *Engine) renderConfigCard(page configPage, admin bool, result string) *Card {
 	isZh := e.i18n.IsZhLike()
 	cb := NewCard().Title(e.i18n.T(MsgCardTitleConfig), "grey").
 		Markdown(result)
-	for _, item := range e.configItems() {
+	if admin {
+		cb.ButtonsEqual(e.configPageButtons(page)...)
+	}
+	for _, item := range e.configPageItems(page) {
 		cur := item.getFunc()
 		cb.Markdown(fmt.Sprintf("**%s**\n%s", item.key, item.description(isZh)))
 		cb.Select(e.i18n.T(MsgConfigSelectPlaceholder), configCardOptions(item, cur), configCardAction(item.key, cur))
 	}
-	return cb.Note(e.i18n.T(MsgConfigCardHint)).
-		Buttons(e.cardBackButton()).
-		Build()
+	switch page {
+	case configPageProject:
+		if pending := e.pendingAgentTypeChange(); pending != "" {
+			cb.Markdown(e.i18n.Tf(MsgConfigRestartRequired, pending)).
+				Buttons(PrimaryBtn(e.i18n.T(MsgConfigRestartButton), "act:/config "+configRestartAction))
+		}
+		cb.Note(e.i18n.T(MsgConfigProjectHint))
+	default:
+		cb.Note(e.i18n.T(MsgConfigCardHint))
+		if !e.hasAdmin() {
+			cb.Note(e.i18n.T(MsgConfigNoAdminHint))
+		}
+	}
+	return cb.Buttons(e.cardBackButton()).Build()
 }
 
 // configCardOptions lists the item's choices, adding the current value when
@@ -13977,12 +14016,16 @@ func configCardAction(key, value string) string {
 	return "act:/config " + key + " " + value
 }
 
-// handleConfigCardAction applies "<key> <value>" from the config card and
-// re-renders it with the outcome.
-func (e *Engine) handleConfigCardAction(args string) *Card {
+// handleConfigCardAction applies "<key> <value>" or "restart" from the config
+// card and re-renders the item's page with the outcome. Admin-only actions
+// are refused before this by cardActionAdminLabel.
+func (e *Engine) handleConfigCardAction(args, sessionKey string, admin bool) *Card {
 	fields := strings.Fields(args)
+	if len(fields) == 1 && strings.EqualFold(fields[0], configRestartAction) {
+		return e.renderConfigCard(configPageProject, admin, e.configRestart(sessionKey))
+	}
 	if len(fields) != 2 {
-		return e.renderConfigCard("")
+		return e.renderConfigCard(configPageDisplay, admin, "")
 	}
 	key := strings.ToLower(fields[0])
 	for _, item := range e.configItems() {
@@ -13991,11 +14034,11 @@ func (e *Engine) handleConfigCardAction(args string) *Card {
 		}
 		if err := item.setFunc(fields[1]); err != nil {
 			slog.Warn("config card: set failed", "key", key, "value", fields[1], "error", err)
-			return e.renderConfigCard(e.i18n.Tf(MsgError, err))
+			return e.renderConfigCard(item.page, admin, e.i18n.Tf(MsgError, err))
 		}
-		return e.renderConfigCard(e.i18n.Tf(MsgConfigUpdated, key, item.getFunc()))
+		return e.renderConfigCard(item.page, admin, e.i18n.Tf(MsgConfigUpdated, key, item.getFunc()))
 	}
-	return e.renderConfigCard(e.i18n.Tf(MsgConfigKeyNotFound, key))
+	return e.renderConfigCard(configPageDisplay, admin, e.i18n.Tf(MsgConfigKeyNotFound, key))
 }
 
 func (e *Engine) renderSkillsCard(registry *SkillRegistry) *Card {
@@ -15167,6 +15210,9 @@ type configItem struct {
 	setFunc func(string) error
 	// choices are the values the config card offers in a dropdown.
 	choices []configChoice
+	// page is the config card page the item is on; items off the display
+	// page are project settings that only admins may change.
+	page configPage
 }
 
 // configChoice is one value of a configItem dropdown.
@@ -15200,7 +15246,7 @@ func (e *Engine) configItems() []configItem {
 		lenChoices = append(lenChoices, configChoice{value: strconv.Itoa(n), label: label})
 	}
 
-	return []configItem{
+	return append([]configItem{
 		{
 			key:    "mode",
 			desc:   "Display mode: full, compact, quiet",
@@ -15323,25 +15369,44 @@ func (e *Engine) configItems() []configItem {
 				return nil
 			},
 		},
+	}, e.configProjectItems(boolChoices)...)
+}
+
+// configPageItems returns the items on page, in card order.
+func (e *Engine) configPageItems(page configPage) []configItem {
+	var items []configItem
+	for _, item := range e.configItems() {
+		if item.page == page {
+			items = append(items, item)
+		}
 	}
+	return items
 }
 
 func (e *Engine) cmdConfig(p Platform, msg *Message, args []string) {
-	if len(args) == 0 {
+	page, isPage := configPageDisplay, len(args) == 0
+	if len(args) == 1 {
+		page, isPage = parseConfigPage(args[0])
+	}
+	if isPage {
+		// handleCommand has already refused admin pages to non-admins.
+		admin := e.isAdmin(msg.UserID)
 		if !supportsCards(p) {
-			items := e.configItems()
 			isZh := e.i18n.IsZhLike()
 			var sb strings.Builder
 			sb.WriteString(e.i18n.T(MsgConfigTitle))
-			for _, item := range items {
+			for _, item := range e.configPageItems(page) {
 				sb.WriteString(fmt.Sprintf("`%s` = `%s`\n  %s\n\n", item.key, item.getFunc(), item.description(isZh)))
 			}
 			sb.WriteString(e.i18n.T(MsgConfigHint))
+			if admin && page == configPageDisplay {
+				sb.WriteString("\n\n" + e.i18n.T(MsgConfigProjectTextHint))
+			}
 			e.reply(p, msg.ReplyCtx, sb.String())
 			return
 		}
 
-		e.replyWithCard(p, msg.ReplyCtx, e.renderConfigCard(""))
+		e.replyWithCard(p, msg.ReplyCtx, e.renderConfigCard(page, admin, ""))
 		return
 	}
 

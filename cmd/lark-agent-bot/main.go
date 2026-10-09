@@ -653,6 +653,9 @@ func runBot(rootOpts rootCLIOptions, logWriter io.Writer, logCloser io.Closer, o
 		engine.SetDisplaySaveFunc(func(mode *string, thinkingMessages *bool, thinkingMaxLen, toolMaxLen *int, toolMessages *bool) error {
 			return config.SaveDisplayConfig(mode, thinkingMessages, thinkingMaxLen, toolMaxLen, toolMessages)
 		})
+		engine.SetProjectSettingsSaver(func(u core.ProjectSettingsUpdate) error {
+			return saveProjectSettings(proj.Name, u)
+		})
 
 		// Wire idle timeout
 		if cfg.IdleTimeoutMins != nil {
@@ -1142,21 +1145,7 @@ func runBot(rootOpts rootCLIOptions, logWriter io.Writer, logCloser io.Closer, o
 			return config.AddPlatformToProject(projectName, config.PlatformConfig{Type: platType, Options: opts}, workDir, agentType)
 		})
 		mgmtSrv.SetRemoveProject(config.RemoveProject)
-		mgmtSrv.SetSaveProjectSettings(func(name string, u core.ProjectSettingsUpdate) error {
-			return config.SaveProjectSettings(name, config.ProjectSettingsUpdate{
-				Language:             u.Language,
-				AdminFrom:            u.AdminFrom,
-				DisabledCommands:     u.DisabledCommands,
-				WorkDir:              u.WorkDir,
-				Mode:                 u.Mode,
-				AgentType:            u.AgentType,
-				ShowContextIndicator: u.ShowContextIndicator,
-				ShowWorkdirIndicator: u.ShowWorkdirIndicator,
-				ReplyFooter:          u.ReplyFooter,
-				InjectSender:         u.InjectSender,
-				PlatformAllowFrom:    u.PlatformAllowFrom,
-			})
-		})
+		mgmtSrv.SetSaveProjectSettings(saveProjectSettings)
 		mgmtSrv.SetGetProjectConfig(config.GetProjectConfigDetails)
 		mgmtSrv.SetSaveProviderRefs(config.SaveProviderRefs)
 		mgmtSrv.SetConfigFilePath(configPath)
@@ -1747,6 +1736,24 @@ func setupLogger(level string, w io.Writer) {
 
 // reloadConfig re-reads config.toml and applies hot-reloadable settings
 // (display, providers, commands) to the given engine.
+// saveProjectSettings writes project settings changed in the web admin or
+// on the /config card to the config file.
+func saveProjectSettings(name string, u core.ProjectSettingsUpdate) error {
+	return config.SaveProjectSettings(name, config.ProjectSettingsUpdate{
+		Language:             u.Language,
+		AdminFrom:            u.AdminFrom,
+		DisabledCommands:     u.DisabledCommands,
+		WorkDir:              u.WorkDir,
+		Mode:                 u.Mode,
+		AgentType:            u.AgentType,
+		ShowContextIndicator: u.ShowContextIndicator,
+		ShowWorkdirIndicator: u.ShowWorkdirIndicator,
+		ReplyFooter:          u.ReplyFooter,
+		InjectSender:         u.InjectSender,
+		PlatformAllowFrom:    u.PlatformAllowFrom,
+	})
+}
+
 func reloadConfig(configPath, projName string, engine *core.Engine) (*core.ConfigReloadResult, error) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
