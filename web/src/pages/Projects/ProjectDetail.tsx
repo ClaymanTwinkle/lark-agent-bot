@@ -202,7 +202,7 @@ export default function ProjectDetail() {
         language,
         admin_from: adminFrom,
         disabled_commands: disabledCmds.split(',').map(s => s.trim()).filter(Boolean),
-        work_dir: workDir,
+        ...(project?.multi_workspace ? {} : { work_dir: workDir }),
         mode: agentMode,
         ...(agentTypeChanged ? { agent_type: selectedAgentType } : {}),
         show_context_indicator: showCtxIndicator,
@@ -215,6 +215,10 @@ export default function ProjectDetail() {
         setShowRestartModal(true);
         return;
       }
+      await fetchAll();
+    } catch (e: any) {
+      alert(e?.message || String(e));
+      // Some settings may already be live even when saving failed.
       await fetchAll();
     } finally {
       setSaving(false);
@@ -529,7 +533,17 @@ export default function ProjectDetail() {
                 <p className="text-[11px] text-amber-500 mt-1">{t('projects.agentTypeChangeHint', 'Changing agent type requires restart. Incompatible providers will be removed.')}</p>
               )}
             </div>
-            <Input label={t('projects.workDir', 'Working directory')} value={workDir} onChange={(e) => setWorkDir(e.target.value)} placeholder="/path/to/project" />
+            {project.multi_workspace ? (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  {t('projects.workspaceRoot', 'Project root (multi-workspace mode)')}
+                </label>
+                <p className="text-sm text-gray-900 dark:text-white font-mono break-all">{project.base_dir}</p>
+                <p className="text-[11px] text-gray-500 mt-1">{t('projects.workspaceRootHint', 'Each chat chooses a project under this directory, so the project has no single working directory.')}</p>
+              </div>
+            ) : (
+              <Input label={t('projects.workDir', 'Working directory')} value={workDir} onChange={(e) => setWorkDir(e.target.value)} placeholder="/path/to/project" />
+            )}
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 {t('projects.agentMode', 'Permission mode')}

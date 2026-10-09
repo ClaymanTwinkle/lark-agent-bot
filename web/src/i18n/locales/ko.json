@@ -38,6 +38,8 @@
     "workDir": "작업 디렉터리",
     "agentType": "에이전트 유형",
     "agentTypeChangeHint": "에이전트 유형을 변경하려면 재시작이 필요합니다. 호환되지 않는 제공업체는 제거됩니다.",
+    "workspaceRoot": "프로젝트 루트(멀티 워크스페이스 모드)",
+    "workspaceRootHint": "각 채팅이 이 디렉터리 아래에서 프로젝트를 고르므로 공통 작업 디렉터리가 없습니다.",
     "agentMode": "권한 모드",
     "agentSettings": "에이전트",
     "generalSettings": "일반",

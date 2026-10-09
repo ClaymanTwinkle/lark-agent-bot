@@ -38,6 +38,8 @@
     "workDir": "Working directory",
     "agentType": "Agent type",
     "agentTypeChangeHint": "Changing agent type requires restart. Incompatible providers will be removed.",
+    "workspaceRoot": "Project root (multi-workspace mode)",
+    "workspaceRootHint": "Each chat chooses a project under this directory, so the project has no single working directory.",
     "agentMode": "Permission mode",
     "agentSettings": "Agent",
     "generalSettings": "General",

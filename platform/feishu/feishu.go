@@ -151,7 +151,8 @@ type Platform struct {
 	ackEmoji                   string
 	doneEmoji                  string
 	queuedEmoji                string
-	allowFrom                  string
+	allowFromMu                sync.RWMutex
+	allowFrom                  string // read through getAllowFrom; SetAllowFrom changes it at runtime
 	allowChat                  string
 	groupOnly                  bool
 	groupReplyAll              bool
@@ -566,6 +567,26 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 
 func (p *Platform) Name() string { return p.platformName }
 
+// SetAllowFrom replaces the allow_from user list while the bot runs, so the
+// web admin and /config reload need no restart. It implements core.AllowFromUpdater.
+func (p *Platform) SetAllowFrom(allowFrom string) {
+	allowFrom = strings.TrimSpace(allowFrom)
+	p.allowFromMu.Lock()
+	changed := p.allowFrom != allowFrom
+	p.allowFrom = allowFrom
+	p.allowFromMu.Unlock()
+	if changed {
+		slog.Info("allow_from updated", "platform", p.platformName)
+		core.CheckAllowFrom(p.platformName, allowFrom)
+	}
+}
+
+func (p *Platform) getAllowFrom() string {
+	p.allowFromMu.RLock()
+	defer p.allowFromMu.RUnlock()
+	return p.allowFrom
+}
+
 func (p *Platform) ProgressStyle() string { return p.progressStyle }
 
 func (p *Platform) SupportsProgressCardPayload() bool { return true }
@@ -922,7 +943,7 @@ func (p *Platform) onCardAction(event *callback.CardActionTriggerEvent) (*callba
 	// that clicking a card button (cmd:/perm:/nav:/act:/askq:) cannot bypass
 	// the per-user allowlist when the chat-level allow_chat filter admits the
 	// chat (Issue cc-connect#1852).
-	if userID == "" || !core.AllowList(p.allowFrom, userID) {
+	if userID == "" || !core.AllowList(p.getAllowFrom(), userID) {
 		slog.Debug(p.tag()+": card action from unauthorized user", "user", userID)
 		return nil, nil
 	}
@@ -1916,7 +1937,7 @@ func (p *Platform) onMessage(ctx context.Context, event *larkim.P2MessageReceive
 	}
 
 	fromBot := isBotSenderType(senderType)
-	if !core.AllowList(p.allowFrom, userID) {
+	if !core.AllowList(p.getAllowFrom(), userID) {
 		switch {
 		case fromBot && p.isPeerBotSender(userID):
 			slog.Info(p.tag()+": accepting a task from a peer bot", "sender_id", userID, "chat_id", chatID)
@@ -5827,7 +5848,7 @@ func (p *Platform) onBotMenu(event *larkapplication.P2BotMenuV6) error {
 		return nil
 	}
 
-	if !core.AllowList(p.allowFrom, userID) {
+	if !core.AllowList(p.getAllowFrom(), userID) {
 		slog.Debug(p.tag()+": menu event from unauthorized user", "user", userID, "event_key", eventKey)
 		return nil
 	}
@@ -5865,7 +5886,7 @@ func (p *Platform) onBotChatEntered(event *larkim.P2ChatAccessEventBotP2pChatEnt
 		return
 	}
 	userID := stringValue(event.Event.OperatorId.OpenId)
-	if userID == "" || !core.AllowList(p.allowFrom, userID) || p.groupOnly {
+	if userID == "" || !core.AllowList(p.getAllowFrom(), userID) || p.groupOnly {
 		return
 	}
 	p.dmChats.remember(userID, stringValue(event.Event.ChatId))

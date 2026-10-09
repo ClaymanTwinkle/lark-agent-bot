@@ -2096,16 +2096,110 @@ func TestMgmt_ProjectPatch_InvalidJSON(t *testing.T) {
 }
 
 func TestMgmt_ProjectPatch_UnknownAgentType(t *testing.T) {
-	_, ts, _ := testManagementServer(t, "tok")
+	_, ts, e := testManagementServer(t, "tok")
 	agentType := "totally-unknown-agent"
 	r := mgmtPatch(t, ts.URL+"/api/v1/projects/test-project", "tok", map[string]any{
 		"agent_type": agentType,
+		"admin_from": "someone",
 	})
 	if r.OK {
 		t.Fatal("expected error for unknown agent type")
 	}
 	if !strings.Contains(r.Error, "unknown agent type") {
 		t.Fatalf("error = %q", r.Error)
+	}
+	if e.isAdmin("someone") {
+		t.Fatal("a rejected request must not apply its other fields")
+	}
+}
+
+// allowFromPlatform is a platform that can change allow_from at runtime.
+type allowFromPlatform struct {
+	stubPlatformEngine
+	allowFrom string
+}
+
+func (p *allowFromPlatform) SetAllowFrom(allowFrom string) { p.allowFrom = allowFrom }
+
+func TestMgmt_ProjectPatch_AllowFromAppliesLive(t *testing.T) {
+	_, ts, e := testManagementServer(t, "tok")
+	live := &allowFromPlatform{stubPlatformEngine: stubPlatformEngine{n: "live"}}
+	e.platforms = []Platform{live, &stubPlatformEngine{n: "static"}}
+
+	r := mgmtPatch(t, ts.URL+"/api/v1/projects/test-project", "tok", map[string]any{
+		"platform_allow_from": map[string]string{"LIVE": "u1,u2"},
+	})
+	if !r.OK {
+		t.Fatalf("patch failed: %s", r.Error)
+	}
+	if live.allowFrom != "u1,u2" {
+		t.Fatalf("allow_from = %q, want it applied without a restart", live.allowFrom)
+	}
+	if strings.Contains(string(r.Data), "restart_required") {
+		t.Fatalf("a live allow_from change must not ask for a restart: %s", r.Data)
+	}
+
+	r = mgmtPatch(t, ts.URL+"/api/v1/projects/test-project", "tok", map[string]any{
+		"platform_allow_from": map[string]string{"static": "u1"},
+	})
+	if !r.OK || !strings.Contains(string(r.Data), `"restart_required":true`) {
+		t.Fatalf("a platform that reads allow_from only at startup must ask for a restart: %+v", r)
+	}
+}
+
+func TestMgmt_ProjectPatch_SaveFailureIsReported(t *testing.T) {
+	mgmt, ts, _ := testManagementServer(t, "tok")
+	mgmt.SetSaveProjectSettings(func(string, ProjectSettingsUpdate) error {
+		return errors.New("config has unknown keys")
+	})
+	r := mgmtPatch(t, ts.URL+"/api/v1/projects/test-project", "tok", map[string]any{
+		"reply_footer": false,
+	})
+	if r.OK {
+		t.Fatal("a failed save must not be reported as success")
+	}
+	if !strings.Contains(r.Error, "not saved") || !strings.Contains(r.Error, "config has unknown keys") {
+		t.Fatalf("error = %q, want the save failure and its cause", r.Error)
+	}
+}
+
+func TestMgmt_ProjectMultiWorkspaceWorkDir(t *testing.T) {
+	mgmt, ts, e := testManagementServer(t, "tok")
+	baseDir := t.TempDir()
+	e.SetMultiWorkspace(baseDir, filepath.Join(t.TempDir(), "bindings.json"))
+	var saved []ProjectSettingsUpdate
+	mgmt.SetSaveProjectSettings(func(_ string, u ProjectSettingsUpdate) error {
+		saved = append(saved, u)
+		return nil
+	})
+
+	r := mgmtGet(t, ts.URL+"/api/v1/projects/test-project", "tok")
+	var data map[string]any
+	if err := json.Unmarshal(r.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data["multi_workspace"] != true || data["base_dir"] != baseDir {
+		t.Fatalf("project detail must report the workspace mode: multi_workspace=%v base_dir=%v", data["multi_workspace"], data["base_dir"])
+	}
+
+	// The base agent's default "." must never be written back: the next
+	// config load refuses work_dir in multi-workspace mode.
+	r = mgmtPatch(t, ts.URL+"/api/v1/projects/test-project", "tok", map[string]any{
+		"work_dir":   ".",
+		"admin_from": "someone",
+	})
+	if r.OK || !strings.Contains(r.Error, "multi-workspace") {
+		t.Fatalf("work_dir in multi-workspace mode: %+v", r)
+	}
+	if len(saved) != 0 || e.isAdmin("someone") {
+		t.Fatal("a rejected work_dir must change nothing")
+	}
+
+	r = mgmtPatch(t, ts.URL+"/api/v1/projects/test-project", "tok", map[string]any{
+		"reply_footer": false,
+	})
+	if !r.OK || len(saved) != 1 || saved[0].WorkDir != nil {
+		t.Fatalf("other settings must still save without work_dir: %+v, saved %+v", r, saved)
 	}
 }
 

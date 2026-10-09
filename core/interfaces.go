@@ -326,6 +326,12 @@ type CardRefresher interface {
 	RefreshCard(ctx context.Context, sessionKey string, card *Card) error
 }
 
+// AllowFromUpdater is implemented by platforms whose allow_from user list can
+// change while running. Platforms without it read allow_from only at startup.
+type AllowFromUpdater interface {
+	SetAllowFrom(allowFrom string)
+}
+
 // MessageHandler is called by platforms when a new message arrives.
 type MessageHandler func(p Platform, msg *Message)
 

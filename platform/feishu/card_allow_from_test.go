@@ -259,3 +259,23 @@ func TestOnCardAction_AllowFromMultiListRespectsExactMember(t *testing.T) {
 	}
 	waitNoMessage(t, msgCh, 200*time.Millisecond, "cmd:/bar from ou_d (not listed)")
 }
+
+// TestSetAllowFrom_AppliesWithoutRestart asserts that SetAllowFrom changes
+// who may use the bot while it runs, as the web admin and /config reload need.
+func TestSetAllowFrom_AppliesWithoutRestart(t *testing.T) {
+	ip, msgCh := newAllowFromTestPlatform(t, "ou_old")
+	var _ core.AllowFromUpdater = ip
+
+	ip.SetAllowFrom("ou_new")
+	if _, err := ip.onCardAction(cardActionEvent("ou_old", "cmd:/help")); err != nil {
+		t.Fatalf("onCardAction() error = %v", err)
+	}
+	waitNoMessage(t, msgCh, 200*time.Millisecond, "cmd:/help from a user removed from allow_from")
+
+	if _, err := ip.onCardAction(cardActionEvent("ou_new", "cmd:/help")); err != nil {
+		t.Fatalf("onCardAction() error = %v", err)
+	}
+	if msg := waitAnyMessage(t, msgCh, 2*time.Second, "cmd:/help from a user added to allow_from"); msg.UserID != "ou_new" {
+		t.Fatalf("dispatched UserID = %q, want ou_new", msg.UserID)
+	}
+}
