@@ -656,6 +656,9 @@ func runBot(rootOpts rootCLIOptions, logWriter io.Writer, logCloser io.Closer, o
 		engine.SetProjectSettingsSaver(func(u core.ProjectSettingsUpdate) error {
 			return saveProjectSettings(proj.Name, u)
 		})
+		engine.SetWorkspaceModeSaver(func(multi bool, dir string) error {
+			return config.SetProjectWorkspaceMode(proj.Name, multi, dir)
+		})
 
 		// Wire idle timeout
 		if cfg.IdleTimeoutMins != nil {

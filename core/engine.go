@@ -400,6 +400,9 @@ type Engine struct {
 	// projectSettingsSaver writes project settings changed from the /config
 	// card to the config file, the same way the web admin saves them.
 	projectSettingsSaver func(ProjectSettingsUpdate) error
+	// workspaceModeSaver writes a switch between single- and multi-workspace
+	// mode to the config file; see SwitchWorkspaceMode.
+	workspaceModeSaver func(multi bool, dir string) error
 	// pendingAgentType is the agent type saved from the /config card that
 	// takes effect at the next restart; "" when none is pending.
 	pendingAgentTypeMu sync.Mutex
@@ -6799,7 +6802,7 @@ func (e *Engine) handleCommand(p Platform, msg *Message, raw string) bool {
 		e.cmdTTS(p, msg, args)
 	case "workspace":
 		if !e.multiWorkspace {
-			e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsNotEnabled))
+			e.replySingleWorkspaceMode(p, msg)
 			return true
 		}
 		e.handleWorkspaceCommand(p, msg, args)
@@ -12284,6 +12287,9 @@ func (e *Engine) cardNav(action string, sessionKey string, clicker *Message) *Ca
 	case "/alias":
 		return e.renderAliasCard()
 	case "/config":
+		if fields := strings.Fields(args); len(fields) > 0 && strings.EqualFold(fields[0], configWorkspaceAction) {
+			return e.renderWorkspaceModeConfirm(fields[1:], clicker)
+		}
 		page, _ := parseConfigPage(args)
 		return e.renderConfigCard(page, clicker, "")
 	case "/skills":
@@ -14005,6 +14011,7 @@ func (e *Engine) renderConfigCard(page configPage, viewer *Message, result strin
 	}
 	switch page {
 	case configPageProject:
+		e.renderWorkspaceModeRow(cb)
 		if pending := e.pendingAgentTypeChange(); pending != "" {
 			cb.Markdown(e.i18n.Tf(MsgConfigRestartRequired, pending)).
 				Buttons(PrimaryBtn(e.i18n.T(MsgConfigRestartButton), "act:/config "+configRestartAction))
@@ -14052,6 +14059,9 @@ func (e *Engine) handleConfigCardAction(args, sessionKey string, viewer *Message
 	}
 	if len(fields) > 0 && viewer != nil && isConfigAccessAction(fields[0]) {
 		return e.renderConfigCard(configPageAccess, viewer, e.configAccessChange(viewer, fields))
+	}
+	if len(fields) > 1 && strings.EqualFold(fields[0], configWorkspaceAction) && strings.EqualFold(fields[1], "confirm") {
+		return e.renderConfigCard(configPageProject, viewer, e.confirmWorkspaceMode(fields[2:], sessionKey))
 	}
 	if len(fields) != 2 {
 		return e.renderConfigCard(configPageDisplay, viewer, "")
@@ -15444,6 +15454,10 @@ func (e *Engine) cmdConfig(p Platform, msg *Message, args []string) {
 	}
 	if isConfigAccessAction(args[0]) {
 		e.reply(p, msg.ReplyCtx, e.configAccessChange(msg, args))
+		return
+	}
+	if strings.EqualFold(args[0], configWorkspaceAction) {
+		e.cmdConfigWorkspace(p, msg, args[1:])
 		return
 	}
 

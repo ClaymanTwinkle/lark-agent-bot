@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -59,7 +60,7 @@ func isConfigAdminInvocation(args []string) bool {
 	if page, ok := parseConfigPage(first); ok && page != configPageDisplay {
 		return true
 	}
-	if first == configRestartAction || slices.Contains(configAccessActions, first) {
+	if first == configRestartAction || first == configWorkspaceAction || slices.Contains(configAccessActions, first) {
 		return true
 	}
 	key := first
@@ -192,6 +193,9 @@ func (e *Engine) setConfigAgentType(v string) error {
 // for work in progress, and the success notice goes to sessionKey's chat.
 func (e *Engine) configRestart(sessionKey string) string {
 	busy, maxWait, err := e.RequestRestart(sessionKey, false)
+	if errors.Is(err, ErrRestartPending) {
+		return e.i18n.T(MsgConfigRestartPending)
+	}
 	if err != nil {
 		return e.i18n.Tf(MsgError, err)
 	}
