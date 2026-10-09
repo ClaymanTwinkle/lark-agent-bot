@@ -6,7 +6,7 @@ import {
   Trash2, Plus, Check, Clock, ExternalLink, Link2,
 } from 'lucide-react';
 import { Card, Badge, Button, Input, Modal, EmptyState } from '@/components/ui';
-import { getProject, updateProject, deleteProject, listAgentTypes, type ProjectDetail as ProjectDetailType } from '@/api/projects';
+import { getProject, updateProject, deleteProject, listAgentTypes, setWorkspaceMode, type ProjectDetail as ProjectDetailType } from '@/api/projects';
 import { listProviders, addProvider, removeProvider, activateProvider, type Provider, listGlobalProviders, type GlobalProvider, saveProviderRefs } from '@/api/providers';
 import { getHeartbeat, pauseHeartbeat, resumeHeartbeat, triggerHeartbeat, setHeartbeatInterval, type HeartbeatStatus } from '@/api/heartbeat';
 import { restartSystem } from '@/api/status';
@@ -68,6 +68,11 @@ export default function ProjectDetail() {
   const [injectSender, setInjectSender] = useState(false);
   const [platformAllowFrom, setPlatformAllowFrom] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+
+  // Workspace mode switch: the directory for the other mode, and the outcome.
+  const [wsTargetDir, setWsTargetDir] = useState('');
+  const [wsSwitching, setWsSwitching] = useState(false);
+  const [wsNotice, setWsNotice] = useState('');
 
   // Agent type
   const [agentTypes, setAgentTypes] = useState<string[]>([]);
@@ -150,6 +155,7 @@ export default function ProjectDetail() {
       ]);
       if (proj.status === 'fulfilled') {
         setProject(proj.value);
+        setWsTargetDir(proj.value.multi_workspace ? '' : (proj.value.suggested_base_dir || ''));
         setLanguage(proj.value.settings?.language || '');
         setAdminFrom(proj.value.settings?.admin_from || '');
         setDisabledCmds(proj.value.settings?.disabled_commands?.join(', ') || '');
@@ -222,6 +228,33 @@ export default function ProjectDetail() {
       await fetchAll();
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Writes the other workspace mode to the config and restarts once the tasks
+  // in progress finish; the running bot cannot switch modes in place.
+  const handleSwitchWorkspaceMode = async () => {
+    if (!name || !project) return;
+    const multi = !project.multi_workspace;
+    const dir = wsTargetDir.trim();
+    if (!dir) return;
+    if (!window.confirm(t(multi ? 'projects.workspaceConfirmMulti' : 'projects.workspaceConfirmSingle', { dir }))) return;
+    setWsSwitching(true);
+    setWsNotice('');
+    try {
+      await setWorkspaceMode(name, { multi, dir });
+      const res = await restartSystem({ wait: true });
+      if (res.busy && res.busy > 0) {
+        setWsNotice(t('projects.workspaceRestartWaiting', { busy: res.busy, mins: res.max_wait_mins }));
+        return;
+      }
+      setWsNotice(t('projects.workspaceRestarting'));
+      await waitForService(15000);
+      await fetchAll();
+    } catch (e: any) {
+      alert(e?.message || String(e));
+    } finally {
+      setWsSwitching(false);
     }
   };
 
@@ -643,6 +676,30 @@ export default function ProjectDetail() {
         <div className="max-w-lg">
           <Button loading={saving} onClick={handleSaveSettings}>{t('common.save')}</Button>
         </div>
+        <Card>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">{t('projects.workspaceMode', 'Workspace mode')}</h3>
+          <div className="space-y-3 max-w-lg">
+            <p className="text-sm text-gray-700 dark:text-gray-300 break-all">
+              {project.multi_workspace
+                ? t('projects.workspaceModeMulti', { dir: project.base_dir })
+                : t('projects.workspaceModeSingle', { dir: project.work_dir })}
+            </p>
+            <Input
+              label={project.multi_workspace
+                ? t('projects.workspaceTargetSingle', 'Working directory (work_dir)')
+                : t('projects.workspaceTargetMulti', 'Project root (base_dir)')}
+              value={wsTargetDir}
+              onChange={(e) => setWsTargetDir(e.target.value)}
+              placeholder={project.multi_workspace ? `${project.base_dir || '/path/to/projects'}/…` : '/path/to/projects'}
+            />
+            <Button variant="secondary" loading={wsSwitching} disabled={!wsTargetDir.trim()} onClick={handleSwitchWorkspaceMode}>
+              {project.multi_workspace
+                ? t('projects.workspaceSwitchToSingle', 'Switch to single workspace')
+                : t('projects.workspaceSwitchToMulti', 'Switch to multi-workspace')}
+            </Button>
+            {wsNotice && <p className="text-xs text-amber-600 dark:text-amber-400">{wsNotice}</p>}
+          </div>
+        </Card>
         <Card>
           <h3 className="text-sm font-semibold text-red-600 dark:text-red-400 mb-3">{t('projects.dangerZone', 'Danger Zone')}</h3>
           <div className="flex items-center justify-between">
