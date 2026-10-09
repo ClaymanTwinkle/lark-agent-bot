@@ -38,6 +38,8 @@
     "workDir": "Directorio de trabajo",
     "agentType": "Tipo de agente",
     "agentTypeChangeHint": "Cambiar el tipo de agente requiere reinicio. Los proveedores incompatibles serán eliminados.",
+    "workspaceRoot": "Raíz de proyectos (modo multiespacio)",
+    "workspaceRootHint": "Cada chat elige un proyecto dentro de este directorio, así que no hay un único directorio de trabajo.",
     "agentMode": "Modo de permisos",
     "agentSettings": "Agente",
     "generalSettings": "General",

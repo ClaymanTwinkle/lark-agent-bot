@@ -1308,6 +1308,24 @@ func (e *Engine) SetAdminFrom(adminFrom string) {
 	}
 }
 
+// SetPlatformAllowFrom applies allow_from to this project's platforms named
+// platformName (case-insensitive). It reports false when such a platform
+// cannot change allow_from at runtime, so the change needs a restart.
+func (e *Engine) SetPlatformAllowFrom(platformName, allowFrom string) bool {
+	applied := true
+	for _, p := range e.platforms {
+		if !strings.EqualFold(p.Name(), strings.TrimSpace(platformName)) {
+			continue
+		}
+		if u, ok := p.(AllowFromUpdater); ok {
+			u.SetAllowFrom(allowFrom)
+		} else {
+			applied = false
+		}
+	}
+	return applied
+}
+
 // privilegedCommands are commands that require admin_from authorization.
 var privilegedCommands = map[string]bool{
 	"shell":   true,

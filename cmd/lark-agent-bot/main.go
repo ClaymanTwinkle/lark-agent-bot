@@ -1881,6 +1881,14 @@ func reloadConfig(configPath, projName string, engine *core.Engine) (*core.Confi
 	// Reload admin allowlist
 	engine.SetAdminFrom(proj.AdminFrom)
 
+	// Reload each platform's allow_from where the platform can apply it live.
+	for _, pc := range proj.Platforms {
+		allowFrom, _ := pc.Options["allow_from"].(string)
+		if !engine.SetPlatformAllowFrom(pc.Type, allowFrom) {
+			slog.Info("allow_from change needs a restart", "project", projName, "platform", pc.Type)
+		}
+	}
+
 	// Reload per-user role-based policies
 	if proj.Users != nil {
 		engine.SetUserRoles(buildUserRoleManager(proj.Users))

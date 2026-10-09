@@ -38,6 +38,8 @@
     "workDir": "工作目錄",
     "agentType": "Agent 類型",
     "agentTypeChangeHint": "切換 Agent 類型需要重新啟動，不相容的服務商將被移除。",
+    "workspaceRoot": "專案根目錄（多工作區模式）",
+    "workspaceRootHint": "每個聊天在這個目錄下選擇自己的專案，所以沒有統一的工作目錄。",
     "agentMode": "權限模式",
     "agentSettings": "Agent 設定",
     "generalSettings": "通用設定",

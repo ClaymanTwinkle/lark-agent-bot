@@ -38,6 +38,8 @@
     "workDir": "作業ディレクトリ",
     "agentType": "エージェントタイプ",
     "agentTypeChangeHint": "エージェントタイプの変更には再起動が必要です。互換性のないプロバイダーは削除されます。",
+    "workspaceRoot": "プロジェクトのルート（マルチワークスペースモード）",
+    "workspaceRootHint": "各チャットがこのディレクトリ内のプロジェクトを選ぶため、共通の作業ディレクトリはありません。",
     "agentMode": "権限モード",
     "agentSettings": "エージェント",
     "generalSettings": "一般",

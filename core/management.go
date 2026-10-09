@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -740,6 +741,12 @@ func (m *ManagementServer) handleProjectDetail(w http.ResponseWriter, r *http.Re
 		}
 		data["work_dir"] = workDir
 		data["agent_mode"] = agentMode
+		// In multi-workspace mode the base agent's work_dir is only a default
+		// ("."); each chat works in a workspace under base_dir instead.
+		data["multi_workspace"] = e.multiWorkspace
+		if e.multiWorkspace {
+			data["base_dir"] = e.baseDir
+		}
 
 		if m.getProjectConfig != nil {
 			if extra := m.getProjectConfig(name); extra != nil {
@@ -771,6 +778,12 @@ func (m *ManagementServer) handleProjectDetail(w http.ResponseWriter, r *http.Re
 			mgmtDecodeError(w, err)
 			return
 		}
+		if body.WorkDir != nil && e.multiWorkspace {
+			// Saving work_dir would make the config invalid: multi-workspace
+			// mode refuses an agent work_dir at the next load.
+			mgmtError(w, http.StatusBadRequest, "work_dir cannot be set in multi-workspace mode; workspaces live under base_dir")
+			return
+		}
 		if body.WorkDir != nil {
 			workDir, err := validateProjectWorkDir(*body.WorkDir)
 			if err != nil {
@@ -778,6 +791,15 @@ func (m *ManagementServer) handleProjectDetail(w http.ResponseWriter, r *http.Re
 				return
 			}
 			*body.WorkDir = workDir
+		}
+		// Validate before applying anything, so a rejected request changes nothing.
+		restartRequired := false
+		if body.AgentType != nil && *body.AgentType != e.agent.Name() {
+			if !slices.Contains(ListRegisteredAgents(), *body.AgentType) {
+				mgmtError(w, http.StatusBadRequest, fmt.Sprintf("unknown agent type %q", *body.AgentType))
+				return
+			}
+			restartRequired = true
 		}
 
 		if body.Language != nil {
@@ -822,22 +844,10 @@ func (m *ManagementServer) handleProjectDetail(w http.ResponseWriter, r *http.Re
 		if body.InjectSender != nil {
 			e.SetInjectSender(*body.InjectSender)
 		}
-
-		restartRequired := false
-		if body.AgentType != nil && *body.AgentType != e.agent.Name() {
-			registered := ListRegisteredAgents()
-			found := false
-			for _, a := range registered {
-				if a == *body.AgentType {
-					found = true
-					break
-				}
+		for platformName, allowFrom := range body.PlatformAllowFrom {
+			if !e.SetPlatformAllowFrom(platformName, allowFrom) {
+				restartRequired = true
 			}
-			if !found {
-				mgmtError(w, http.StatusBadRequest, fmt.Sprintf("unknown agent type %q", *body.AgentType))
-				return
-			}
-			restartRequired = true
 		}
 
 		if m.saveProjectSettings != nil {
@@ -856,6 +866,8 @@ func (m *ManagementServer) handleProjectDetail(w http.ResponseWriter, r *http.Re
 			}
 			if err := m.saveProjectSettings(name, patch); err != nil {
 				slog.Warn("management: failed to persist project settings", "project", name, "error", err)
+				mgmtError(w, http.StatusInternalServerError, "settings were not saved to the config file; changes already applied to the running bot are lost on restart: "+err.Error())
+				return
 			}
 		}
 
