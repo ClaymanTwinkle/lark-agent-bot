@@ -439,6 +439,15 @@ type Message struct {
 	// drop late redeliveries that reuse a new message_id but an older create_time
 	// than a message already processed. Zero means unset (no ordering hint).
 	UserMessageTimeMs int64
+	// Mentions are the users mentioned in Content as "@Name", without the bot.
+	// Optional; platforms that set it let commands take "@Name" for a user ID.
+	Mentions []Mention
+}
+
+// Mention is a user mentioned in a message.
+type Mention struct {
+	ID   string // user ID, comparable with Message.UserID
+	Name string // display name, as it appears after "@" in Content
 }
 
 // EventType distinguishes different kinds of agent output.

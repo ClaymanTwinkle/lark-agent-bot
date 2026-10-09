@@ -574,6 +574,31 @@ const (
 	MsgConfigRestartRequired   MsgKey = "config_restart_required"
 	MsgConfigRestartButton     MsgKey = "config_restart_button"
 
+	MsgConfigPageAccess              MsgKey = "config_page_access"
+	MsgConfigAdminsTitle             MsgKey = "config_admins_title"
+	MsgConfigAdminsEveryone          MsgKey = "config_admins_everyone"
+	MsgConfigAdminAddHint            MsgKey = "config_admin_add_hint"
+	MsgConfigAllowTitle              MsgKey = "config_allow_title"
+	MsgConfigAllowEveryone           MsgKey = "config_allow_everyone"
+	MsgConfigAllowAddHint            MsgKey = "config_allow_add_hint"
+	MsgConfigAllowUnsupported        MsgKey = "config_allow_unsupported"
+	MsgConfigDisabledTitle           MsgKey = "config_disabled_title"
+	MsgConfigNoDisabledCommands      MsgKey = "config_no_disabled_commands"
+	MsgConfigDisablePlaceholder      MsgKey = "config_disable_placeholder"
+	MsgConfigEnable                  MsgKey = "config_enable"
+	MsgConfigRemove                  MsgKey = "config_remove"
+	MsgConfigYou                     MsgKey = "config_you"
+	MsgConfigListUnrestricted        MsgKey = "config_list_unrestricted"
+	MsgConfigInvalidUserID           MsgKey = "config_invalid_user_id"
+	MsgConfigCannotRemoveSelf        MsgKey = "config_cannot_remove_self"
+	MsgConfigNotListed               MsgKey = "config_not_listed"
+	MsgConfigCannotRemoveLastAdmin   MsgKey = "config_cannot_remove_last_admin"
+	MsgConfigCannotRemoveLastAllowed MsgKey = "config_cannot_remove_last_allowed"
+	MsgConfigUnknownMention          MsgKey = "config_unknown_mention"
+	MsgConfigAccessUsage             MsgKey = "config_access_usage"
+	MsgConfigCannotDisableConfig     MsgKey = "config_cannot_disable_config"
+	MsgConfigNotDisabled             MsgKey = "config_not_disabled"
+
 	MsgDoctorRunning MsgKey = "doctor_running"
 	MsgDoctorTitle   MsgKey = "doctor_title"
 	MsgDoctorSummary MsgKey = "doctor_summary"
@@ -3735,11 +3760,179 @@ var messages = map[MsgKey]map[Language]string{
 		LangSpanish:            "Solo los administradores ven esta página. El valor elegido se guarda en el archivo de configuración y se aplica al instante, salvo el tipo de agente.",
 	},
 	MsgConfigProjectTextHint: {
-		LangEnglish:            "Project settings (admins): `/config project`",
-		LangChinese:            "项目设置（管理员）：`/config project`",
-		LangTraditionalChinese: "專案設定（管理員）：`/config project`",
-		LangJapanese:           "プロジェクト設定（管理者）：`/config project`",
-		LangSpanish:            "Configuración del proyecto (administradores): `/config project`",
+		LangEnglish:            "Admins: project settings `/config project`, members and permissions `/config access`",
+		LangChinese:            "管理员：项目设置 `/config project`，成员与权限 `/config access`",
+		LangTraditionalChinese: "管理員：專案設定 `/config project`，成員與權限 `/config access`",
+		LangJapanese:           "管理者：プロジェクト設定 `/config project`、メンバーと権限 `/config access`",
+		LangSpanish:            "Administradores: configuración del proyecto `/config project`, miembros y permisos `/config access`",
+	},
+	MsgConfigPageAccess: {
+		LangEnglish:            "Members",
+		LangChinese:            "成员与权限",
+		LangTraditionalChinese: "成員與權限",
+		LangJapanese:           "メンバーと権限",
+		LangSpanish:            "Miembros",
+	},
+	MsgConfigAdminsTitle: {
+		LangEnglish:            "**Admins** (admin_from)",
+		LangChinese:            "**管理员**（admin_from）",
+		LangTraditionalChinese: "**管理員**（admin_from）",
+		LangJapanese:           "**管理者**（admin_from）",
+		LangSpanish:            "**Administradores** (admin_from)",
+	},
+	MsgConfigAdminsEveryone: {
+		LangEnglish:            "Everyone who can use the bot is an admin (`*`). To manage admins here, put specific User IDs in admin_from on the web project page or in the config file first.",
+		LangChinese:            "所有能用机器人的人都是管理员（`*`）。要在这里管理，先在 web 项目页或配置文件里把 admin_from 改成具体的 User ID。",
+		LangTraditionalChinese: "所有能用機器人的人都是管理員（`*`）。要在這裡管理，先在 web 專案頁或設定檔裡把 admin_from 改成具體的 User ID。",
+		LangJapanese:           "ボットを使える全員が管理者です（`*`）。ここで管理するには、先に Web のプロジェクトページか設定ファイルで admin_from に具体的な User ID を設定してください。",
+		LangSpanish:            "Todos los que pueden usar el bot son administradores (`*`). Para gestionarlos aquí, primero pon User IDs concretos en admin_from en la página del proyecto de la web o en el archivo de configuración.",
+	},
+	MsgConfigAdminAddHint: {
+		LangEnglish:            "Add an admin: in a group send `/config admin add @someone`; in a private chat send `/config admin add <User ID>` (they can get it with /whoami).",
+		LangChinese:            "加管理员：群里发 `/config admin add @某人`；私聊里发 `/config admin add <User ID>`（对方发 /whoami 能查到）。",
+		LangTraditionalChinese: "加管理員：群組裡傳送 `/config admin add @某人`；私聊裡傳送 `/config admin add <User ID>`（對方傳送 /whoami 能查到）。",
+		LangJapanese:           "管理者を追加：グループでは `/config admin add @相手`、個別チャットでは `/config admin add <User ID>` を送信します（相手は /whoami で確認できます）。",
+		LangSpanish:            "Añadir un administrador: en un grupo envía `/config admin add @alguien`; en un chat privado envía `/config admin add <User ID>` (lo obtiene con /whoami).",
+	},
+	MsgConfigAllowTitle: {
+		LangEnglish:            "**Who can use the bot** (allow_from, %s)",
+		LangChinese:            "**谁能用机器人**（allow_from，%s）",
+		LangTraditionalChinese: "**誰能用機器人**（allow_from，%s）",
+		LangJapanese:           "**ボットを使える人**（allow_from、%s）",
+		LangSpanish:            "**Quién puede usar el bot** (allow_from, %s)",
+	},
+	MsgConfigAllowEveryone: {
+		LangEnglish:            "Not restricted: everyone can use the bot. To allow only some people, put specific User IDs in allow_from on the web project page or in the config file first; the list can then be edited here.",
+		LangChinese:            "不限制，所有人都能用。要只允许部分人，先在 web 项目页或配置文件里把 allow_from 改成具体的 User ID，之后就能在这里增删。",
+		LangTraditionalChinese: "不限制，所有人都能用。要只允許部分人，先在 web 專案頁或設定檔裡把 allow_from 改成具體的 User ID，之後就能在這裡增刪。",
+		LangJapanese:           "制限なし：だれでもボットを使えます。一部の人だけに許可するには、先に Web のプロジェクトページか設定ファイルで allow_from に具体的な User ID を設定してください。その後はここで編集できます。",
+		LangSpanish:            "Sin restricción: cualquiera puede usar el bot. Para permitir solo a algunas personas, primero pon User IDs concretos en allow_from en la página del proyecto de la web o en el archivo de configuración; después podrás editar la lista aquí.",
+	},
+	MsgConfigAllowAddHint: {
+		LangEnglish:            "Allow someone: in a group send `/config allow add @someone`; in a private chat send `/config allow add <User ID>`.",
+		LangChinese:            "允许某人使用：群里发 `/config allow add @某人`；私聊里发 `/config allow add <User ID>`。",
+		LangTraditionalChinese: "允許某人使用：群組裡傳送 `/config allow add @某人`；私聊裡傳送 `/config allow add <User ID>`。",
+		LangJapanese:           "利用を許可：グループでは `/config allow add @相手`、個別チャットでは `/config allow add <User ID>` を送信します。",
+		LangSpanish:            "Permitir a alguien: en un grupo envía `/config allow add @alguien`; en un chat privado envía `/config allow add <User ID>`.",
+	},
+	MsgConfigAllowUnsupported: {
+		LangEnglish:            "This platform's allow_from can only be changed on the web project page or in the config file.",
+		LangChinese:            "这个平台的 allow_from 只能在 web 项目页或配置文件里改。",
+		LangTraditionalChinese: "這個平台的 allow_from 只能在 web 專案頁或設定檔裡改。",
+		LangJapanese:           "このプラットフォームの allow_from は Web のプロジェクトページか設定ファイルでのみ変更できます。",
+		LangSpanish:            "El allow_from de esta plataforma solo se puede cambiar en la página del proyecto de la web o en el archivo de configuración.",
+	},
+	MsgConfigDisabledTitle: {
+		LangEnglish:            "**Disabled commands** (disabled_commands)",
+		LangChinese:            "**禁用的命令**（disabled_commands）",
+		LangTraditionalChinese: "**停用的指令**（disabled_commands）",
+		LangJapanese:           "**無効にしたコマンド**（disabled_commands）",
+		LangSpanish:            "**Comandos desactivados** (disabled_commands)",
+	},
+	MsgConfigNoDisabledCommands: {
+		LangEnglish:            "No command is disabled.",
+		LangChinese:            "没有禁用的命令。",
+		LangTraditionalChinese: "沒有停用的指令。",
+		LangJapanese:           "無効にしたコマンドはありません。",
+		LangSpanish:            "No hay comandos desactivados.",
+	},
+	MsgConfigDisablePlaceholder: {
+		LangEnglish:            "Choose a command to disable",
+		LangChinese:            "选择要禁用的命令",
+		LangTraditionalChinese: "選擇要停用的指令",
+		LangJapanese:           "無効にするコマンドを選択",
+		LangSpanish:            "Elige un comando para desactivar",
+	},
+	MsgConfigEnable: {
+		LangEnglish:            "Enable",
+		LangChinese:            "恢复",
+		LangTraditionalChinese: "恢復",
+		LangJapanese:           "有効にする",
+		LangSpanish:            "Activar",
+	},
+	MsgConfigRemove: {
+		LangEnglish:            "Remove",
+		LangChinese:            "移除",
+		LangTraditionalChinese: "移除",
+		LangJapanese:           "削除",
+		LangSpanish:            "Quitar",
+	},
+	MsgConfigYou: {
+		LangEnglish:            "(you)",
+		LangChinese:            "（你）",
+		LangTraditionalChinese: "（你）",
+		LangJapanese:           "（あなた）",
+		LangSpanish:            "(tú)",
+	},
+	MsgConfigListUnrestricted: {
+		LangEnglish:            "The list is `%s`, which names no one in particular, so it can't be edited in chat. Put specific User IDs in it on the web project page or in the config file first.",
+		LangChinese:            "名单是 `%s`，没有列出具体的人，所以不能在聊天里改。先在 web 项目页或配置文件里填上具体的 User ID。",
+		LangTraditionalChinese: "名單是 `%s`，沒有列出具體的人，所以不能在聊天裡改。先在 web 專案頁或設定檔裡填上具體的 User ID。",
+		LangJapanese:           "リストは `%s` で特定の人を指定していないため、チャットでは編集できません。先に Web のプロジェクトページか設定ファイルで具体的な User ID を設定してください。",
+		LangSpanish:            "La lista es `%s` y no nombra a nadie en concreto, así que no se puede editar desde el chat. Primero pon User IDs concretos en la página del proyecto de la web o en el archivo de configuración.",
+	},
+	MsgConfigInvalidUserID: {
+		LangEnglish:            "`%s` is not a user ID.",
+		LangChinese:            "`%s` 不是用户 ID。",
+		LangTraditionalChinese: "`%s` 不是使用者 ID。",
+		LangJapanese:           "`%s` はユーザー ID ではありません。",
+		LangSpanish:            "`%s` no es un ID de usuario.",
+	},
+	MsgConfigCannotRemoveSelf: {
+		LangEnglish:            "You can't remove yourself (`%s`); another admin has to do it.",
+		LangChinese:            "不能把自己（`%s`）移出名单，需要别的管理员来操作。",
+		LangTraditionalChinese: "不能把自己（`%s`）移出名單，需要別的管理員來操作。",
+		LangJapanese:           "自分自身（`%s`）は削除できません。別の管理者に依頼してください。",
+		LangSpanish:            "No puedes quitarte a ti mismo (`%s`); tiene que hacerlo otro administrador.",
+	},
+	MsgConfigNotListed: {
+		LangEnglish:            "`%s` is not in the list.",
+		LangChinese:            "`%s` 不在名单里。",
+		LangTraditionalChinese: "`%s` 不在名單裡。",
+		LangJapanese:           "`%s` はリストにありません。",
+		LangSpanish:            "`%s` no está en la lista.",
+	},
+	MsgConfigCannotRemoveLastAdmin: {
+		LangEnglish:            "`%s` is the last admin. Without admins nobody could change these settings in chat.",
+		LangChinese:            "`%s` 是最后一个管理员。没有管理员的话，聊天里就没人能改这些设置了。",
+		LangTraditionalChinese: "`%s` 是最後一個管理員。沒有管理員的話，聊天裡就沒人能改這些設定了。",
+		LangJapanese:           "`%s` は最後の管理者です。管理者がいなくなると、チャットでこれらの設定を変更できる人がいなくなります。",
+		LangSpanish:            "`%s` es el último administrador. Sin administradores nadie podría cambiar estos ajustes desde el chat.",
+	},
+	MsgConfigCannotRemoveLastAllowed: {
+		LangEnglish:            "`%s` is the last entry. An empty allow_from lets everyone use the bot; to do that, change it on the web project page or in the config file.",
+		LangChinese:            "`%s` 是最后一个。allow_from 为空表示所有人都能用；确实要这样的话，去 web 项目页或配置文件里改。",
+		LangTraditionalChinese: "`%s` 是最後一個。allow_from 為空表示所有人都能用；確實要這樣的話，去 web 專案頁或設定檔裡改。",
+		LangJapanese:           "`%s` が最後の 1 人です。allow_from が空だとだれでもボットを使えます。そうしたい場合は Web のプロジェクトページか設定ファイルで変更してください。",
+		LangSpanish:            "`%s` es la última entrada. Un allow_from vacío permite usar el bot a cualquiera; si es lo que quieres, cámbialo en la página del proyecto de la web o en el archivo de configuración.",
+	},
+	MsgConfigUnknownMention: {
+		LangEnglish:            "Couldn't tell who `%s` is. In a group, pick the person from the @ list; elsewhere use their User ID (they can get it with /whoami).",
+		LangChinese:            "认不出 `%s` 是谁。群里请从 @ 列表里选人；其他情况请用对方的 User ID（对方发 /whoami 能查到）。",
+		LangTraditionalChinese: "認不出 `%s` 是誰。群組裡請從 @ 列表裡選人；其他情況請用對方的 User ID（對方傳送 /whoami 能查到）。",
+		LangJapanese:           "`%s` がだれか分かりません。グループでは @ の候補から選んでください。それ以外では相手の User ID を使ってください（/whoami で確認できます）。",
+		LangSpanish:            "No se pudo saber quién es `%s`. En un grupo elige a la persona de la lista de @; en otros casos usa su User ID (lo obtiene con /whoami).",
+	},
+	MsgConfigAccessUsage: {
+		LangEnglish:            "Usage (admins):\n`/config admin add|remove @someone|<User ID>`\n`/config allow add|remove @someone|<User ID>`\n`/config disable <command>`, `/config enable <command>`",
+		LangChinese:            "用法（管理员）：\n`/config admin add|remove @某人|<User ID>`\n`/config allow add|remove @某人|<User ID>`\n`/config disable <命令>`、`/config enable <命令>`",
+		LangTraditionalChinese: "用法（管理員）：\n`/config admin add|remove @某人|<User ID>`\n`/config allow add|remove @某人|<User ID>`\n`/config disable <指令>`、`/config enable <指令>`",
+		LangJapanese:           "使い方（管理者）：\n`/config admin add|remove @相手|<User ID>`\n`/config allow add|remove @相手|<User ID>`\n`/config disable <コマンド>`、`/config enable <コマンド>`",
+		LangSpanish:            "Uso (administradores):\n`/config admin add|remove @alguien|<User ID>`\n`/config allow add|remove @alguien|<User ID>`\n`/config disable <comando>`, `/config enable <comando>`",
+	},
+	MsgConfigCannotDisableConfig: {
+		LangEnglish:            "/config can't be disabled here, or this card could no longer be opened. Change disabled_commands on the web project page or in the config file.",
+		LangChinese:            "不能在这里禁用 /config，否则这张卡片就打不开了。要禁用请去 web 项目页或配置文件里改 disabled_commands。",
+		LangTraditionalChinese: "不能在這裡停用 /config，否則這張卡片就打不開了。要停用請去 web 專案頁或設定檔裡改 disabled_commands。",
+		LangJapanese:           "ここでは /config を無効にできません。無効にするとこのカードを開けなくなります。Web のプロジェクトページか設定ファイルで disabled_commands を変更してください。",
+		LangSpanish:            "/config no se puede desactivar aquí, o esta tarjeta ya no se podría abrir. Cambia disabled_commands en la página del proyecto de la web o en el archivo de configuración.",
+	},
+	MsgConfigNotDisabled: {
+		LangEnglish:            "`/%s` is not disabled.",
+		LangChinese:            "`/%s` 没有被禁用。",
+		LangTraditionalChinese: "`/%s` 沒有被停用。",
+		LangJapanese:           "`/%s` は無効になっていません。",
+		LangSpanish:            "`/%s` no está desactivado.",
 	},
 	MsgConfigNoAdminHint: {
 		LangEnglish:            "No admin is set (admin_from is empty), so nobody can change project settings in chat. Set admin_from on the web admin's project page, or send /whoami, add your User ID to admin_from in the config file and send /config reload.",

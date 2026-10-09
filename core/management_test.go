@@ -2119,6 +2119,7 @@ type allowFromPlatform struct {
 	allowFrom string
 }
 
+func (p *allowFromPlatform) AllowFrom() string             { return p.allowFrom }
 func (p *allowFromPlatform) SetAllowFrom(allowFrom string) { p.allowFrom = allowFrom }
 
 func TestMgmt_ProjectPatch_AllowFromAppliesLive(t *testing.T) {

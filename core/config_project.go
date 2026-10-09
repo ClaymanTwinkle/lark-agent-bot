@@ -15,10 +15,11 @@ type configPage string
 const (
 	configPageDisplay configPage = ""
 	configPageProject configPage = "project"
+	configPageAccess  configPage = "access"
 )
 
 // configAdminPages are the pages only admins may open, in tab order.
-var configAdminPages = []configPage{configPageProject}
+var configAdminPages = []configPage{configPageProject, configPageAccess}
 
 // parseConfigPage maps a page name from /config <page> or a card action to
 // its page. "display" names the default page.
@@ -28,6 +29,8 @@ func parseConfigPage(name string) (configPage, bool) {
 		return configPageDisplay, true
 	case string(configPageProject):
 		return configPageProject, true
+	case string(configPageAccess):
+		return configPageAccess, true
 	}
 	return "", false
 }
@@ -42,6 +45,10 @@ var configProjectKeys = []string{
 // agent type takes effect.
 const configRestartAction = "restart"
 
+// configAccessActions are the /config subcommands that change who may use
+// and administer the bot and which commands are disabled.
+var configAccessActions = []string{"admin", "allow", "disable", "enable"}
+
 // isConfigAdminInvocation reports whether /config args open an admin page or
 // change a project setting. Reading a value with /config get stays open.
 func isConfigAdminInvocation(args []string) bool {
@@ -52,7 +59,7 @@ func isConfigAdminInvocation(args []string) bool {
 	if page, ok := parseConfigPage(first); ok && page != configPageDisplay {
 		return true
 	}
-	if first == configRestartAction {
+	if first == configRestartAction || slices.Contains(configAccessActions, first) {
 		return true
 	}
 	key := first
@@ -201,8 +208,11 @@ func (e *Engine) configPageButtons(current configPage) []CardButton {
 	buttons := make([]CardButton, 0, len(pages))
 	for _, page := range pages {
 		label, name := e.i18n.T(MsgConfigPageDisplay), "display"
-		if page == configPageProject {
-			label, name = e.i18n.T(MsgConfigPageProject), string(configPageProject)
+		switch page {
+		case configPageProject:
+			label, name = e.i18n.T(MsgConfigPageProject), string(page)
+		case configPageAccess:
+			label, name = e.i18n.T(MsgConfigPageAccess), string(page)
 		}
 		if page == current {
 			buttons = append(buttons, PrimaryBtn(label, "nav:/config "+name))

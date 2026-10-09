@@ -6227,7 +6227,7 @@ func TestConfigCard_KeepsCustomLengthSelectable(t *testing.T) {
 	e := NewEngine("test", &stubAgent{}, nil, "", LangEnglish)
 	e.display.ThinkingMaxLen = 250
 
-	sel := configCardSelect(t, e.renderConfigCard(configPageDisplay, false, ""), "thinking_max_len")
+	sel := configCardSelect(t, e.renderConfigCard(configPageDisplay, nil, ""), "thinking_max_len")
 
 	if sel.InitValue != "act:/config thinking_max_len 250" {
 		t.Fatalf("initial option = %q, want 250", sel.InitValue)
