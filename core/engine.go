@@ -17067,6 +17067,9 @@ func (e *Engine) handleWorkspaceInitFlow(p Platform, msg *Message, channelName s
 			e.replyWorkspacePicker(p, msg, 1)
 			return true
 		}
+		if e.refuseDisabledWorkspaceInit(p, msg) {
+			return true
+		}
 		if e.skipGit {
 			cloneTo, err := workspaceDirUnderBase(e.baseDir, channelName)
 			if err != nil {
@@ -17167,6 +17170,13 @@ func (e *Engine) handleWorkspaceInitFlow(p Platform, msg *Message, channelName s
 			e.reply(p, msg.ReplyCtx, "Cancelled. Send a repo URL anytime to try again.")
 			return true
 		}
+		// /workspace may have been disabled since the target was accepted.
+		if e.refuseDisabledWorkspaceInit(p, msg) {
+			e.initFlowsMu.Lock()
+			delete(e.initFlows, channelKey)
+			e.initFlowsMu.Unlock()
+			return true
+		}
 
 		var err error
 		var message string
@@ -17198,6 +17208,20 @@ func (e *Engine) handleWorkspaceInitFlow(p Platform, msg *Message, channelName s
 	}
 
 	return false
+}
+
+// refuseDisabledWorkspaceInit replies as handleCommand does when /workspace
+// is disabled for the sender. Cloning or binding a target pasted into chat is
+// /workspace init, so it must honor disabled_commands too.
+func (e *Engine) refuseDisabledWorkspaceInit(p Platform, msg *Message) bool {
+	if !e.effectiveDisabledCmds(msg.UserID)["workspace"] {
+		return false
+	}
+	slog.Info("audit: command_blocked",
+		"user_id", msg.UserID, "platform", msg.Platform,
+		"project", e.name, "command", "workspace", "reason", "disabled")
+	e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgCommandDisabled, "/workspace"))
+	return true
 }
 
 func looksLikeGitURL(s string) bool {

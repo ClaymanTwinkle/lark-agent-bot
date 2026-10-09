@@ -491,6 +491,71 @@ func TestWorkspaceInitFlow_CloneNeedsAdmin(t *testing.T) {
 	}
 }
 
+// Pasting a clone target is /workspace init, so disabled_commands blocks it
+// like the command, even for an admin.
+func TestWorkspaceInitFlow_DisabledWorkspaceRefusesInit(t *testing.T) {
+	outside := t.TempDir()
+	for _, tc := range []struct {
+		name    string
+		skipGit bool
+		target  string
+	}{
+		{"git URL", false, "https://example.com/org/repo.git"},
+		{"git URL with skip_git", true, "https://example.com/org/repo.git"},
+		{"local path", false, outside},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &stubPlatformEngine{n: "test"}
+			e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
+			e.SetMultiWorkspace(t.TempDir(), filepath.Join(t.TempDir(), "bindings.json"))
+			e.workspaceInitAllowLocalPaths = true
+			e.skipGit = tc.skipGit
+			e.SetAdminFrom("boss")
+			e.SetDisabledCommands([]string{"workspace"})
+			t.Cleanup(func() { _ = e.Stop() })
+			msg := &Message{SessionKey: "test:group:boss", Platform: "test", UserID: "boss", Content: tc.target, ReplyCtx: "ctx"}
+			e.ReceiveMessage(p, msg)
+			if got := strings.Join(p.getSent(), "\n"); got != e.i18n.Tf(MsgCommandDisabled, "/workspace") {
+				t.Fatalf("disabled /workspace must refuse %q, got %q", tc.target, got)
+			}
+			if b := e.workspaceBindings.Lookup("project:test", effectiveWorkspaceChannelKey(msg)); b != nil {
+				t.Fatalf("disabled /workspace bound %q", b.Workspace)
+			}
+			e.initFlowsMu.Lock()
+			defer e.initFlowsMu.Unlock()
+			if len(e.initFlows) != 0 {
+				t.Fatalf("disabled /workspace started the init flow: %+v", e.initFlows)
+			}
+		})
+	}
+}
+
+// Disabling /workspace while a clone waits for "yes" cancels the clone.
+func TestWorkspaceInitFlow_DisabledBeforeConfirmRefusesClone(t *testing.T) {
+	p := &stubPlatformEngine{n: "test"}
+	e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
+	e.SetMultiWorkspace(t.TempDir(), filepath.Join(t.TempDir(), "bindings.json"))
+	e.SetAdminFrom("boss")
+	t.Cleanup(func() { _ = e.Stop() })
+	msg := &Message{SessionKey: "test:group:boss", Platform: "test", UserID: "boss", Content: "https://example.com/org/repo.git", ReplyCtx: "ctx"}
+	e.ReceiveMessage(p, msg)
+	if got := strings.Join(p.getSent(), "\n"); !strings.Contains(got, "yes/no") {
+		t.Fatalf("expected the clone confirmation, got %q", got)
+	}
+
+	e.SetDisabledCommands([]string{"workspace"})
+	p.clearSent()
+	e.ReceiveMessage(p, &Message{SessionKey: msg.SessionKey, Platform: "test", UserID: "boss", Content: "yes", ReplyCtx: "ctx"})
+	if got := strings.Join(p.getSent(), "\n"); got != e.i18n.Tf(MsgCommandDisabled, "/workspace") {
+		t.Fatalf("confirming after /workspace was disabled must be refused, got %q", got)
+	}
+	e.initFlowsMu.Lock()
+	defer e.initFlowsMu.Unlock()
+	if len(e.initFlows) != 0 {
+		t.Fatalf("the refused clone left init state behind: %+v", e.initFlows)
+	}
+}
+
 func TestGitClone_RefusesOptionLikeURL(t *testing.T) {
 	err := gitClone("--upload-pack=touch /tmp/x", filepath.Join(t.TempDir(), "x"))
 	if err == nil || !strings.Contains(err.Error(), "invalid repository URL") {
