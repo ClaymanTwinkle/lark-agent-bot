@@ -283,6 +283,9 @@ func TestTableWritersKeepComments(t *testing.T) {
 			if strings.Contains(string(raw), `= ""`) {
 				t.Errorf("an empty key was written:\n%s", raw)
 			}
+			if strings.Contains(string(raw), `\u`) {
+				t.Errorf("non-ASCII text was escaped:\n%s", raw)
+			}
 			if _, err := Load(configPath); err != nil {
 				t.Fatalf("Load: %v\n%s", err, raw)
 			}
