@@ -222,9 +222,9 @@ func TestUnknownKeyHint(t *testing.T) {
 	}
 }
 
-// Saving from the management API, chat commands or the provider CLI rewrites
-// the whole file from the Config struct; it must not delete keys the struct
-// does not have.
+// saveConfig, the fallback when a writer cannot edit the file's lines,
+// rewrites the whole file from the Config struct; it must not delete keys the
+// struct does not have.
 func TestSaveConfigRefusesToDeleteUnknownKeys(t *testing.T) {
 	content := `
 [log]
@@ -233,9 +233,11 @@ idle_timeout_mins = 5
 ` + projectTOML
 	writeTestConfig(t, content)
 
-	err := AddCommand(CommandConfig{Name: "hello", Prompt: "say hello"})
+	cfg := readTestConfig(t)
+	cfg.Commands = append(cfg.Commands, CommandConfig{Name: "hello", Prompt: "say hello"})
+	err := saveConfig(&cfg)
 	if err == nil {
-		t.Fatal("AddCommand succeeded, want it to refuse to delete log.idle_timeout_mins")
+		t.Fatal("saveConfig succeeded, want it to refuse to delete log.idle_timeout_mins")
 	}
 	if !strings.Contains(err.Error(), "log.idle_timeout_mins") {
 		t.Fatalf("error = %q, want it to name log.idle_timeout_mins", err)
@@ -252,11 +254,33 @@ idle_timeout_mins = 5
 func TestSaveConfigStillSavesAConfigWithoutUnknownKeys(t *testing.T) {
 	writeTestConfig(t, projectTOML)
 
+	cfg := readTestConfig(t)
+	cfg.Commands = append(cfg.Commands, CommandConfig{Name: "hello", Prompt: "say hello"})
+	if err := saveConfig(&cfg); err != nil {
+		t.Fatalf("saveConfig: %v", err)
+	}
+	cfg = readTestConfig(t)
+	if len(cfg.Commands) != 1 || cfg.Commands[0].Name != "hello" {
+		t.Fatalf("commands = %+v, want the new command", cfg.Commands)
+	}
+}
+
+// Writers that add or remove a whole table edit the file's lines, so they
+// keep unknown keys instead of refusing to save.
+func TestAddCommandKeepsUnknownKeys(t *testing.T) {
+	writeTestConfig(t, "[log]\nlevel = \"info\"\nidle_timeout_mins = 5\n"+projectTOML)
+
 	if err := AddCommand(CommandConfig{Name: "hello", Prompt: "say hello"}); err != nil {
 		t.Fatalf("AddCommand: %v", err)
 	}
-	cfg := readTestConfig(t)
-	if len(cfg.Commands) != 1 || cfg.Commands[0].Name != "hello" {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "idle_timeout_mins = 5") {
+		t.Fatalf("the unknown key was dropped:\n%s", data)
+	}
+	if cfg := readTestConfig(t); len(cfg.Commands) != 1 || cfg.Commands[0].Prompt != "say hello" {
 		t.Fatalf("commands = %+v, want the new command", cfg.Commands)
 	}
 }
