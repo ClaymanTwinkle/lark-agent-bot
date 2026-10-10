@@ -1391,90 +1391,6 @@ func SaveAgentModel(projectName, model string) error {
 	return patchProjectAgentOption(projectName, "model", model)
 }
 
-// AddProviderToConfig adds a provider to a project's agent config and saves.
-func AddProviderToConfig(projectName string, provider ProviderConfig) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	if ConfigPath == "" {
-		return fmt.Errorf("config path not set")
-	}
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-	cfg := &Config{}
-	if err := toml.Unmarshal(data, cfg); err != nil {
-		return fmt.Errorf("parse config: %w", err)
-	}
-
-	found := false
-	for i := range cfg.Projects {
-		if cfg.Projects[i].Name == projectName {
-			for _, existing := range cfg.Projects[i].Agent.Providers {
-				if existing.Name == provider.Name {
-					return fmt.Errorf("provider %q already exists in project %q", provider.Name, projectName)
-				}
-			}
-			cfg.Projects[i].Agent.Providers = append(cfg.Projects[i].Agent.Providers, provider)
-			found = true
-			break
-		}
-	}
-	if !found {
-		return fmt.Errorf("project %q not found in config", projectName)
-	}
-	return saveConfig(cfg)
-}
-
-// RemoveProviderFromConfig removes a provider from a project's agent config and saves.
-// For global providers referenced via provider_refs, it removes the reference
-// instead of deleting the global definition.
-func RemoveProviderFromConfig(projectName, providerName string) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	if ConfigPath == "" {
-		return fmt.Errorf("config path not set")
-	}
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-	cfg := &Config{}
-	if err := toml.Unmarshal(data, cfg); err != nil {
-		return fmt.Errorf("parse config: %w", err)
-	}
-
-	found := false
-	for i := range cfg.Projects {
-		if cfg.Projects[i].Name != projectName {
-			continue
-		}
-		// Check inline providers
-		providers := cfg.Projects[i].Agent.Providers
-		for j := range providers {
-			if providers[j].Name == providerName {
-				cfg.Projects[i].Agent.Providers = append(providers[:j], providers[j+1:]...)
-				found = true
-				break
-			}
-		}
-		// Also remove from provider_refs if present
-		refs := cfg.Projects[i].Agent.ProviderRefs
-		for j := range refs {
-			if refs[j] == providerName {
-				cfg.Projects[i].Agent.ProviderRefs = append(refs[:j], refs[j+1:]...)
-				found = true
-				break
-			}
-		}
-		break
-	}
-	if !found {
-		return fmt.Errorf("provider %q not found in project %q", providerName, projectName)
-	}
-	return saveConfig(cfg)
-}
-
 // ResolveProviderRefs merges global [[providers]] into each project that uses
 // provider_refs. Inline [[projects.agent.providers]] entries are appended after
 // resolved refs; if an inline entry has the same name as a global one, the
@@ -1553,73 +1469,6 @@ func ListGlobalProviders() ([]ProviderConfig, error) {
 		return nil, err
 	}
 	return cfg.Providers, nil
-}
-
-// AddGlobalProvider appends a provider to the top-level [[providers]] and saves.
-func AddGlobalProvider(provider ProviderConfig) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	cfg, err := loadLocked()
-	if err != nil {
-		return err
-	}
-	for _, existing := range cfg.Providers {
-		if existing.Name == provider.Name {
-			return fmt.Errorf("global provider %q already exists", provider.Name)
-		}
-	}
-	cfg.Providers = append(cfg.Providers, provider)
-	return saveConfig(cfg)
-}
-
-// UpdateGlobalProvider replaces an existing global provider by name.
-func UpdateGlobalProvider(name string, provider ProviderConfig) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	cfg, err := loadLocked()
-	if err != nil {
-		return err
-	}
-	for i := range cfg.Providers {
-		if cfg.Providers[i].Name == name {
-			provider.Name = name // name is immutable in update
-			cfg.Providers[i] = provider
-			return saveConfig(cfg)
-		}
-	}
-	return fmt.Errorf("global provider %q not found", name)
-}
-
-// RemoveGlobalProvider removes a provider from top-level [[providers]] and
-// also strips the name from every project's provider_refs, then saves.
-func RemoveGlobalProvider(name string) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	cfg, err := loadLocked()
-	if err != nil {
-		return err
-	}
-	found := false
-	for i := range cfg.Providers {
-		if cfg.Providers[i].Name == name {
-			cfg.Providers = append(cfg.Providers[:i], cfg.Providers[i+1:]...)
-			found = true
-			break
-		}
-	}
-	if !found {
-		return fmt.Errorf("global provider %q not found", name)
-	}
-	for i := range cfg.Projects {
-		refs := cfg.Projects[i].Agent.ProviderRefs
-		for j := 0; j < len(refs); j++ {
-			if refs[j] == name {
-				cfg.Projects[i].Agent.ProviderRefs = append(refs[:j], refs[j+1:]...)
-				break
-			}
-		}
-	}
-	return saveConfig(cfg)
 }
 
 func loadLocked() (*Config, error) {
@@ -1779,117 +1628,6 @@ func ListProjects() ([]string, error) {
 		names = append(names, p.Name)
 	}
 	return names, nil
-}
-
-// AddCommand adds a global custom command and persists to config.
-func AddCommand(cmd CommandConfig) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	if ConfigPath == "" {
-		return fmt.Errorf("config path not set")
-	}
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-	cfg := &Config{}
-	if err := toml.Unmarshal(data, cfg); err != nil {
-		return fmt.Errorf("parse config: %w", err)
-	}
-	for _, c := range cfg.Commands {
-		if c.Name == cmd.Name {
-			return fmt.Errorf("command %q already exists", cmd.Name)
-		}
-	}
-	cfg.Commands = append(cfg.Commands, cmd)
-	return saveConfig(cfg)
-}
-
-// RemoveCommand removes a global custom command and persists to config.
-func RemoveCommand(name string) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	if ConfigPath == "" {
-		return fmt.Errorf("config path not set")
-	}
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-	cfg := &Config{}
-	if err := toml.Unmarshal(data, cfg); err != nil {
-		return fmt.Errorf("parse config: %w", err)
-	}
-	found := false
-	var remaining []CommandConfig
-	for _, c := range cfg.Commands {
-		if c.Name == name {
-			found = true
-		} else {
-			remaining = append(remaining, c)
-		}
-	}
-	if !found {
-		return fmt.Errorf("command %q not found", name)
-	}
-	cfg.Commands = remaining
-	return saveConfig(cfg)
-}
-
-// AddAlias adds a global alias and persists to config.
-func AddAlias(alias AliasConfig) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	if ConfigPath == "" {
-		return fmt.Errorf("config path not set")
-	}
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-	cfg := &Config{}
-	if err := toml.Unmarshal(data, cfg); err != nil {
-		return fmt.Errorf("parse config: %w", err)
-	}
-	for i, a := range cfg.Aliases {
-		if a.Name == alias.Name {
-			cfg.Aliases[i] = alias
-			return saveConfig(cfg)
-		}
-	}
-	cfg.Aliases = append(cfg.Aliases, alias)
-	return saveConfig(cfg)
-}
-
-// RemoveAlias removes a global alias and persists to config.
-func RemoveAlias(name string) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	if ConfigPath == "" {
-		return fmt.Errorf("config path not set")
-	}
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-	cfg := &Config{}
-	if err := toml.Unmarshal(data, cfg); err != nil {
-		return fmt.Errorf("parse config: %w", err)
-	}
-	found := false
-	var remaining []AliasConfig
-	for _, a := range cfg.Aliases {
-		if a.Name == name {
-			found = true
-		} else {
-			remaining = append(remaining, a)
-		}
-	}
-	if !found {
-		return fmt.Errorf("alias %q not found", name)
-	}
-	cfg.Aliases = remaining
-	return saveConfig(cfg)
 }
 
 // SaveDisplayConfig persists the display settings to the config file.
@@ -3150,14 +2888,8 @@ func SaveProviderRefs(projectName string, refs []string) error {
 	cfg.Projects[idx].Agent.ProviderRefs = refs
 
 	lines, hadTrailing := splitConfigLines(string(data))
-	if spans := buildRawProjectSpans(lines); idx < len(spans) && spans[idx].agentStart >= 0 {
-		s := spans[idx]
-		if len(refs) == 0 {
-			lines = removeKeyInRange(lines, s.agentStart+1, s.agentEnd, "provider_refs")
-		} else {
-			lines = upsertKeyInRange(lines, s.agentStart+1, s.agentEnd, "provider_refs", tomlStringArray(refs))
-		}
-		if content, ok := lineEditMatches(lines, hadTrailing, cfg); ok {
+	if edited, ok := setProviderRefsLines(lines, idx, refs); ok {
+		if content, ok := lineEditMatches(edited, hadTrailing, cfg); ok {
 			return writeRawConfig(content)
 		}
 	}
@@ -3174,85 +2906,51 @@ func lineEditMatches(lines []string, hadTrailing bool, want *Config) (string, bo
 	if err := toml.Unmarshal([]byte(content), got); err != nil {
 		return "", false
 	}
-	return content, reflect.DeepEqual(got, want)
+	return content, equalIgnoringEmpty(reflect.ValueOf(got).Elem(), reflect.ValueOf(want).Elem())
 }
 
-// RemoveProject removes a project from the config file.
-func RemoveProject(projectName string) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	if ConfigPath == "" {
-		return fmt.Errorf("config path not set")
-	}
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-	cfg := &Config{}
-	if err := toml.Unmarshal(data, cfg); err != nil {
-		return fmt.Errorf("parse config: %w", err)
-	}
-	found := false
-	for i := range cfg.Projects {
-		if cfg.Projects[i].Name == projectName {
-			cfg.Projects = append(cfg.Projects[:i], cfg.Projects[i+1:]...)
-			found = true
-			break
+// equalIgnoringEmpty is reflect.DeepEqual, except that a nil slice or map
+// equals an empty one. Both mean none, and a key left out decodes to nil
+// while a writer's input may hold an empty value (a provider from the web
+// form with no env, a list emptied by a removal).
+func equalIgnoringEmpty(a, b reflect.Value) bool {
+	switch a.Kind() {
+	case reflect.Slice, reflect.Array:
+		if a.Len() != b.Len() {
+			return false
 		}
-	}
-	if !found {
-		return fmt.Errorf("project %q not found", projectName)
-	}
-	return saveConfig(cfg)
-}
-
-// AddPlatformToProject appends a platform config to a project.
-// If the project doesn't exist, it is created using agentType and workDir when provided,
-// otherwise agent config is cloned from the first existing project when present.
-func AddPlatformToProject(projectName string, platform PlatformConfig, workDir, agentType string) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	if ConfigPath == "" {
-		return fmt.Errorf("config path not set")
-	}
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-	cfg := &Config{}
-	if err := toml.Unmarshal(data, cfg); err != nil {
-		return fmt.Errorf("parse config: %w", err)
-	}
-	if platform.Options == nil {
-		platform.Options = map[string]any{}
-	}
-	for i := range cfg.Projects {
-		if cfg.Projects[i].Name == projectName {
-			cfg.Projects[i].Platforms = append(cfg.Projects[i].Platforms, platform)
-			return saveConfig(cfg)
+		for i := range a.Len() {
+			if !equalIgnoringEmpty(a.Index(i), b.Index(i)) {
+				return false
+			}
 		}
-	}
-	agentCfg := AgentConfig{Type: "codex", Options: map[string]any{}}
-	at := strings.TrimSpace(agentType)
-	if at != "" {
-		agentCfg.Type = at
-	}
-	if len(cfg.Projects) > 0 && at == "" {
-		agentCfg = cloneAgentConfig(cfg.Projects[0].Agent)
-	}
-	wd := strings.TrimSpace(workDir)
-	if wd != "" {
-		if agentCfg.Options == nil {
-			agentCfg.Options = map[string]any{}
+		return true
+	case reflect.Map:
+		if a.Len() != b.Len() {
+			return false
 		}
-		agentCfg.Options["work_dir"] = wd
+		for iter := a.MapRange(); iter.Next(); {
+			bv := b.MapIndex(iter.Key())
+			if !bv.IsValid() || !equalIgnoringEmpty(iter.Value(), bv) {
+				return false
+			}
+		}
+		return true
+	case reflect.Struct:
+		for i := range a.NumField() {
+			if !equalIgnoringEmpty(a.Field(i), b.Field(i)) {
+				return false
+			}
+		}
+		return true
+	case reflect.Pointer, reflect.Interface:
+		if a.IsNil() || b.IsNil() {
+			return a.IsNil() == b.IsNil()
+		}
+		return a.Elem().Type() == b.Elem().Type() && equalIgnoringEmpty(a.Elem(), b.Elem())
+	default:
+		return a.CanInterface() && b.CanInterface() && a.Interface() == b.Interface()
 	}
-	cfg.Projects = append(cfg.Projects, ProjectConfig{
-		Name:      projectName,
-		Agent:     agentCfg,
-		Platforms: []PlatformConfig{platform},
-	})
-	return saveConfig(cfg)
 }
 
 func writeRawConfig(content string) error {
