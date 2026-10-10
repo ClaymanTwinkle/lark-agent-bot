@@ -28,8 +28,7 @@ func newRecordingAgent() *recordingAgent {
 func (a *recordingAgent) Name() string { return "recording-agent" }
 
 func (a *recordingAgent) StartSession(_ context.Context, sessionID string) (core.AgentSession, error) {
-	a.session.setID(sessionID)
-	return a.session, nil
+	return a.session.start(sessionID), nil
 }
 
 func (a *recordingAgent) ListSessions(_ context.Context) ([]core.AgentSessionInfo, error) {
@@ -37,36 +36,72 @@ func (a *recordingAgent) ListSessions(_ context.Context) ([]core.AgentSessionInf
 }
 
 func (a *recordingAgent) Stop() error {
-	return a.session.Close()
+	return a.session.closeAll()
 }
 
+// recordingSession records the Send calls of every session the agent
+// started, in order, and can hold back the first result.
 type recordingSession struct {
 	mu         sync.Mutex
-	id         string
-	alive      bool
 	records    []sendRecord
-	events     chan core.Event
+	sessions   []*agentSession
 	blockFirst bool
-	blocked    bool
+	blocked    *agentSession // the session whose first result is held back
 }
 
 func newRecordingSession() *recordingSession {
-	return &recordingSession{alive: true, events: make(chan core.Event, 16)}
+	return &recordingSession{}
 }
 
-func (s *recordingSession) setID(id string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.id = id
+// agentSession is one agent session with its own event stream, as a real
+// agent has. When sessions shared one stream, one session's event loop could
+// take another session's result as a turn the agent started on its own and
+// save the session store after the test had ended (#39).
+type agentSession struct {
+	rec    *recordingSession
+	mu     sync.Mutex
+	id     string
+	alive  bool
+	events chan core.Event
 }
 
-func (s *recordingSession) blockFirstResult() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.blockFirst = true
+func (r *recordingSession) start(id string) *agentSession {
+	s := &agentSession{rec: r, id: id, alive: true, events: make(chan core.Event, 16)}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sessions = append(r.sessions, s)
+	return s
 }
 
-func (s *recordingSession) Send(prompt string, messageID string, images []core.ImageAttachment, files []core.FileAttachment) error {
+func (r *recordingSession) closeAll() error {
+	r.mu.Lock()
+	sessions := append([]*agentSession(nil), r.sessions...)
+	r.mu.Unlock()
+	for _, s := range sessions {
+		_ = s.Close()
+	}
+	return nil
+}
+
+func (r *recordingSession) blockFirstResult() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.blockFirst = true
+}
+
+// record stores a Send call and reports whether its result is held back.
+func (r *recordingSession) record(s *agentSession, rec sendRecord) (held bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.records = append(r.records, rec)
+	if r.blockFirst && len(r.records) == 1 {
+		r.blocked = s
+		return true
+	}
+	return false
+}
+
+func (s *agentSession) Send(prompt string, messageID string, images []core.ImageAttachment, files []core.FileAttachment) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.alive {
@@ -77,36 +112,33 @@ func (s *recordingSession) Send(prompt string, messageID string, images []core.I
 		images: append([]core.ImageAttachment(nil), images...),
 		files:  append([]core.FileAttachment(nil), files...),
 	}
-	s.records = append(s.records, rec)
-	if !(s.blockFirst && len(s.records) == 1) {
+	if !s.rec.record(s, rec) {
 		s.events <- core.Event{Type: core.EventResult, Content: "media ok", Done: true}
-	} else {
-		s.blocked = true
 	}
 	return nil
 }
 
-func (s *recordingSession) Events() <-chan core.Event {
+func (s *agentSession) Events() <-chan core.Event {
 	return s.events
 }
 
-func (s *recordingSession) RespondPermission(string, core.PermissionResult) error {
+func (s *agentSession) RespondPermission(string, core.PermissionResult) error {
 	return nil
 }
 
-func (s *recordingSession) CurrentSessionID() string {
+func (s *agentSession) CurrentSessionID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.id
 }
 
-func (s *recordingSession) Alive() bool {
+func (s *agentSession) Alive() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.alive
 }
 
-func (s *recordingSession) Close() error {
+func (s *agentSession) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.alive {
@@ -117,36 +149,42 @@ func (s *recordingSession) Close() error {
 	return nil
 }
 
-func (s *recordingSession) releaseFirstResult(content string) {
-	s.releaseFirstEvent(core.Event{Type: core.EventResult, Content: content, Done: true})
+func (r *recordingSession) releaseFirstResult(content string) {
+	r.releaseFirstEvent(core.Event{Type: core.EventResult, Content: content, Done: true})
 }
 
-func (s *recordingSession) releaseFirstEvent(event core.Event) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.blocked {
+// releaseFirstEvent delivers event as the held-back first result.
+func (r *recordingSession) releaseFirstEvent(event core.Event) {
+	r.mu.Lock()
+	s := r.blocked
+	r.blocked = nil
+	r.mu.Unlock()
+	if s == nil {
 		return
 	}
-	s.events <- event
-	s.blocked = false
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.alive {
+		s.events <- event
+	}
 }
 
-func (s *recordingSession) waitRecords(t *testing.T, n int) []sendRecord {
+func (r *recordingSession) waitRecords(t *testing.T, n int) []sendRecord {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		s.mu.Lock()
-		if len(s.records) >= n {
-			out := append([]sendRecord(nil), s.records...)
-			s.mu.Unlock()
+		r.mu.Lock()
+		if len(r.records) >= n {
+			out := append([]sendRecord(nil), r.records...)
+			r.mu.Unlock()
 			return out
 		}
-		s.mu.Unlock()
+		r.mu.Unlock()
 		time.Sleep(10 * time.Millisecond)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t.Fatalf("timeout waiting for %d Send calls, got %d: %#v", n, len(s.records), s.records)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	t.Fatalf("timeout waiting for %d Send calls, got %d: %#v", n, len(r.records), r.records)
 	return nil
 }
 
@@ -220,10 +258,26 @@ func newMediaEngine(t *testing.T) (*core.Engine, *recordingAgent, *mediaPlatform
 	platform := &mediaPlatform{}
 	engine := core.NewEngine("release-media", agent, []core.Platform{platform}, t.TempDir()+"/sessions.json", core.LangEnglish)
 	t.Cleanup(func() {
+		// A turn saves the session store in t.TempDir() as it finishes. A test
+		// may return as soon as it has seen what it checks, so let running
+		// turns end before stopping, or the save races TempDir's removal.
+		waitNoWorkInProgress(t, engine)
 		engine.Stop()
 		_ = agent.Stop()
 	})
 	return engine, agent, platform
+}
+
+func waitNoWorkInProgress(t *testing.T, engine *core.Engine) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for engine.WorkInProgress() > 0 {
+		if time.Now().After(deadline) {
+			t.Errorf("turns still in progress after 5s: %d", engine.WorkInProgress())
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func mediaMessage(content string) *core.Message {
@@ -296,12 +350,8 @@ func TestQueuedMessagePreservesFiles(t *testing.T) {
 		t.Fatalf("queued file not preserved: %#v", records[1].files)
 	}
 
-	// waitRecords only proves the queued prompt reached the agent (the start of
-	// the turn). The engine persists the session store under t.TempDir() when
-	// the turn completes, so returning here lets the still-running turn goroutine
-	// race t.TempDir()'s RemoveAll cleanup ("directory not empty"). The queued
-	// turn's reply is emitted after that save, so waiting for it deterministically
-	// drains the write before cleanup runs.
+	// waitRecords only proves the queued prompt reached the agent; the queued
+	// turn must also complete and reply.
 	platform.waitTextContaining(t, "media ok")
 }
 
