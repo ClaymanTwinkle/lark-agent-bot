@@ -52,17 +52,17 @@ func SetProjectWorkspaceMode(projectName string, multi bool, dir string) error {
 	}
 
 	if multi {
-		lines = upsertProjectKey(lines, projectIdx, "mode", "multi-workspace")
-		lines = upsertProjectKey(lines, projectIdx, "base_dir", dir)
+		lines = upsertProjectKey(lines, projectIdx, "mode", quoteTomlString("multi-workspace"))
+		lines = upsertProjectKey(lines, projectIdx, "base_dir", quoteTomlString(dir))
 		if span := buildRawProjectSpans(lines)[projectIdx]; span.agentOptionsStart >= 0 {
-			lines = removeTomlKey(lines, span.agentOptionsStart+1, span.agentOptionsEnd, "work_dir")
+			lines = removeKeyInRange(lines, span.agentOptionsStart+1, span.agentOptionsEnd, "work_dir")
 		}
 	} else {
 		span := buildRawProjectSpans(lines)[projectIdx]
-		lines = removeTomlKey(lines, span.start+1, projectKeysEnd(lines, span), "mode")
+		lines = removeKeyInRange(lines, span.start+1, projectKeysEnd(lines, span), "mode")
 		lines = ensureProjectAgentOptions(lines, projectIdx)
 		span = buildRawProjectSpans(lines)[projectIdx]
-		lines = upsertTomlStringKey(lines, span.agentOptionsStart+1, span.agentOptionsEnd, "work_dir", dir)
+		lines = upsertKeyInRange(lines, span.agentOptionsStart+1, span.agentOptionsEnd, "work_dir", quoteTomlString(dir))
 	}
 
 	content := joinConfigLines(lines, hadTrailing)
@@ -74,44 +74,4 @@ func SetProjectWorkspaceMode(projectName string, multi bool, dir string) error {
 		return fmt.Errorf("workspace mode: %w", err)
 	}
 	return writeRawConfig(content)
-}
-
-// projectKeysEnd returns the last line of a project's own keys: the line
-// before its first sub-table header, or the end of the project.
-func projectKeysEnd(lines []string, span rawProjectSpan) int {
-	for ln := span.start + 1; ln <= span.end; ln++ {
-		if isAnyTableHeader(lines[ln]) {
-			return ln - 1
-		}
-	}
-	return span.end
-}
-
-// upsertProjectKey sets a string key directly under the projectIdx-th
-// [[projects]] header, adding it after the project's last key when absent.
-func upsertProjectKey(lines []string, projectIdx int, key, value string) []string {
-	span := buildRawProjectSpans(lines)[projectIdx]
-	end := projectKeysEnd(lines, span)
-	insertAt := span.start + 1
-	for i := span.start + 1; i <= end; i++ {
-		if matchTomlStringKey(lines[i], key) {
-			lines[i] = replaceTomlStringKeyLine(lines[i], key, value)
-			return lines
-		}
-		// Comments and blank lines before the next table belong to it.
-		if t := strings.TrimSpace(lines[i]); t != "" && !strings.HasPrefix(t, "#") {
-			insertAt = i + 1
-		}
-	}
-	return insertLines(lines, insertAt, []string{fmt.Sprintf("%s = %s", key, quoteTomlString(value))})
-}
-
-// removeTomlKey deletes the single-line key in lines[start..end], if any.
-func removeTomlKey(lines []string, start, end int, key string) []string {
-	for i := max(start, 0); i <= end && i < len(lines); i++ {
-		if matchTomlStringKey(lines[i], key) {
-			return append(lines[:i:i], lines[i+1:]...)
-		}
-	}
-	return lines
 }
