@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -3067,156 +3068,6 @@ func extractLineComment(line string) string {
 	return ""
 }
 
-// ProjectSettingsUpdate carries optional field updates for SaveProjectSettings.
-type ProjectSettingsUpdate struct {
-	Language             *string
-	AdminFrom            *string
-	DisabledCommands     []string
-	WorkDir              *string
-	Mode                 *string
-	AgentType            *string
-	ShowContextIndicator *bool
-	ShowWorkdirIndicator *bool
-	ReplyFooter          *bool
-	InjectSender         *bool
-	PlatformAllowFrom    map[string]string
-}
-
-// SaveProjectSettings persists project-level settings and the global language to config.toml.
-func SaveProjectSettings(projectName string, update ProjectSettingsUpdate) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	if ConfigPath == "" {
-		return fmt.Errorf("config path not set")
-	}
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-	cfg := &Config{}
-	if err := toml.Unmarshal(data, cfg); err != nil {
-		return fmt.Errorf("parse config: %w", err)
-	}
-
-	if update.Language != nil {
-		cfg.Language = *update.Language
-	}
-
-	for i := range cfg.Projects {
-		if cfg.Projects[i].Name != projectName {
-			continue
-		}
-		proj := &cfg.Projects[i]
-		if update.AgentType != nil && *update.AgentType != proj.Agent.Type {
-			newType := *update.AgentType
-			proj.Agent.Type = newType
-			// Filter out provider_refs incompatible with the new agent type.
-			globalByName := make(map[string]ProviderConfig, len(cfg.Providers))
-			for _, p := range cfg.Providers {
-				globalByName[p.Name] = p
-			}
-			var compatible []string
-			for _, ref := range proj.Agent.ProviderRefs {
-				gp, ok := globalByName[ref]
-				if !ok {
-					continue
-				}
-				if len(gp.AgentTypes) > 0 && !containsString(gp.AgentTypes, newType) {
-					slog.Info("removing incompatible provider ref on agent type change",
-						"project", projectName, "provider", ref,
-						"provider_agents", gp.AgentTypes, "new_agent", newType)
-					continue
-				}
-				compatible = append(compatible, ref)
-			}
-			proj.Agent.ProviderRefs = compatible
-			// Clear active provider if it was removed.
-			if opts := proj.Agent.Options; opts != nil {
-				if prov, ok := opts["provider"].(string); ok && prov != "" {
-					found := false
-					for _, ref := range compatible {
-						if ref == prov {
-							found = true
-							break
-						}
-					}
-					if !found {
-						delete(opts, "provider")
-					}
-				}
-			}
-		}
-		if update.AdminFrom != nil {
-			proj.AdminFrom = *update.AdminFrom
-		}
-		if update.DisabledCommands != nil {
-			proj.DisabledCommands = update.DisabledCommands
-		}
-		if update.ShowContextIndicator != nil {
-			v := *update.ShowContextIndicator
-			proj.ShowContextIndicator = &v
-		}
-		if update.ShowWorkdirIndicator != nil {
-			v := *update.ShowWorkdirIndicator
-			proj.ShowWorkdirIndicator = &v
-		}
-		if update.ReplyFooter != nil {
-			v := *update.ReplyFooter
-			proj.ReplyFooter = &v
-		}
-		if update.InjectSender != nil {
-			v := *update.InjectSender
-			proj.InjectSender = &v
-		}
-		if update.WorkDir != nil || update.Mode != nil {
-			if proj.Agent.Options == nil {
-				proj.Agent.Options = map[string]any{}
-			}
-		}
-		if update.WorkDir != nil {
-			wd := strings.TrimSpace(*update.WorkDir)
-			if wd == "" {
-				delete(proj.Agent.Options, "work_dir")
-			} else {
-				proj.Agent.Options["work_dir"] = wd
-			}
-		}
-		if update.Mode != nil {
-			mode := strings.TrimSpace(*update.Mode)
-			if mode == "" {
-				delete(proj.Agent.Options, "mode")
-			} else {
-				proj.Agent.Options["mode"] = mode
-			}
-		}
-		if update.PlatformAllowFrom != nil {
-			for j := range proj.Platforms {
-				typ := strings.TrimSpace(proj.Platforms[j].Type)
-				if typ == "" {
-					continue
-				}
-				var af string
-				var found bool
-				for k, v := range update.PlatformAllowFrom {
-					if strings.EqualFold(strings.TrimSpace(k), typ) {
-						af, found = v, true
-						break
-					}
-				}
-				if !found {
-					continue
-				}
-				if proj.Platforms[j].Options == nil {
-					proj.Platforms[j].Options = map[string]any{}
-				}
-				proj.Platforms[j].Options["allow_from"] = strings.TrimSpace(af)
-			}
-		}
-		return saveConfig(cfg)
-	}
-	return fmt.Errorf("project %q not found", projectName)
-}
-
 // GetProjectConfigDetails returns persisted project fields from the config file for the management API.
 func GetProjectConfigDetails(projectName string) map[string]any {
 	if ConfigPath == "" {
@@ -3289,13 +3140,41 @@ func SaveProviderRefs(projectName string, refs []string) error {
 	if err := toml.Unmarshal(data, cfg); err != nil {
 		return fmt.Errorf("parse config: %w", err)
 	}
-	for i := range cfg.Projects {
-		if cfg.Projects[i].Name == projectName {
-			cfg.Projects[i].Agent.ProviderRefs = refs
-			return saveConfig(cfg)
+	idx := slices.IndexFunc(cfg.Projects, func(p ProjectConfig) bool { return p.Name == projectName })
+	if idx < 0 {
+		return fmt.Errorf("project %q not found", projectName)
+	}
+	if len(refs) == 0 {
+		refs = nil // the key is removed, which decodes as nil
+	}
+	cfg.Projects[idx].Agent.ProviderRefs = refs
+
+	lines, hadTrailing := splitConfigLines(string(data))
+	if spans := buildRawProjectSpans(lines); idx < len(spans) && spans[idx].agentStart >= 0 {
+		s := spans[idx]
+		if len(refs) == 0 {
+			lines = removeKeyInRange(lines, s.agentStart+1, s.agentEnd, "provider_refs")
+		} else {
+			lines = upsertKeyInRange(lines, s.agentStart+1, s.agentEnd, "provider_refs", tomlStringArray(refs))
+		}
+		if content, ok := lineEditMatches(lines, hadTrailing, cfg); ok {
+			return writeRawConfig(content)
 		}
 	}
-	return fmt.Errorf("project %q not found", projectName)
+	slog.Warn("config: could not edit provider_refs in place; rewriting the whole file, which drops its comments",
+		"project", projectName)
+	return saveConfig(cfg)
+}
+
+// lineEditMatches joins line-edited config lines and reports whether they
+// decode to want, i.e. the edits did exactly what the struct change did.
+func lineEditMatches(lines []string, hadTrailing bool, want *Config) (string, bool) {
+	content := joinConfigLines(lines, hadTrailing)
+	got := &Config{}
+	if err := toml.Unmarshal([]byte(content), got); err != nil {
+		return "", false
+	}
+	return content, reflect.DeepEqual(got, want)
 }
 
 // RemoveProject removes a project from the config file.
@@ -3603,7 +3482,71 @@ func SaveGlobalSettings(u GlobalSettingsUpdate) error {
 	if u.QueueMaxDepth != nil {
 		cfg.Queue.MaxDepth = u.QueueMaxDepth
 	}
+
+	// Edit only the changed keys so comments survive; see toml_lines.go.
+	lines, hadTrailing := splitConfigLines(string(data))
+	topLevel := func(key, raw string) {
+		lines = upsertKeyInRange(lines, 0, topLevelKeysEnd(lines), key, raw)
+	}
+	if u.Language != nil {
+		topLevel("language", quoteTomlString(*u.Language))
+	}
+	if u.AttachmentSend != nil {
+		topLevel("attachment_send", quoteTomlString(*u.AttachmentSend))
+	}
+	if u.IdleTimeoutMins != nil {
+		topLevel("idle_timeout_mins", strconv.Itoa(*u.IdleTimeoutMins))
+	}
+	for _, f := range []struct {
+		section, key string
+		raw          *string
+	}{
+		{"log", "level", quotedOrNil(u.LogLevel)},
+		{"display", "thinking_messages", boolOrNil(u.ThinkingMessages)},
+		{"display", "thinking_max_len", intOrNil(u.ThinkingMaxLen)},
+		{"display", "tool_messages", boolOrNil(u.ToolMessages)},
+		{"display", "tool_max_len", intOrNil(u.ToolMaxLen)},
+		{"stream_preview", "enabled", boolOrNil(u.StreamPreviewOn)},
+		{"stream_preview", "interval_ms", intOrNil(u.StreamPreviewIntMs)},
+		{"rate_limit", "max_messages", intOrNil(u.RateLimitMax)},
+		{"rate_limit", "window_secs", intOrNil(u.RateLimitWindow)},
+		{"queue", "max_depth", intOrNil(u.QueueMaxDepth)},
+	} {
+		if f.raw != nil {
+			lines = upsertSectionKey(lines, f.section, f.key, *f.raw)
+		}
+	}
+	if content, ok := lineEditMatches(lines, hadTrailing, cfg); ok {
+		return writeRawConfig(content)
+	}
+	slog.Warn("config: could not edit global settings in place; rewriting the whole file, which drops its comments")
 	return saveConfig(cfg)
+}
+
+// quotedOrNil, boolOrNil and intOrNil format an optional setting as a TOML
+// value, or nil when it is not being changed.
+func quotedOrNil(v *string) *string {
+	if v == nil {
+		return nil
+	}
+	s := quoteTomlString(*v)
+	return &s
+}
+
+func boolOrNil(v *bool) *string {
+	if v == nil {
+		return nil
+	}
+	s := tomlBool(*v)
+	return &s
+}
+
+func intOrNil(v *int) *string {
+	if v == nil {
+		return nil
+	}
+	s := strconv.Itoa(*v)
+	return &s
 }
 
 // WebSetupResult holds the config values after enabling web admin.
