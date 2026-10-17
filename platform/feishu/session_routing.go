@@ -14,9 +14,9 @@ import (
 // Each conversation is stored under a session key. Users' sessions are saved
 // under these strings, so their format must not change:
 //
-//	{platform}:{chat}:{user}       a user's session in a chat (the default)
+//	{platform}:{chat}:{user}       a user's session (private chats, or thread_isolation off)
 //	{platform}:{chat}              the chat's session (share_session_in_channel)
-//	{platform}:{chat}:root:{root}  a topic's session (thread_isolation, group chats)
+//	{platform}:{chat}:root:{root}  a topic's session (the default for group chats)
 //
 // {chat} is a chat_id, or the user's open_id for events that carry no chat
 // (bot menu clicks before the bot knows the user's chat, some card

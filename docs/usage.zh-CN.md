@@ -1141,7 +1141,7 @@ type = "claudecode"
 首次创建时，如果仓库没有忽略 `.worktrees/`，会把它写入本地的 `.git/info/exclude`，
 避免主仓库的 `git status` 和 `git add -A` 带上工作树。
 
-并行开发时，每个工作树用一个群；或开启 `thread_isolation`，在同一个群的不同话题里分别执行 `/ws wt <名称>`。
+并行开发时，每个工作树用一个群；或保持 `thread_isolation` 开启（默认），在同一个群的不同话题里分别执行 `/ws wt <名称>`。
 每个工作树运行各自的 Agent 进程，互不排队。合并分支仍需自己完成（也可以让 Agent 执行）。
 
 ### 工作原理

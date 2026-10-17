@@ -1180,7 +1180,7 @@ On first use, if the repository does not ignore `.worktrees/`, it is added to
 the local `.git/info/exclude` so the main worktree's `git status` and
 `git add -A` leave the worktrees out.
 
-For parallel work, use one chat per worktree, or enable `thread_isolation` and
+For parallel work, use one chat per worktree, or keep `thread_isolation` enabled (the default) and
 run `/ws wt <name>` in different topics of one group. Each worktree runs its
 own agent process, so they do not queue behind each other. Merging the
 branches is still up to you (or the agent).

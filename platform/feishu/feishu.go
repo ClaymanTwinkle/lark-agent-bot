@@ -419,7 +419,10 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 	}
 	respondToAtEveryoneAndHere, _ := opts["respond_to_at_everyone_and_here"].(bool)
 	shareSessionInChannel, _ := opts["share_session_in_channel"].(bool)
-	threadIsolation, _ := opts["thread_isolation"].(bool)
+	threadIsolation := true
+	if v, ok := opts["thread_isolation"].(bool); ok {
+		threadIsolation = v
+	}
 	groupChatHistoryShare, _ := opts["group_chat_history_share"].(bool)
 	resolveMentionsOpt, _ := opts["resolve_mentions"].(bool)
 	noReplyToTrigger := false

@@ -1237,8 +1237,8 @@ app_secret = "your-feishu-app-secret"
 #                           # 除非设置了 group_reply_all = true。
 # share_session_in_channel = false  # If true, all users in a group share one agent session
 #                                   # 设为 true 时，群聊内所有用户共享同一个 Agent 会话
-# thread_isolation = false  # If true, group messages use Feishu reply threads as session boundaries (one thread/root = one agent session and, in multi-workspace mode, one workspace binding)
-#                           # 设为 true 时，群聊按飞书话题/根消息隔离会话；multi-workspace 模式下每个话题也独立绑定 workspace
+# thread_isolation = true   # Default: group replies open/stay in Feishu threads, with one agent session per thread/root (and one workspace binding in multi-workspace mode); set false to disable
+#                           # 默认开启：群聊回复创建/留在飞书话题内，按话题/根消息隔离会话；multi-workspace 模式下每个话题也独立绑定 workspace；设为 false 可关闭
 # Share non-mentioned group messages as context with the next bot-triggered turn.
 # Messages themselves do not trigger a reply.
 # group_chat_history_share = false

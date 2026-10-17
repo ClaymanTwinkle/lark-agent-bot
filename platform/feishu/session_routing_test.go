@@ -20,8 +20,8 @@ import (
 
 // These tests pin down, for every path that receives an event or sends a
 // message, which session key it uses and where the reply goes. Users'
-// sessions are stored under these keys, and with thread_isolation off (the
-// default) replies must keep landing where they always have. They talk to
+// sessions are stored under these keys, and with thread_isolation explicitly
+// off replies must keep landing where they always have. They talk to
 // a fake Feishu API and only look at what the bot dispatches and sends, so
 // they do not depend on how the platform computes either.
 
@@ -212,6 +212,42 @@ func assertReplyCtx(t *testing.T, got any, want replyContext) {
 		t.Fatalf("ReplyCtx = {messageID:%q chatID:%q sessionKey:%q bootstrapThread:%v}, want {messageID:%q chatID:%q sessionKey:%q bootstrapThread:%v}",
 			rc.messageID, rc.chatID, rc.sessionKey, rc.bootstrapThread,
 			want.messageID, want.chatID, want.sessionKey, want.bootstrapThread)
+	}
+}
+
+func TestSessionRouting_ThreadIsolationDefaultsOn(t *testing.T) {
+	cases := []struct {
+		name, chatType string
+		opts           map[string]any
+		shape          messageShape
+		wantKey        string
+		wantReply      string
+	}{
+		{"default group", "group", nil, shapeTop, "oc_chat:root:om_msg", "reply om_msg in_thread"},
+		{"default existing topic", "group", nil, shapeThreadNoParent, "oc_chat:root:om_root", "reply om_msg in_thread"},
+		{"default private chat", "p2p", nil, shapeTop, "oc_chat:ou_user", "reply om_msg"},
+		{"explicitly enabled", "group", map[string]any{"thread_isolation": true}, shapeTop, "oc_chat:root:om_msg", "reply om_msg in_thread"},
+		{"explicitly disabled", "group", map[string]any{"thread_isolation": false}, shapeTop, "oc_chat:ou_user", "reply om_msg"},
+	}
+	for _, platform := range []string{"feishu", "lark"} {
+		for _, tc := range cases {
+			t.Run(platform+"/"+tc.name, func(t *testing.T) {
+				p, rec, got := newRoutingTestPlatform(t, platform, tc.opts)
+				ctx := context.Background()
+				if err := p.onMessage(ctx, routingMessageEvent(tc.chatType, "oc_chat", "om_msg", tc.shape)); err != nil {
+					t.Fatalf("onMessage() error = %v", err)
+				}
+				msg := waitRoutedMessage(t, got)
+				if want := platform + ":" + tc.wantKey; msg.SessionKey != want {
+					t.Fatalf("SessionKey = %q, want %q", msg.SessionKey, want)
+				}
+				rec.take() // Existing topics may fetch their root for context.
+				if err := p.Send(ctx, msg.ReplyCtx, "answer"); err != nil {
+					t.Fatalf("Send() error = %v", err)
+				}
+				assertCalls(t, "answer", rec.take(), []string{tc.wantReply})
+			})
+		}
 	}
 }
 

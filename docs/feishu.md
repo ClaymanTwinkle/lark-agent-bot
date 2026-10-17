@@ -157,7 +157,7 @@ app_id = "cli_axxxxxxxxxxxx"
 app_secret = "QhkMpxxxxxxxxxxxxxxxxxxxx"
 # domain = "https://open.feishu.cn" # optional: override the runtime API/WebSocket domain
 # enable_feishu_card = true  # optional: when off, every reply falls back to plain text
-# thread_isolation = true    # optional: isolate group chat sessions per Feishu thread/root
+# thread_isolation = true    # default: isolate group chat sessions per Feishu thread/root; false disables it
 # group_chat_history_share = false  # optional: share group messages that do not @ the bot as context for the next trigger; the messages themselves trigger no reply
 # progress_style = "legacy"  # optional: legacy | compact | card
 # ack_emoji = "Get"           # optional: receipt reaction added as soon as a message is accepted or queued, and kept; off by default
@@ -168,7 +168,7 @@ app_secret = "QhkMpxxxxxxxxxxxxxxxxxxxx"
 ```
 
 > If the app has no interactive card permission, or no card callback is configured in the console, set `enable_feishu_card = false` so every command replies in plain text and users do not miss content when sending a card fails.
-> With `thread_isolation = true`, each root message / reply thread in a group chat gets its own agent session; one-on-one chats are unchanged.
+> `thread_isolation` is enabled by default: a bot reply to a top-level group message opens a topic, replies within a topic stay there, and each root message / reply thread gets its own agent session. Continue in the same topic to retain context. One-on-one chats are unchanged; set `thread_isolation = false` to disable this behavior.
 > With `group_chat_history_share = true`, lark-agent-bot keeps in memory only the permitted group text/post messages the current process has seen, and injects them the next time the bot is explicitly @-mentioned and an agent turn actually starts; messages without an @ trigger no reply. Commands handled by lark-agent-bot itself, such as `/status`, do not consume this pending context; `/new` clears the context of the corresponding main channel or topic.
 > In multi-workspace mode, `thread_isolation = true` also binds each topic to its own workspace; `/workspace bind <name>` inside a topic does not affect other topics in the same group. An existing group-level binding is kept as the default and inherited by topics that have no explicit binding, so it still works if you roll back to an older version.
 > `progress_style = "compact"` merges thinking/tool progress into one updatable message to reduce noise; `legacy` keeps sending one message per step; `card` keeps updating a single structured card (title + progress blocks), which reads more clearly than plain text.
