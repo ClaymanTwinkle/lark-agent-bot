@@ -453,13 +453,15 @@ func runBot(rootOpts rootCLIOptions, logWriter io.Writer, logCloser io.Closer, o
 		engine.SetProjectStateStore(projectState)
 		engine.SetDataDir(cfg.DataDir)
 
+		// A single-workspace config keeps base_dir from multi-workspace mode;
+		// switching back offers it.
+		if proj.Mode != "multi-workspace" && proj.BaseDir != "" {
+			engine.SetSavedBaseDir(expandBaseDir(proj.BaseDir))
+		}
+
 		// Wire multi-workspace mode
 		if proj.Mode == "multi-workspace" {
-			baseDir := proj.BaseDir
-			if strings.HasPrefix(baseDir, "~/") {
-				home, _ := os.UserHomeDir()
-				baseDir = filepath.Join(home, baseDir[2:])
-			}
+			baseDir := expandBaseDir(proj.BaseDir)
 			if err := os.MkdirAll(baseDir, 0o755); err != nil {
 				slog.Error("failed to create base_dir", "path", baseDir, "err", err)
 				continue
@@ -1426,6 +1428,15 @@ func validateNoExtraTopLevelArgs(args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown top-level command: %s", args[0])
+}
+
+// expandBaseDir expands a leading "~/" in a project's base_dir.
+func expandBaseDir(baseDir string) string {
+	if strings.HasPrefix(baseDir, "~/") {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, baseDir[2:])
+	}
+	return baseDir
 }
 
 // sessionStorePath builds a unique filename from project name + work_dir.

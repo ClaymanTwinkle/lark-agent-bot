@@ -38,9 +38,19 @@ func (e *Engine) isWorkspaceInitTarget(content string) bool {
 // List only immediate, visible directories. Do not follow links out of the
 // configured project root. Actions carry names, never unstable list indexes.
 func (e *Engine) availableWorkspaces() ([]string, error) {
-	entries, err := os.ReadDir(e.baseDir)
+	names, err := visibleSubdirs(e.baseDir)
 	if err != nil {
 		return nil, fmt.Errorf("list workspace directories: %w", err)
+	}
+	return names, nil
+}
+
+// visibleSubdirs lists the names of dir's non-hidden subdirectories, sorted,
+// leaving out links.
+func visibleSubdirs(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
 	}
 	var names []string
 	for _, entry := range entries {

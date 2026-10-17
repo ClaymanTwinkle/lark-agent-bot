@@ -1137,6 +1137,8 @@ base_dir = "~/workspaces"
 type = "claudecode"
 ```
 
+Admins can also switch modes on the project page of `/config` (in `/help`). Switching to multi-workspace mode offers the `base_dir` kept from a previous switch, or else the parent of the working directory; **Parent directory** and the subdirectory list pick another project root. The bot restarts once the tasks in progress finish.
+
 ### Commands
 
 ```
