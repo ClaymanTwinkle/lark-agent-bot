@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -1434,6 +1435,58 @@ func TestNewPlatform_RequireMentionTrueDoesNotForceGroupReplyAll(t *testing.T) {
 	}
 	if fp.groupReplyAll {
 		t.Error("require_mention=true should leave groupReplyAll=false, but it is true")
+	}
+}
+
+func TestNewPlatform_DoneEmojiDefaultsToDone(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		opts map[string]any
+		want string
+	}{
+		{"omitted", map[string]any{}, "DONE"},
+		{"empty", map[string]any{"done_emoji": ""}, "DONE"},
+		{"none", map[string]any{"done_emoji": "none"}, ""},
+		{"custom", map[string]any{"done_emoji": "THUMBSUP"}, "THUMBSUP"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := map[string]any{"app_id": "cli_test", "app_secret": "secret"}
+			maps.Copy(opts, tc.opts)
+			p, err := newPlatform("feishu", lark.FeishuBaseUrl, opts)
+			if err != nil {
+				t.Fatalf("newPlatform error: %v", err)
+			}
+			if got := extractBasePlatform(p).doneEmoji; got != tc.want {
+				t.Fatalf("doneEmoji = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNewPlatform_MentionMapTurnsOnResolveMentions(t *testing.T) {
+	mentionMap := map[string]any{"Codex": "ou_codex"}
+	for _, tc := range []struct {
+		name string
+		opts map[string]any
+		want bool
+	}{
+		{"neither", map[string]any{}, false},
+		{"empty mention_map", map[string]any{"mention_map": map[string]any{}}, false},
+		{"mention_map", map[string]any{"mention_map": mentionMap}, true},
+		{"mention_map explicitly off", map[string]any{"mention_map": mentionMap, "resolve_mentions": false}, false},
+		{"explicitly on", map[string]any{"resolve_mentions": true}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := map[string]any{"app_id": "cli_test", "app_secret": "secret"}
+			maps.Copy(opts, tc.opts)
+			p, err := newPlatform("feishu", lark.FeishuBaseUrl, opts)
+			if err != nil {
+				t.Fatalf("newPlatform error: %v", err)
+			}
+			if got := extractBasePlatform(p).resolveMentions; got != tc.want {
+				t.Fatalf("resolveMentions = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

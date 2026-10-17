@@ -318,3 +318,26 @@ thinking_messages = true # show thinking
 		t.Fatalf("projects = %d", len(cfg.Projects))
 	}
 }
+
+// Unset thinking/tool flags must report what the display mode shows, so a
+// settings page that saves every field back does not turn them on.
+func TestGetGlobalSettings_ProgressFlagsFollowDisplayMode(t *testing.T) {
+	cases := []struct {
+		name, display string
+		want          bool
+	}{
+		{"default quiet", "", false},
+		{"full", "[display]\nmode = \"full\"\n", true},
+		{"compact", "[display]\nmode = \"compact\"\n", false},
+		{"explicit flags", "[display]\nthinking_messages = true\ntool_messages = true\n", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			patchConfigPath(t, writeConfigFixture(t, tc.display))
+			got := GetGlobalSettings()
+			if got["thinking_messages"] != tc.want || got["tool_messages"] != tc.want {
+				t.Fatalf("thinking_messages = %v, tool_messages = %v, want %v", got["thinking_messages"], got["tool_messages"], tc.want)
+			}
+		})
+	}
+}

@@ -403,6 +403,9 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		ackEmoji = ""
 	}
 	doneEmoji, _ := opts["done_emoji"].(string)
+	if doneEmoji == "" {
+		doneEmoji = "DONE"
+	}
 	if doneEmoji == "none" {
 		doneEmoji = ""
 	}
@@ -424,7 +427,6 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		threadIsolation = v
 	}
 	groupChatHistoryShare, _ := opts["group_chat_history_share"].(bool)
-	resolveMentionsOpt, _ := opts["resolve_mentions"].(bool)
 	noReplyToTrigger := false
 	if v, ok := opts["reply_to_trigger"].(bool); ok && !v {
 		noReplyToTrigger = true
@@ -453,6 +455,12 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 				}
 			}
 		}
+	}
+	// Outbound @Name only becomes a native mention with resolve_mentions, so
+	// configuring mention_map turns it on unless resolve_mentions is set.
+	resolveMentionsOpt := len(mentionMap) > 0
+	if v, ok := opts["resolve_mentions"].(bool); ok {
+		resolveMentionsOpt = v
 	}
 
 	progressStyle := "legacy"

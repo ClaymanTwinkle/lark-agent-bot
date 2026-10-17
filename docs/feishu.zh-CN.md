@@ -47,7 +47,7 @@ lark-agent-bot feishu bind --project my-project --app cli_xxx:sec_xxx
 - 同时预填 `im.message.receive_v1`（接收消息）、`im.message.recalled_v1`（撤回消息）、`application.bot.menu_v6`（菜单点击）、`im.chat.access_event.bot_p2p_chat_entered_v1`（用户进入与机器人的会话）事件，以及 `card.action.trigger` 卡片回调。扫码确认页一次确认权限与订阅。撤回排队中的原消息会移除对应提示词；已开始的任务会尝试停止，不会回滚已执行的操作，排在它后面的消息也不会执行。
 - 注册成功后先保存凭证，再检查机器人能力、权限授予状态及可读取的订阅配置。失败会保留凭证并明确报错，避免重复创建应用。
 - 通过应用详情接口获取该应用身份下的所有者 ID，初始化尚未设置的 `admin_from`；全新项目同时设置 `allow_from` 为所有者。保留已有管理员、访问范围和项目设置。
-- 全新项目默认 `quiet` 消息模式，可用 `--display full` 或 `--display compact` 更改。模型、权限模式、工作目录和 agent 类型可在创建时指定；这些参数仅影响新项目和上面说的初始项目。第一个项目不指定 `--agent` 时，装了 `claude` 用 Claude Code，否则装了 `codex` 用 Codex。
+- 项目默认使用 `quiet` 消息模式；新建项目时可用 `--display full` 或 `--display compact` 指定其他模式。模型、权限模式、工作目录和 agent 类型可在创建时指定；这些参数仅影响新项目和上面说的初始项目。第一个项目不指定 `--agent` 时，装了 `claude` 用 Claude Code，否则装了 `codex` 用 Codex。
 - `new` 和无凭证的 `setup` 拒绝覆盖已绑定应用的项目；`bind` 保持凭证绑定流程。
 
 ```powershell
@@ -163,7 +163,7 @@ app_secret = "QhkMpxxxxxxxxxxxxxxxxxxxx"
 # ack_emoji = "Get"           # 可选：消息被接受处理或入队时立即添加并保留的确认表情；默认禁用
 # queued_emoji = "OneSecond"   # 可选：消息排队等待时的表情（默认“稍等”），代替文字提示，开始处理时移除；设为 "none" 恢复文字提示
 # reaction_emoji = "OnIt"      # 可选：agent 处理期间的临时表情，结束后移除
-# done_emoji = "none"          # 可选：agent 完成回复后添加的表情回复（如 "DONE"）；设为 "none" 可禁用
+# done_emoji = "DONE"          # 可选：agent 完成回复后添加的表情回复（默认 "DONE"）；设为 "none" 可禁用
 # image_batch_window_ms = 500  # 可选：连续多图合批窗口（默认 500ms，详见下文）
 ```
 
@@ -182,7 +182,7 @@ app_secret = "QhkMpxxxxxxxxxxxxxxxxxxxx"
 
 > 上一条消息还在处理时又发来新消息，新消息会排队，并加上 `queued_emoji` 表情（默认 `"OneSecond"`，即“稍等”），不再回复“消息已收到，将在当前任务完成后处理”。轮到它处理时撤掉这个表情、换上 `reaction_emoji`；因 `/stop`、`/new`、撤回、会话出错等原因被丢弃时也会撤掉。它和处理中表情一样记在上面的数据目录文件里，进程中途退出留下的会在下次启动时清掉。表情加不上（如缺少权限）时退回文字提示；队列已满的提示始终是文字。`queued_emoji` 与 `reaction_emoji` 相同时无法区分排队和处理中，会退回文字提示。设为 `"none"` 恢复文字提示。
 
-> `done_emoji` 设置后，agent 每次完成回复时会在用户消息上添加指定表情（如 `"DONE"` → ✅）。后面还有排队消息时，上一条也会在接着处理下一条之前加上完成表情。先清理临时处理表情（与接收确认相同的表情会保留），再添加 done 表情。在 quiet 模式下特别有用，因为飞书卡片原地更新不触发推送，done 表情可以通知用户 agent 已完成。设为 `"none"` 或不配置则禁用。
+> agent 每次完成回复时会在用户消息上添加 `done_emoji` 表情（默认 `"DONE"` → ✅）。后面还有排队消息时，上一条也会在接着处理下一条之前加上完成表情。先清理临时处理表情（与接收确认相同的表情会保留），再添加 done 表情。在 quiet 模式下特别有用，因为飞书卡片原地更新不触发推送，done 表情可以通知用户 agent 已完成。设为 `"none"` 可禁用。
 > `image_batch_window_ms` 控制连续多张图片合并成一条 agent 消息的等待窗口（默认 500ms）。飞书手机端一次连发多张图时，每张图是独立事件；lark-agent-bot 会在窗口内将它们合并成一条多图消息再分发给 agent。如果你的网络/设备发送间隔超过 500ms 且仍被拆成多轮回复（每张图独立处理），可调高到 800–1200ms；如果以单图为主、希望响应更快，可适当调低。设为 `0` 时回退到默认 500ms。
 
 ---
@@ -400,7 +400,7 @@ lark-agent-bot: ✅ 这是一个 Node.js 项目，包含以下目录...
 
 ## Mention 功能
 
-开启 `resolve_mentions = true` 后，机器人发出的消息中 `@显示名` 会自动替换为飞书原生 at 标签。
+开启 `resolve_mentions = true` 后，机器人发出的消息中 `@显示名` 会自动替换为飞书原生 at 标签。默认关闭；配置了 `mention_map`（见下文「机器人间 @ 通知」）时默认开启。
 
 ### 配置
 
@@ -467,8 +467,7 @@ AI 输出中包含 `@某人` 时，发送到飞书前会自动匹配并替换。
 
 ```toml
 [projects.platforms.options]
-resolve_mentions = true                       # mention_map 依赖 resolve_mentions = true
-mention_map = { BOT-B = "ou_bot_b_open_id", BOT-A = "ou_bot_a_open_id" }
+mention_map = { BOT-B = "ou_bot_b_open_id", BOT-A = "ou_bot_a_open_id" }  # 会自动开启 resolve_mentions
 ```
 
 > `mention_map` 与 `resolve_mentions` 是叠加关系，并非二选一：
@@ -495,13 +494,11 @@ mention_map = { BOT-B = "ou_bot_b_open_id", BOT-A = "ou_bot_a_open_id" }
 ```toml
 # 机器人 A 的配置
 [projects.platforms.options]
-resolve_mentions = true
 mention_map = { "BOT-B" = "<A 看到的 B 的 open_id>" }
 peer_bots = { cli_bot_b_app_id = "BOT-B" }
 
 # 机器人 B 的配置
 [projects.platforms.options]
-resolve_mentions = true
 mention_map = { "BOT-A" = "<B 看到的 A 的 open_id>" }
 peer_bots = { cli_bot_a_app_id = "BOT-A" }
 ```
@@ -526,7 +523,7 @@ peer_bots = { cli_bot_a_app_id = "BOT-A" }
 
 ### 注意事项
 
-- `mention_map` 必须配合 `resolve_mentions = true` 才会生效；单独配置 `mention_map` 不会触发解析。开启 `resolve_mentions` 后，发出消息里的 `@群成员名字` 也会变成真 @，被 @ 的人会收到提醒。
+- `mention_map` 通过 `resolve_mentions` 生效，所以配置后会自动开启 `resolve_mentions`；显式设为 `resolve_mentions = false` 时 `mention_map` 不会触发解析。开启 `resolve_mentions` 后，发出消息里的 `@群成员名字` 也会变成真 @，被 @ 的人会收到提醒。
 - `@name` 必须与 `mention_map` 的 key 完全一致（区分大小写）。
 - 被 @ 的机器人需要在**目标群里**，且该群已开启机器人能力，否则飞书不会派发 @ 事件。
 
