@@ -208,18 +208,18 @@ level = "info" # debug, info, warn, error
 # 设为 0 表示不截断（显示完整内容）。
 
 # [display]
-# mode = "full"             # Display mode: "full" (default), "compact", or "quiet"
+# mode = "quiet"            # Display mode: "quiet" (default), "compact", or "full"
 #                           # full: show thinking + tool messages as separate messages
 #                           #       显示思考和工具消息，每条单独发送
 #                           # compact: hide thinking/tool, each text segment sent separately
 #                           #          隐藏思考和工具消息，每段文本独立发送
 #                           # quiet: hide thinking/tool, all text in one card, done emoji at end
 #                           #        隐藏思考和工具消息，所有文本合并到同一张卡片，完成后发送 done emoji
-# thinking_messages = true  # Show/hide thinking messages (default: true) / 是否显示思考消息（默认 true）
+# thinking_messages = false # Show/hide thinking messages (default: true in full mode, false otherwise) / 是否显示思考消息（full 模式默认 true，其余默认 false）
 # thinking_max_len = 300    # Max chars for thinking messages (default: 300) / 思考消息最大字符数（默认 300）
 # tool_max_len = 500        # Max chars for tool use messages (default: 500) / 工具调用消息最大字符数（默认 500）
 # history_max_len = 1000    # Max chars per /history entry (default: 1000; 0 = no truncation) / 每条历史记录最大字符数（默认 1000；0 表示不截断）
-# tool_messages = true      # Show/hide tool progress messages (default: true) / 是否显示工具进度消息（默认 true）
+# tool_messages = false     # Show/hide tool progress messages (default: true in full mode, false otherwise) / 是否显示工具进度消息（full 模式默认 true，其余默认 false）
 # show_context_indicator = true  # Show "[ctx: ~N%]" suffix on assistant replies (default: true)
 #                                # 在助手回复末尾显示「[ctx: ~N%]」上下文占用提示（默认 true 显示）
 # reply_footer = true            # Show Codex-like footer on assistant replies (default: true)
@@ -1225,8 +1225,8 @@ app_secret = "your-feishu-app-secret"
 #                           # 消息排在正在处理的任务后面时添加的表情，代替文字提示（默认 "OneSecond" 稍等），开始处理时移除；设为 "none" 恢复文字提示
 # reaction_emoji = "OnIt"  # Temporary reaction while the agent is processing (default: "OnIt"); "none" disables
 #                           # Agent 处理期间的临时表情（默认 "OnIt"），结束后移除；设为 "none" 可禁用
-# done_emoji = "none"       # Emoji reaction when agent finishes a reply (e.g. "DONE"); set to "none" to disable
-#                           # Agent 完成回复后添加的表情回复（如 "DONE"）；设为 "none" 可禁用
+# done_emoji = "DONE"       # Emoji reaction when agent finishes a reply (default: "DONE"); set to "none" to disable
+#                           # Agent 完成回复后添加的表情回复（默认 "DONE"）；设为 "none" 可禁用
 # group_reply_all = false   # If true, respond to ALL group messages without requiring @mention
 #                           # 设为 true 时，群聊中无需 @机器人 也会响应所有消息（默认 false）
 #                           # Feishu only delivers group messages that do not @ the bot when the app has the
@@ -1248,14 +1248,17 @@ app_secret = "your-feishu-app-secret"
 # progress_style = "legacy" # Progress rendering style: legacy | compact | card
 #                           # 进度消息展示风格：legacy（逐条消息）| compact（单消息持续更新）| card（结构化卡片）
 # resolve_mentions = false  # Auto-resolve @name in outgoing messages to Feishu at tags by matching group member names
+#                           # (default: on when mention_map is set, off otherwise)
 #                           # 自动将发出消息中的 @显示名 替换为飞书 at 标签（通过匹配群成员名称）
+#                           #（默认：配置了 mention_map 时开启，否则关闭）
 # mention_map = { BOT-A = "ou_bot_a_open_id", BOT-B = "ou_bot_b_open_id" }
 #                           # Outbound bot-to-bot @name -> Feishu <at> tag map for triggering notifications.
 #                           # Useful when @name is NOT a group member (e.g. another bot / agent identified by open_id).
-#                           # Takes priority over resolve_mentions group-member matching. Requires resolve_mentions = true.
+#                           # Takes priority over resolve_mentions group-member matching. Turns resolve_mentions on
+#                           # unless resolve_mentions = false is set.
 #                           # 机器人间 @通知映射表：friendly_name -> open_id。
 #                           # 当 @name 不是群成员（例如另一个机器人 / Agent，只能用 open_id 标识）时使用。
-#                           # 优先级高于 resolve_mentions 的群成员匹配；需同时开启 resolve_mentions = true。
+#                           # 优先级高于 resolve_mentions 的群成员匹配；配置后自动开启 resolve_mentions，除非显式设为 false。
 #                           # The open_id must be the other bot's ID as THIS app sees it (IDs are per app), and
 #                           # listed bots may send tasks to this bot even though allow_from only lists people.
 #                           # open_id 必须是本应用看到的对方机器人 ID（不同应用看到的 ID 不同）；列出的机器人即使不在 allow_from 里也能给本机器人派活。
@@ -1298,7 +1301,7 @@ app_secret = "your-feishu-app-secret"
 # allow_from = "*"
 # queued_emoji = "OneSecond"
 # reaction_emoji = "OnIt"
-# done_emoji = "none"
+# done_emoji = "DONE"
 # progress_style = "legacy"  # legacy | compact | card
 
 

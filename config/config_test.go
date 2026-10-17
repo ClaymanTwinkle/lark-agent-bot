@@ -238,12 +238,28 @@ func TestEffectiveDisplayQuiet(t *testing.T) {
 		wantTool bool
 	}{
 		{
-			name:     "defaults no quiet",
+			name:     "defaults to quiet",
 			cfg:      Config{},
+			proj:     ProjectConfig{},
+			wantMode: "quiet",
+			wantTM:   false,
+			wantTool: false,
+		},
+		{
+			name:     "global quiet false maps to full mode",
+			cfg:      Config{Quiet: &fal},
 			proj:     ProjectConfig{},
 			wantMode: "full",
 			wantTM:   true,
 			wantTool: true,
+		},
+		{
+			name:     "explicit thinking_messages wins over default quiet",
+			cfg:      Config{Display: DisplayConfig{ThinkingMessages: &tru}},
+			proj:     ProjectConfig{},
+			wantMode: "quiet",
+			wantTM:   true,
+			wantTool: false,
 		},
 		{
 			name:     "global quiet maps to quiet mode",
@@ -371,13 +387,13 @@ func TestEffectiveDisplay_ProjectOverride(t *testing.T) {
 			wantToolMaxLen: 500,
 		},
 		{
-			name: "both unset falls back to default",
+			name: "both unset falls back to quiet default",
 			cfg:  Config{},
 			proj: ProjectConfig{
 				Display: &DisplayConfig{},
 			},
-			wantTM:         true,
-			wantTool:       true,
+			wantTM:         false,
+			wantTool:       false,
 			wantThinkLen:   300,
 			wantToolMaxLen: 500,
 		},
@@ -389,8 +405,8 @@ func TestEffectiveDisplay_ProjectOverride(t *testing.T) {
 			proj: ProjectConfig{
 				Display: &DisplayConfig{ThinkingMaxLen: &maxB, ToolMaxLen: &maxB},
 			},
-			wantTM:         true,
-			wantTool:       true,
+			wantTM:         false,
+			wantTool:       false,
 			wantThinkLen:   200,
 			wantToolMaxLen: 200,
 		},
@@ -419,11 +435,11 @@ func TestEffectiveDisplay_ProjectOverride(t *testing.T) {
 		{
 			name: "nil project display behaves like before",
 			cfg: Config{
-				Display: DisplayConfig{ThinkingMessages: &fal},
+				Display: DisplayConfig{ThinkingMessages: &tru},
 			},
 			proj:           ProjectConfig{},
-			wantTM:         false,
-			wantTool:       true,
+			wantTM:         true,
+			wantTool:       false,
 			wantThinkLen:   300,
 			wantToolMaxLen: 500,
 		},

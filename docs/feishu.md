@@ -47,7 +47,7 @@ Notes:
 - The template also pre-fills the `im.message.receive_v1` (receive message), `im.message.recalled_v1` (message recalled), `application.bot.menu_v6` (menu click) and `im.chat.access_event.bot_p2p_chat_entered_v1` (user entered chat with bot) events and the `card.action.trigger` card callback. The scan confirmation page grants the permissions and subscriptions in one step. Recalling a queued message removes its prompt; recalling the message of a task that has already started tries to stop it, does not roll back what was already done, and the messages queued behind it are not run either.
 - After registration the credentials are saved first; then the bot capability, granted permissions and readable subscription settings are checked. A failed check keeps the credentials and reports the error clearly, so you do not create the app twice.
 - The app owner's ID, read through the app detail API with the app's own identity, initializes `admin_from` if it is not set yet; a brand-new project also gets `allow_from` set to the owner. Existing admins, access lists and project settings are kept.
-- Brand-new projects default to the `quiet` display mode; change it with `--display full` or `--display compact`. Model, permission mode, work directory and agent type can be set at creation; these flags only affect new projects and the starter project mentioned above. Without `--agent`, the first project uses Claude Code if `claude` is installed, otherwise Codex if `codex` is.
+- Projects use the `quiet` display mode by default; give a brand-new project another with `--display full` or `--display compact`. Model, permission mode, work directory and agent type can be set at creation; these flags only affect new projects and the starter project mentioned above. Without `--agent`, the first project uses Claude Code if `claude` is installed, otherwise Codex if `codex` is.
 - `new` and `setup` without credentials refuse to overwrite a project that already has an app; `bind` keeps the credential-binding flow.
 
 ```powershell
@@ -163,7 +163,7 @@ app_secret = "QhkMpxxxxxxxxxxxxxxxxxxxx"
 # ack_emoji = "Get"           # optional: receipt reaction added as soon as a message is accepted or queued, and kept; off by default
 # queued_emoji = "OneSecond"   # optional: reaction on a message waiting in the queue (default "OneSecond"), instead of a text notice; removed when processing starts; "none" restores the text notice
 # reaction_emoji = "OnIt"      # optional: temporary reaction while the agent works, removed afterwards
-# done_emoji = "none"          # optional: reaction added when the agent finishes its reply (e.g. "DONE"); "none" disables it
+# done_emoji = "DONE"          # optional: reaction added when the agent finishes its reply (default "DONE"); "none" disables it
 # image_batch_window_ms = 500  # optional: window for merging consecutive images (default 500ms, see below)
 ```
 
@@ -182,7 +182,7 @@ app_secret = "QhkMpxxxxxxxxxxxxxxxxxxxx"
 
 > A message that arrives while the previous one is still being processed is queued and gets the `queued_emoji` reaction (default `"OneSecond"`) instead of the "will process after the current task finishes" text. The reaction is removed when the message starts processing (and `reaction_emoji` takes over) or is dropped (`/stop`, `/new`, recall, session error). It is recorded in the same data-directory file as the processing reaction, so one left behind by a crash is removed on the next start. If the reaction cannot be added (for example, missing permission), the text notice is sent instead; the queue-full notice is always text. A `queued_emoji` equal to `reaction_emoji` falls back to the text notice, since queued and processing would look the same. Set `"none"` to restore the text notice.
 
-> With `done_emoji` set, the agent adds that reaction to the user's message each time it finishes a reply (for example `"DONE"` → ✅). When more messages are queued, the previous one also gets the done reaction before the next one is processed. Temporary processing reactions are removed first (a reaction equal to the receipt is kept), then the done reaction is added. This is especially useful in quiet mode, because Feishu does not push a notification when a card is updated in place; the done reaction tells the user the agent has finished. Set `"none"` or leave it unset to disable it.
+> The agent adds the `done_emoji` reaction (default `"DONE"` → ✅) to the user's message each time it finishes a reply. When more messages are queued, the previous one also gets the done reaction before the next one is processed. Temporary processing reactions are removed first (a reaction equal to the receipt is kept), then the done reaction is added. This is especially useful in quiet mode, because Feishu does not push a notification when a card is updated in place; the done reaction tells the user the agent has finished. Set `"none"` to disable it.
 > `image_batch_window_ms` sets how long lark-agent-bot waits to merge consecutive images into one agent message (default 500ms). When the Feishu mobile app sends several images at once, each image is a separate event; lark-agent-bot merges those within the window into one multi-image message before passing it to the agent. If your network or device sends them more than 500ms apart and they still get split into several turns (each image handled on its own), raise it to 800–1200ms; if you mostly send single images and want faster responses, lower it. `0` falls back to the default 500ms.
 
 ---
@@ -400,7 +400,7 @@ lark-agent-bot: ✅ This is a Node.js project with the following directories...
 
 ## Mentions
 
-With `resolve_mentions = true`, `@DisplayName` in messages the bot sends is replaced with a native Feishu @ tag.
+With `resolve_mentions = true`, `@DisplayName` in messages the bot sends is replaced with a native Feishu @ tag. It is off by default, and on by default when [`mention_map`](#bot-to-bot--notifications-mention_map) is set.
 
 ### Configuration
 
@@ -467,8 +467,7 @@ One of the following Feishu app permissions is required:
 
 ```toml
 [projects.platforms.options]
-resolve_mentions = true                       # mention_map requires resolve_mentions = true
-mention_map = { BOT-B = "ou_bot_b_open_id", BOT-A = "ou_bot_a_open_id" }
+mention_map = { BOT-B = "ou_bot_b_open_id", BOT-A = "ou_bot_a_open_id" }  # turns resolve_mentions on
 ```
 
 > `mention_map` adds to `resolve_mentions`; you do not choose one or the other:
@@ -495,13 +494,11 @@ Configuration for two bots that hand work to each other (get the IDs as describe
 ```toml
 # Bot A's config
 [projects.platforms.options]
-resolve_mentions = true
 mention_map = { "BOT-B" = "<B's open_id as seen by A>" }
 peer_bots = { cli_bot_b_app_id = "BOT-B" }
 
 # Bot B's config
 [projects.platforms.options]
-resolve_mentions = true
 mention_map = { "BOT-A" = "<A's open_id as seen by B>" }
 peer_bots = { cli_bot_a_app_id = "BOT-A" }
 ```
@@ -526,7 +523,7 @@ A bot's App ID (starting with `cli_`) is on the "Credentials & Basic Info" page 
 
 ### Notes
 
-- `mention_map` only works together with `resolve_mentions = true`; `mention_map` alone triggers no resolution. With `resolve_mentions` on, `@member name` in outgoing messages also becomes a real @, and the mentioned person is notified.
+- `mention_map` works through `resolve_mentions`, so setting it turns `resolve_mentions` on; with `resolve_mentions = false`, `mention_map` triggers no resolution. With `resolve_mentions` on, `@member name` in outgoing messages also becomes a real @, and the mentioned person is notified.
 - `@name` must match a `mention_map` key exactly (case-sensitive).
 - The mentioned bot must be **in the target group**, and the group must have bots enabled, otherwise Feishu does not dispatch the @ event.
 

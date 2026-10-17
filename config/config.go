@@ -218,19 +218,19 @@ type ManagementConfig struct {
 
 // Display mode constants.
 const (
-	DisplayModeFull    = "full"    // show thinking + tool messages as separate messages (default)
+	DisplayModeFull    = "full"    // show thinking + tool messages as separate messages
 	DisplayModeCompact = "compact" // hide thinking/tool, each text segment is a separate card
-	DisplayModeQuiet   = "quiet"   // hide thinking/tool, all text appends to one card
+	DisplayModeQuiet   = "quiet"   // hide thinking/tool, all text appends to one card (default)
 )
 
 // DisplayConfig controls how intermediate messages (thinking, tool output) are shown.
 type DisplayConfig struct {
-	Mode                 *string `toml:"mode"`                   // "full" (default), "compact", or "quiet"
+	Mode                 *string `toml:"mode"`                   // "quiet" (default), "compact", or "full"
 	CardMode             *string `toml:"card_mode"`              // "legacy" (default) or "rich" (Card 2.0 Feishu)
-	ThinkingMessages     *bool   `toml:"thinking_messages"`      // whether thinking messages are shown; default true
+	ThinkingMessages     *bool   `toml:"thinking_messages"`      // whether thinking messages are shown; default true in full mode, false otherwise
 	ThinkingMaxLen       *int    `toml:"thinking_max_len"`       // max chars for thinking messages; 0 = no truncation; default 300
 	ToolMaxLen           *int    `toml:"tool_max_len"`           // max chars for tool use messages; 0 = no truncation; default 500
-	ToolMessages         *bool   `toml:"tool_messages"`          // whether tool progress messages are shown; default true
+	ToolMessages         *bool   `toml:"tool_messages"`          // whether tool progress messages are shown; default true in full mode, false otherwise
 	HistoryMaxLen        *int    `toml:"history_max_len"`        // max chars per /history entry; 0 = no truncation; default 1000
 	ShowContextIndicator *bool   `toml:"show_context_indicator"` // whether [ctx: ~N%] suffix is shown; default true
 	ReplyFooter          *bool   `toml:"reply_footer"`           // whether Codex-like footer is shown; default true
@@ -886,16 +886,21 @@ func resolveEnvPlaceholders(s string) string {
 	})
 }
 
-// projectQuietEffective returns whether legacy quiet applies to this project: an explicit
-// per-project quiet overrides; otherwise the global root quiet applies.
-func projectQuietEffective(cfg *Config, proj *ProjectConfig) bool {
-	if proj.Quiet != nil {
-		return *proj.Quiet
+// legacyQuietMode returns the display mode set by the legacy quiet flag: an
+// explicit per-project quiet overrides; otherwise the global root quiet
+// applies. ok is false when neither sets it.
+func legacyQuietMode(cfg *Config, proj *ProjectConfig) (mode string, ok bool) {
+	quiet := cfg.Quiet
+	if proj != nil && proj.Quiet != nil {
+		quiet = proj.Quiet
 	}
-	if cfg.Quiet != nil {
-		return *cfg.Quiet
+	if quiet == nil {
+		return "", false
 	}
-	return false
+	if *quiet {
+		return DisplayModeQuiet, true
+	}
+	return DisplayModeFull, true
 }
 
 // EffectiveDisplay resolves the per-project [projects.display] override on top
@@ -904,8 +909,8 @@ func projectQuietEffective(cfg *Config, proj *ProjectConfig) bool {
 // Resolution order for mode (thinking/tool visibility):
 //  1. Explicit [projects.display].mode wins.
 //  2. Explicit [display].mode wins.
-//  3. Legacy quiet = true (without display.mode) → "quiet".
-//  4. Default → "full".
+//  3. Legacy quiet (without display.mode): true → "quiet", false → "full".
+//  4. Default → "quiet".
 //
 // Resolution order for thinking_messages / tool_messages:
 //  1. project-level [projects.display].<field> (highest precedence)
@@ -918,13 +923,13 @@ func EffectiveDisplay(cfg *Config, proj *ProjectConfig) (mode string, thinkingMe
 	}
 
 	// Resolve mode.
-	mode = DisplayModeFull
+	mode = DisplayModeQuiet
 	if projDisp != nil && projDisp.Mode != nil {
 		mode = *projDisp.Mode
 	} else if cfg.Display.Mode != nil {
 		mode = *cfg.Display.Mode
-	} else if projectQuietEffective(cfg, proj) {
-		mode = DisplayModeQuiet
+	} else if legacy, ok := legacyQuietMode(cfg, proj); ok {
+		mode = legacy
 	}
 
 	// Mode-derived defaults.
@@ -3052,22 +3057,15 @@ func GetGlobalSettings() map[string]any {
 	} else {
 		result["max_turn_time_mins"] = 0
 	}
-	// Display
-	if cfg.Display.ThinkingMessages != nil {
-		result["thinking_messages"] = *cfg.Display.ThinkingMessages
-	} else {
-		result["thinking_messages"] = true
-	}
+	// Display. Unset thinking/tool flags follow the display mode.
+	_, thinkingMessages, toolMessages, _, _, _, _, _ := EffectiveDisplay(cfg, &ProjectConfig{})
+	result["thinking_messages"] = thinkingMessages
 	if cfg.Display.ThinkingMaxLen != nil {
 		result["thinking_max_len"] = *cfg.Display.ThinkingMaxLen
 	} else {
 		result["thinking_max_len"] = 300
 	}
-	if cfg.Display.ToolMessages != nil {
-		result["tool_messages"] = *cfg.Display.ToolMessages
-	} else {
-		result["tool_messages"] = true
-	}
+	result["tool_messages"] = toolMessages
 	if cfg.Display.ToolMaxLen != nil {
 		result["tool_max_len"] = *cfg.Display.ToolMaxLen
 	} else {
