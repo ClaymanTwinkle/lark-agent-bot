@@ -440,6 +440,8 @@ func (env *cujEnv) activeSession(sessionKey string) *Session {
 // ===========================================================================
 
 func TestCUJ_B3_SwitchPreservesHistoryEndToEnd(t *testing.T) {
+	t.Run("AttachExternalSession", testCUJSwitchExternalSession)
+	t.Run("ExternalApprovalResolution", testCUJExternalApprovalResolution)
 	env := newCUJEnv(t)
 	key := "test:alice"
 
@@ -498,6 +500,72 @@ func TestCUJ_B3_SwitchPreservesHistoryEndToEnd(t *testing.T) {
 	if !foundUserMsg {
 		t.Fatalf("history after switch back is missing the original user message. Got: %+v", got)
 	}
+}
+
+type cujExternalAgent struct {
+	stubAgent
+	session *cujAgentSession
+}
+
+func (a *cujExternalAgent) ListSessions(context.Context) ([]AgentSessionInfo, error) {
+	return []AgentSessionInfo{{ID: "cuj-agent-session", Summary: "terminal task"}}, nil
+}
+
+func (a *cujExternalAgent) AttachSession(context.Context, string) (AgentSession, error) {
+	return a.session, nil
+}
+
+func externalCUJEnv(t *testing.T) (*cujEnv, *cujAgentSession) {
+	s := newCUJAgentSession()
+	p := &stubPlatformEngine{n: "test"}
+	e := NewEngine("test", &cujExternalAgent{session: s}, []Platform{p}, filepath.Join(t.TempDir(), "sessions.json"), LangEnglish)
+	stopAtCleanup(t, e)
+	return &cujEnv{t: t, engine: e, plat: p}, s
+}
+
+func testCUJSwitchExternalSession(t *testing.T) {
+	env, s := externalCUJEnv(t)
+	s.reply = "updated terminal result"
+	s.events <- Event{Type: EventTurnStarted}
+	env.userSends("alice", "/list")
+	env.waitFor("terminal task in list", 2*time.Second, func() bool { return env.sentContains("terminal task") })
+	env.userSends("alice", "/switch 1")
+	env.waitFor("live session attached", 2*time.Second, func() bool {
+		return env.sentContains("cuj-agent-se") && env.activeSession("test:alice").Busy()
+	})
+	// A supplement must reach the already-running session without an initial
+	// prompt or a second StartSession. Its reply is visible in the same chat.
+	env.userSends("alice", "/ps updated requirement")
+	env.waitFor("terminal result", 3*time.Second, func() bool { return env.sentContains("updated terminal result") })
+	env.userSends("alice", "/history")
+	env.waitFor("visible history includes external result", 2*time.Second, func() bool {
+		count := 0
+		for _, msg := range env.plat.getSent() {
+			if strings.Contains(msg, "updated terminal result") {
+				count++
+			}
+		}
+		return count >= 2
+	})
+	env.userSends("alice", "/new")
+	env.waitFor("detach", 2*time.Second, func() bool { return s.closed.Get() })
+}
+
+func testCUJExternalApprovalResolution(t *testing.T) {
+	env, s := externalCUJEnv(t)
+	resolved := make(chan struct{})
+	s.events <- Event{Type: EventTurnStarted}
+	s.events <- Event{Type: EventPermissionRequest, RequestID: "external-approval", ToolName: "Bash", ToolInput: "echo terminal approval", PermissionResolved: resolved}
+	env.userSends("alice", "/list")
+	env.waitFor("list", 2*time.Second, func() bool { return env.sentContains("terminal task") })
+	env.userSends("alice", "/switch 1")
+	env.waitFor("permission visible", 2*time.Second, func() bool { return env.sentContains("echo terminal approval") })
+	// The user answers in the terminal while the bot waits on the same request.
+	close(resolved)
+	s.events <- Event{Type: EventResult, Done: true, Content: "continued after terminal approval"}
+	env.waitFor("result after external approval", 2*time.Second, func() bool { return env.sentContains("continued after terminal approval") })
+	env.userSends("alice", "/history")
+	env.waitFor("history", 2*time.Second, func() bool { return strings.Contains(env.lastSent(), "continued after terminal approval") })
 }
 
 // ===========================================================================

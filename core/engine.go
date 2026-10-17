@@ -4456,7 +4456,7 @@ func (e *Engine) getOrCreateInteractiveStateWith(sessionKey string, p Platform, 
 	startElapsed := time.Since(startAt)
 	if err != nil {
 		// If resume/continue failed, try a fresh session as fallback.
-		if startSessionID != "" {
+		if startSessionID != "" && !errors.Is(err, ErrSessionResumeUnavailable) {
 			slog.Error("session resume failed, falling back to fresh session",
 				"session_key", sessionKey, "failed_session_id", startSessionID,
 				"error", err, "elapsed", startElapsed)
@@ -5527,6 +5527,11 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 			}
 
 		case EventPermissionRequest:
+			select {
+			case <-event.PermissionResolved:
+				continue
+			default:
+			}
 			isAskQuestion := event.ToolName == "AskUserQuestion" && len(event.Questions) > 0
 
 			state.mu.Lock()
@@ -5599,7 +5604,19 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 			}
 			stall.pause()
 
-			<-pending.Resolved
+			select {
+			case <-pending.Resolved:
+			case <-event.PermissionResolved:
+				state.mu.Lock()
+				if state.pending == pending {
+					state.pending = nil
+				}
+				state.mu.Unlock()
+				pending.resolve()
+			case <-e.ctx.Done():
+				pending.resolve()
+				return
+			}
 			slog.Info("permission resolved", "request_id", event.RequestID)
 
 			// The stream preview was frozen+detached when this permission
@@ -7287,6 +7304,14 @@ func (e *Engine) cmdSwitch(p Platform, msg *Message, args []string) {
 		e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgSwitchNoMatch), query))
 		return
 	}
+	var attached AgentSession
+	if attacher, ok := agent.(SessionAttacher); ok {
+		attached, err = attacher.AttachSession(e.ctx, matched.ID)
+		if err != nil {
+			e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgError, err))
+			return
+		}
+	}
 
 	slog.Info("cmdSwitch: cleaning up old session", "session_key", msg.SessionKey)
 	e.cleanupInteractiveState(interactiveKey)
@@ -7298,7 +7323,7 @@ func (e *Engine) cmdSwitch(p Platform, msg *Message, args []string) {
 	// original conversation; wiping it makes /history return empty after a
 	// /switch round-trip. When SwitchToAgentSession creates a fresh Session
 	// (no prior match), History is already nil, so preserving is a no-op.
-	_ = sessions.SwitchToAgentSession(msg.SessionKey, matched.ID, agent.Name(), matched.Summary)
+	session := sessions.SwitchToAgentSession(msg.SessionKey, matched.ID, agent.Name(), matched.Summary)
 
 	shortID := matched.ID
 	if len(shortID) > 12 {
@@ -7310,6 +7335,19 @@ func (e *Engine) cmdSwitch(p Platform, msg *Message, args []string) {
 	}
 	e.reply(p, msg.ReplyCtx,
 		e.i18n.Tf(MsgSwitchSuccess, displayName, shortID, matched.MessageCount))
+	if attached != nil {
+		state := &interactiveState{agentSession: attached, busySession: session, agent: agent, platform: p, replyCtx: msg.ReplyCtx}
+		e.interactiveMu.Lock()
+		// A foreground session may have raced with the command.
+		if _, exists := e.interactiveStates[interactiveKey]; exists || e.ctx.Err() != nil {
+			e.interactiveMu.Unlock()
+			_ = attached.Close()
+			return
+		}
+		e.interactiveStates[interactiveKey] = state
+		e.interactiveMu.Unlock()
+		e.resumeBetweenTurns(state, session, sessions, interactiveKey)
+	}
 }
 
 // matchSession resolves a user query to an agent session. Priority:
@@ -16343,7 +16381,7 @@ func (e *Engine) handleRelay(ctx context.Context, fromProject, sourceSessionKey,
 	if err != nil {
 		// Resume failed — fall back to a fresh session so the relay is not
 		// permanently broken by a corrupted/stale session ID.
-		if session.GetAgentSessionID() != "" {
+		if session.GetAgentSessionID() != "" && !errors.Is(err, ErrSessionResumeUnavailable) {
 			slog.Warn("relay: session resume failed, trying fresh session",
 				"relay_key", relaySessionKey, "error", err)
 			session.SetAgentSessionID("", agent.Name())

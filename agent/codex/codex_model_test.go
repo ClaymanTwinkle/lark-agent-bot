@@ -64,9 +64,9 @@ func TestNormalizeAppServerURL_StdIOIsExplicit(t *testing.T) {
 	}
 }
 
-func TestNormalizeAppServerURL_EmptyDefaultsToStdio(t *testing.T) {
-	if got := normalizeAppServerURL(""); got != "stdio://" {
-		t.Fatalf("normalizeAppServerURL(empty) = %q, want stdio://", got)
+func TestNormalizeAppServerURL_EmptyDefaultsToAuto(t *testing.T) {
+	if got := normalizeAppServerURL(""); got != "auto" {
+		t.Fatalf("normalizeAppServerURL(empty) = %q, want auto", got)
 	}
 }
 
