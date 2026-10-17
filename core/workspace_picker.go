@@ -182,6 +182,7 @@ func (e *Engine) bindTypedWorkspace(p Platform, msg *Message, content string) bo
 	}
 	if bound {
 		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsBindSuccess, content))
+		e.offerGroupWorkspace(p, msg)
 	}
 	return bound
 }
@@ -202,6 +203,7 @@ func (e *Engine) selectWorkspaceFromPicker(p Platform, msg *Message, args []stri
 		return
 	}
 	e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsBindSuccess, name))
+	e.offerGroupWorkspace(p, msg)
 }
 
 func (e *Engine) handleCardNavWithContext(action string, msg *Message) *Card {
@@ -221,7 +223,7 @@ func (e *Engine) handleCardNavWithContext(action string, msg *Message) *Card {
 	if e.effectiveDisabledCmds(msg.UserID)["workspace"] {
 		return errorCard(e.i18n.Tf(MsgCommandDisabled, "/workspace"))
 	}
-	page, notice := 1, ""
+	page, notice, offer := 1, "", ""
 	switch {
 	case prefix == "nav" && len(args) == 2 && args[1] == "bind":
 	case prefix == "nav" && len(args) == 3 && args[1] == "available":
@@ -231,7 +233,13 @@ func (e *Engine) handleCardNavWithContext(action string, msg *Message) *Card {
 		if err != nil {
 			return errorCard(e.workspaceSelectionError(err))
 		}
-		page, notice = selectedPage, e.i18n.Tf(MsgWsBindSuccess, name)
+		page, notice, offer = selectedPage, e.i18n.Tf(MsgWsBindSuccess, name), e.groupWorkspaceOffer(msg)
+	case prefix == "act" && len(args) == 2 && args[1] == "group":
+		workspace, err := e.applyWorkspaceToGroup(msg)
+		if err != nil {
+			return errorCard(e.groupWorkspaceError(err))
+		}
+		notice = e.i18n.Tf(MsgWsGroupApplied, workspace)
 	default:
 		return errorCard(e.i18n.T(MsgWsUsage))
 	}
@@ -240,7 +248,11 @@ func (e *Engine) handleCardNavWithContext(action string, msg *Message) *Card {
 		return errorCard(e.workspaceSelectionError(err))
 	}
 	if notice != "" {
-		card.Elements = append([]CardElement{CardMarkdown{Content: notice}}, card.Elements...)
+		head := NewCard().Markdown(notice)
+		if offer != "" {
+			e.appendGroupWorkspaceOffer(head, offer)
+		}
+		card.Elements = append(head.Build().Elements, card.Elements...)
 	}
 	return card
 }

@@ -419,7 +419,9 @@ type Message struct {
 	ChannelKey   string              // platform-provided channel identifier for workspace binding (optional)
 	// LegacyChannelKey is the platform-provided channel identifier used by an
 	// older workspace-binding scope. When both keys are set, multi-workspace
-	// routing atomically migrates the legacy binding to ChannelKey.
+	// routing atomically migrates the legacy binding to ChannelKey. It is the
+	// parent scope (e.g. a topic's chat) whose binding new sub-channels start
+	// from, which "/workspace group" sets.
 	LegacyChannelKey string
 	ReplyCtx         any    // platform-specific context needed for replying
 	FromVoice        bool   // true if message originated from voice transcription
