@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/ClaymanTwinkle/lark-agent-bot/core"
+	"github.com/gorilla/websocket"
 )
 
 type rpcResponseEnvelope struct {
@@ -170,6 +171,8 @@ type appServerSession struct {
 
 	cmd     *exec.Cmd
 	stdin   io.WriteCloser
+	ws      *websocket.Conn
+	shared  bool // the remote process is not owned by this client
 	procMu  sync.Mutex
 	writeMu sync.Mutex
 
@@ -180,16 +183,21 @@ type appServerSession struct {
 
 	approvalsMu      sync.Mutex
 	pendingApprovals map[string]chan core.PermissionResult
+	approvalResolved map[string]chan struct{}
 
 	threadID atomic.Value
 	alive    atomic.Bool
 
-	closeOnce sync.Once
-	wg        sync.WaitGroup
+	closeOnce    sync.Once
+	eventMu      sync.RWMutex
+	eventsClosed bool
+	wg           sync.WaitGroup
 
 	stateMu      sync.Mutex
 	pendingMsgs  []string
 	currentTurn  string
+	turnRevision uint64
+	sendMu       sync.Mutex
 	preambleSent bool
 
 	runtimeMu sync.RWMutex
@@ -237,6 +245,7 @@ func newAppServerSession(ctx context.Context, bin, url, workDir, model, effort, 
 		preambleSent:     resumeID != "" && resumeID != core.ContinueSession,
 	}
 	s.developerInstructions = strings.TrimSpace(developerInstructions)
+	s.url = normalizeAppServerURL(url)
 	s.alive.Store(true)
 
 	if err := s.connect(); err != nil {
@@ -249,6 +258,12 @@ func newAppServerSession(ctx context.Context, bin, url, workDir, model, effort, 
 		return nil, err
 	}
 
+	if s.url == "auto" {
+		if err := s.requireLoadedThread(resumeID); err != nil {
+			_ = s.Close()
+			return nil, err
+		}
+	}
 	if err := s.ensureThread(resumeID); err != nil {
 		_ = s.Close()
 		return nil, err
@@ -275,6 +290,9 @@ func appServerListenURL(url string) string {
 }
 
 func (s *appServerSession) connect() error {
+	if s.url != "stdio://" {
+		return s.connectShared()
+	}
 	args := []string{"app-server"}
 	// With url "stdio://" the session speaks JSON-RPC over the stdio pipes.
 	// Pass no --listen flag in that case: on codex 0.152+ a --listen value
@@ -378,20 +396,31 @@ func (s *appServerSession) ensureThread(resumeID string) error {
 		params := s.threadRequestParams()
 		params["threadId"] = resumeID
 		params["persistExtendedHistory"] = true
+		if s.shared {
+			// Rejoin without replacing the CLI's configuration or instructions.
+			params = map[string]any{"threadId": resumeID, "excludeTurns": true}
+		}
+		// Resume can publish live notifications before its response arrives.
+		s.threadID.Store(resumeID)
 
 		var resp threadResumeResponse
-		if err := s.request("thread/resume", params, &resp); err != nil {
+		if err := s.resumeThread(params, &resp); err != nil {
 			return err
 		}
 		if resp.Thread.ID == "" {
 			return fmt.Errorf("codex app-server resume returned empty thread id")
 		}
-		if err := s.verifyApprovalsReviewer(resp.ApprovalsReviewer); err != nil {
-			return err
+		if !s.shared {
+			if err := s.verifyApprovalsReviewer(resp.ApprovalsReviewer); err != nil {
+				return err
+			}
 		}
 		s.applyThreadRuntimeState(resp.Cwd, resp.Model, resp.ReasoningEffort)
 		s.threadID.Store(resp.Thread.ID)
 		slog.Info("codex app-server thread resumed", "thread_id", resp.Thread.ID)
+		if s.shared {
+			return s.refreshSharedTurn()
+		}
 		return nil
 	}
 
@@ -409,6 +438,33 @@ func (s *appServerSession) ensureThread(resumeID string) error {
 	s.threadID.Store(resp.Thread.ID)
 	slog.Info("codex app-server thread started", "thread_id", resp.Thread.ID)
 	return nil
+}
+
+func (s *appServerSession) resumeThread(params map[string]any, resp *threadResumeResponse) error {
+	for attempt := 0; ; attempt++ {
+		err := s.request("thread/resume", params, resp)
+		// Immediately after the first turn starts, Codex can publish the
+		// loaded ID before flushing its rollout header. Minimal shared resume
+		// is idempotent; only retry this explicit, transient metadata failure.
+		if err == nil || !s.shared || attempt >= 10 || !isEmptyRolloutError(err) {
+			return err
+		}
+		slog.Debug("codex shared resume waiting for rollout header", "attempt", attempt+1)
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-s.ctx.Done():
+			timer.Stop()
+			return s.ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+// isEmptyRolloutError reports Codex's error for a rollout whose header has
+// not been flushed yet.
+func isEmptyRolloutError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "rollout") && strings.Contains(msg, " is empty")
 }
 
 func (s *appServerSession) threadRequestParams() map[string]any {
@@ -458,7 +514,7 @@ func (s *appServerSession) applyThreadRuntimeState(workDir, model string, effort
 	defer s.runtimeMu.Unlock()
 	// A configured work dir is sent as the thread's cwd and stays
 	// authoritative; adopt the thread's cwd only when none was configured.
-	if dir := strings.TrimSpace(workDir); dir != "" && s.workDir == "" {
+	if dir := strings.TrimSpace(workDir); dir != "" && (s.workDir == "" || s.shared) {
 		s.workDir = dir
 	}
 	if m := strings.TrimSpace(model); m != "" {
@@ -467,7 +523,7 @@ func (s *appServerSession) applyThreadRuntimeState(workDir, model string, effort
 	// A resumed thread reports the effort it last ran with. When the user has
 	// chosen one, keep that: it is what turn/start sends, so changing the
 	// effort takes effect on the same conversation.
-	if s.requestedEffort != "" {
+	if s.requestedEffort != "" && !s.shared {
 		s.effort = s.requestedEffort
 		return
 	}
@@ -523,6 +579,8 @@ func (s *appServerSession) storeContextUsage(usage *core.ContextUsage) {
 }
 
 func (s *appServerSession) Send(prompt string, messageID string, images []core.ImageAttachment, files []core.FileAttachment) error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
 	if !s.alive.Load() {
 		return fmt.Errorf("session is closed")
 	}
@@ -566,18 +624,36 @@ func (s *appServerSession) Send(prompt string, messageID string, images []core.I
 		"threadId": threadID,
 		"input":    input,
 	}
-	params["approvalsReviewer"] = modeSettings(s.mode).reviewer
-	if model := s.GetModel(); model != "" {
-		params["model"] = model
+	if s.shared {
+		if err := s.refreshSharedTurn(); err != nil {
+			return err
+		}
 	}
-	if dir := s.GetWorkDir(); dir != "" {
-		params["cwd"] = dir
+	s.stateMu.Lock()
+	activeTurn, revision := s.currentTurn, s.turnRevision
+	s.stateMu.Unlock()
+	if s.shared && activeTurn != "" {
+		params["expectedTurnId"] = activeTurn
+		if err := s.request("turn/steer", params, nil); err != nil {
+			// Do not replay an ambiguous send: the server may have accepted it.
+			return fmt.Errorf("codex app-server turn/steer: %w", err)
+		}
+		return nil
 	}
-	if effort := s.GetReasoningEffort(); effort != "" {
-		params["effort"] = effort
-	}
-	if approval, _ := appServerModeSettings(s.mode); approval != "" {
-		params["approvalPolicy"] = approval
+	if !s.shared {
+		params["approvalsReviewer"] = modeSettings(s.mode).reviewer
+		if model := s.GetModel(); model != "" {
+			params["model"] = model
+		}
+		if dir := s.GetWorkDir(); dir != "" {
+			params["cwd"] = dir
+		}
+		if effort := s.GetReasoningEffort(); effort != "" {
+			params["effort"] = effort
+		}
+		if approval, _ := appServerModeSettings(s.mode); approval != "" {
+			params["approvalPolicy"] = approval
+		}
 	}
 
 	var resp turnStartResponse
@@ -589,8 +665,10 @@ func (s *appServerSession) Send(prompt string, messageID string, images []core.I
 	}
 
 	s.stateMu.Lock()
-	s.currentTurn = resp.Turn.ID
-	s.pendingMsgs = s.pendingMsgs[:0]
+	if s.turnRevision == revision {
+		s.currentTurn = resp.Turn.ID
+		s.pendingMsgs = s.pendingMsgs[:0]
+	}
 	s.stateMu.Unlock()
 
 	return nil
@@ -639,6 +717,11 @@ func (s *appServerSession) RespondPermission(requestID string, result core.Permi
 }
 
 func (s *appServerSession) handleServerRequest(probe map[string]json.RawMessage) {
+	// On a shared connection the CLI answers requests for other threads. A
+	// private process has no other client, so dropping one would hang it.
+	if s.shared && !s.acceptsThread(probe["params"]) {
+		return
+	}
 	rawID := probe["id"]
 	var method string
 	if err := json.Unmarshal(probe["method"], &method); err != nil {
@@ -687,28 +770,29 @@ func (s *appServerSession) handleApprovalRequest(rawID json.RawMessage, method s
 		}
 	}
 
-	ch := make(chan core.PermissionResult, 1)
-	s.approvalsMu.Lock()
-	s.pendingApprovals[requestID] = ch
-	s.approvalsMu.Unlock()
+	ch, resolved := s.registerApproval(requestID)
 
 	s.flushPendingAsThinking()
 	s.emit(core.Event{
-		Type:         core.EventPermissionRequest,
-		RequestID:    requestID,
-		ToolName:     toolName,
-		ToolInput:    toolInput,
-		ToolInputRaw: params,
+		Type:               core.EventPermissionRequest,
+		RequestID:          requestID,
+		PermissionResolved: resolved,
+		ToolName:           toolName,
+		ToolInput:          toolInput,
+		ToolInputRaw:       params,
 	})
 
 	go func() {
+		defer s.resolveApproval(requestID)
 		timer := time.NewTimer(5 * time.Minute)
 		defer timer.Stop()
 		var result core.PermissionResult
 		select {
 		case result = <-ch:
+		case <-resolved:
+			return
 		case <-s.ctx.Done():
-			result = core.PermissionResult{Behavior: "deny"}
+			return
 		case <-timer.C:
 			result = core.PermissionResult{Behavior: "deny"}
 		}
@@ -734,28 +818,29 @@ func (s *appServerSession) handlePermissionsApproval(rawID json.RawMessage, para
 		return
 	}
 
-	ch := make(chan core.PermissionResult, 1)
-	s.approvalsMu.Lock()
-	s.pendingApprovals[requestID] = ch
-	s.approvalsMu.Unlock()
+	ch, resolved := s.registerApproval(requestID)
 
 	s.flushPendingAsThinking()
 	s.emit(core.Event{
-		Type:         core.EventPermissionRequest,
-		RequestID:    requestID,
-		ToolName:     "Permissions",
-		ToolInput:    appServerJSON(params),
-		ToolInputRaw: params,
+		Type:               core.EventPermissionRequest,
+		RequestID:          requestID,
+		PermissionResolved: resolved,
+		ToolName:           "Permissions",
+		ToolInput:          appServerJSON(params),
+		ToolInputRaw:       params,
 	})
 
 	go func() {
+		defer s.resolveApproval(requestID)
 		timer := time.NewTimer(5 * time.Minute)
 		defer timer.Stop()
 		var result core.PermissionResult
 		select {
 		case result = <-ch:
+		case <-resolved:
+			return
 		case <-s.ctx.Done():
-			result = core.PermissionResult{Behavior: "deny"}
+			return
 		case <-timer.C:
 			result = core.PermissionResult{Behavior: "deny"}
 		}
@@ -802,29 +887,30 @@ func (s *appServerSession) handleRequestUserInput(rawID json.RawMessage, paramsR
 	}
 
 	rawInput := appServerRequestUserInputRawInput(params)
-	ch := make(chan core.PermissionResult, 1)
-	s.approvalsMu.Lock()
-	s.pendingApprovals[requestID] = ch
-	s.approvalsMu.Unlock()
+	ch, resolved := s.registerApproval(requestID)
 
 	s.flushPendingAsThinking()
 	s.emit(core.Event{
-		Type:         core.EventPermissionRequest,
-		RequestID:    requestID,
-		ToolName:     "AskUserQuestion",
-		ToolInput:    appServerJSON(rawInput),
-		ToolInputRaw: rawInput,
-		Questions:    questions,
+		Type:               core.EventPermissionRequest,
+		RequestID:          requestID,
+		PermissionResolved: resolved,
+		ToolName:           "AskUserQuestion",
+		ToolInput:          appServerJSON(rawInput),
+		ToolInputRaw:       rawInput,
+		Questions:          questions,
 	})
 
 	go func() {
+		defer s.resolveApproval(requestID)
 		timer := time.NewTimer(5 * time.Minute)
 		defer timer.Stop()
 		var result core.PermissionResult
 		select {
 		case result = <-ch:
+		case <-resolved:
+			return
 		case <-s.ctx.Done():
-			result = core.PermissionResult{Behavior: "deny"}
+			return
 		case <-timer.C:
 			result = core.PermissionResult{Behavior: "deny"}
 		}
@@ -1023,18 +1109,7 @@ func (s *appServerSession) Alive() bool {
 }
 
 func (s *appServerSession) Close() error {
-	s.alive.Store(false)
-	s.cancel()
-
-	s.procMu.Lock()
-	if s.stdin != nil {
-		_ = s.stdin.Close()
-		s.stdin = nil
-	}
-	if s.cmd != nil && s.cmd.Process != nil {
-		_ = s.cmd.Process.Kill()
-	}
-	s.procMu.Unlock()
+	s.abortTransport()
 
 	done := make(chan struct{})
 	go func() {
@@ -1047,9 +1122,7 @@ func (s *appServerSession) Close() error {
 	case <-time.After(2 * time.Second):
 	}
 
-	s.closeOnce.Do(func() {
-		close(s.events)
-	})
+	s.closeEvents()
 	return nil
 }
 
@@ -1188,15 +1261,22 @@ func (s *appServerSession) handleResponse(resp rpcResponseEnvelope) {
 }
 
 func (s *appServerSession) handleNotification(method string, paramsRaw json.RawMessage) {
+	if !s.acceptsThread(paramsRaw) {
+		return
+	}
 	switch method {
 	case "turn/started":
 		var notif turnNotification
 		if err := json.Unmarshal(paramsRaw, &notif); err == nil {
 			s.stateMu.Lock()
 			s.currentTurn = notif.Turn.ID
+			s.turnRevision++
 			s.pendingMsgs = s.pendingMsgs[:0]
 			s.stateMu.Unlock()
 			s.storeContextUsage(nil)
+			if s.shared {
+				s.emit(core.Event{Type: core.EventTurnStarted, SessionID: s.CurrentSessionID()})
+			}
 		}
 
 	case "item/started":
@@ -1214,6 +1294,16 @@ func (s *appServerSession) handleNotification(method string, paramsRaw json.RawM
 	case "turn/completed":
 		var notif turnNotification
 		if err := json.Unmarshal(paramsRaw, &notif); err == nil {
+			s.stateMu.Lock()
+			s.turnRevision++
+			if s.currentTurn != "" && s.currentTurn != notif.Turn.ID {
+				s.stateMu.Unlock()
+				return
+			}
+			if s.shared {
+				s.currentTurn = notif.Turn.ID
+			}
+			s.stateMu.Unlock()
 			if strings.EqualFold(strings.TrimSpace(notif.Turn.Status), "failed") || notif.Turn.Error != nil {
 				errMsg := ""
 				if notif.Turn.Error != nil {
@@ -1235,9 +1325,17 @@ func (s *appServerSession) handleNotification(method string, paramsRaw json.RawM
 				Type string `json:"type"`
 			} `json:"status"`
 		}
-		if err := json.Unmarshal(paramsRaw, &notif); err == nil && notif.Status.Type == "idle" {
+		if err := json.Unmarshal(paramsRaw, &notif); err == nil && notif.Status.Type == "idle" && !s.shared {
 			// In codex 0.125+, thread going idle signals turn completion.
 			s.completeTurn()
+		}
+
+	case "serverRequest/resolved":
+		var notif struct {
+			RequestID json.RawMessage `json:"requestId"`
+		}
+		if json.Unmarshal(paramsRaw, &notif) == nil {
+			s.resolveApproval(string(notif.RequestID))
 		}
 
 	case "account/rateLimits/updated":
@@ -1670,6 +1768,11 @@ func (s *appServerSession) flushPendingAsText() {
 }
 
 func (s *appServerSession) emit(event core.Event) {
+	s.eventMu.RLock()
+	defer s.eventMu.RUnlock()
+	if s.eventsClosed {
+		return
+	}
 	select {
 	case s.events <- event:
 	default:
@@ -1682,6 +1785,17 @@ func (s *appServerSession) emitError(err error) {
 		return
 	}
 	s.emit(core.Event{Type: core.EventError, Error: err})
+}
+
+func (s *appServerSession) closeEvents() {
+	s.closeOnce.Do(func() {
+		s.eventMu.Lock()
+		defer s.eventMu.Unlock()
+		s.eventsClosed = true
+		if s.events != nil {
+			close(s.events)
+		}
+	})
 }
 
 func (s *appServerSession) rejectPending(err error) {
@@ -1804,6 +1918,9 @@ func (s *appServerSession) abortTransport() {
 	}
 
 	s.procMu.Lock()
+	if s.ws != nil {
+		_ = s.ws.Close()
+	}
 	if s.stdin != nil {
 		_ = s.stdin.Close()
 		s.stdin = nil
@@ -1833,13 +1950,20 @@ func (s *appServerSession) writeJSON(v any) error {
 
 	s.procMu.Lock()
 	stdin := s.stdin
+	ws := s.ws
 	s.procMu.Unlock()
-	if stdin == nil {
+	if stdin == nil && ws == nil {
 		return fmt.Errorf("codex app-server connection is closed")
 	}
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	if ws != nil {
+		if err := ws.WriteMessage(websocket.TextMessage, b); err != nil {
+			return fmt.Errorf("codex app-server write: %w", err)
+		}
+		return nil
+	}
 	if _, err := stdin.Write(append(b, '\n')); err != nil {
 		return fmt.Errorf("codex app-server write: %w", err)
 	}

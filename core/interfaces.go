@@ -354,6 +354,16 @@ type Agent interface {
 	Stop() error
 }
 
+// ErrSessionResumeUnavailable keeps a selected session bound when its live
+// owner cannot be reached. Starting a fresh conversation would lose context.
+var ErrSessionResumeUnavailable = errors.New("selected session is currently unavailable")
+
+// SessionAttacher subscribes to an existing session without sending a prompt.
+// A nil session means normal lazy StartSession should be used.
+type SessionAttacher interface {
+	AttachSession(ctx context.Context, sessionID string) (AgentSession, error)
+}
+
 // AgentSession represents a running interactive agent session with a persistent process.
 type AgentSession interface {
 	// Send sends a user message (with optional images and files) to the running
@@ -371,7 +381,7 @@ type AgentSession interface {
 	CurrentSessionID() string
 	// Alive returns true if the underlying process is still running.
 	Alive() bool
-	// Close terminates the session and its underlying process.
+	// Close releases this client; it terminates only processes owned by it.
 	Close() error
 }
 

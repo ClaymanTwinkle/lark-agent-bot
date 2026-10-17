@@ -1319,6 +1319,26 @@ app_secret = "your-feishu-app-secret"
 # [projects.agent.options]
 # work_dir = "/path/to/project"
 # backend = "app_server"  # Default / 默认
+# app_server_url = "auto" # Default: attach to an existing CLI daemon thread; otherwise use a private stdio process.
+#                        # 默认：优先连接 CLI 共享后台已加载的会话，否则使用独立 stdio 进程。
+# Requires a packaged CLI with shared-daemon support (tested with Codex 0.163.0).
+# 需要支持共享后台的完整 Codex CLI 安装包（已用 0.163.0 验证）。
+# codex_home = "/path/to/.codex" # Must match the CLI's CODEX_HOME to discover its sessions and daemon.
+#                              # 与终端 CODEX_HOME 一致，才能发现其会话和共享后台。
+# /switch attaches immediately and forwards subsequent output; /ps <text> steers a running turn.
+# /switch 立即接入并转发后续输出；/ps <内容> 为正在执行的任务追加指令。
+# Shared sessions retain the CLI's model, permissions, instructions and environment.
+# Bot provider/env/prompt overrides apply to private sessions, not attached CLI sessions.
+# 接入的会话保留 CLI 的模型、权限、指令和环境；bot 的 provider/env/prompt 配置用于独立会话。
+# Closing/switching the bot connection does not stop the CLI task. CLI --no-daemon sessions
+# cannot be attached while their owning process is alive.
+# bot 断开或切换不会停止终端任务；以 --no-daemon 启动的会话在原进程退出前无法接入。
+# To force the old private-process behavior, set app_server_url = "stdio://".
+# To connect to an existing endpoint explicitly, use "unix://", "unix:///path/to/socket",
+# "ws://127.0.0.1:4500" or "wss://host/path". Explicit connection failures never fall back.
+# 使用 "stdio://" 强制独立进程；unix/ws/wss 地址连接已有服务，连接失败会报错。
+# New bot conversations still use a private process in auto mode; auto does not start a daemon.
+# auto 模式下 bot 新建会话仍使用独立进程，不会主动启动共享后台。
 # mode = "default"  # "default" | "auto-review" | "read-only" | "full-access"
 #
 # Mode options / 模式说明:

@@ -13,6 +13,90 @@ import (
 	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
+// Opt-in test against a disposable, already-started real Codex daemon. It
+// creates its own thread and runs two text-only turns; never pass the
+// user's production CODEX_HOME here. The caller owns daemon start/stop.
+func TestIntegration_SharedDaemonAttach(t *testing.T) {
+	home := os.Getenv("LARK_CODEX_SHARED_SMOKE_HOME")
+	if home == "" {
+		t.Skip("disposable daemon smoke test not requested")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
+	defer cancel()
+	workDir := filepath.Join(home, "smoke-work")
+	if err := os.MkdirAll(workDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	owner, err := newAppServerSession(ctx, "", "unix://", workDir, "", "", "read-only", "", "", "", nil, home, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	if err := owner.Send("This is a disposable connection test. Write a careful 600-word explanation of why prime numbers never end. Do not use tools or perform other tasks.", "", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	a := &Agent{backend: "app_server", codexHome: home, workDir: owner.GetWorkDir(), mode: "default", cmd: "must-not-start"}
+	attached, err := a.AttachSession(ctx, owner.CurrentSessionID())
+	if err != nil || attached == nil {
+		t.Fatalf("attach: %v", err)
+	}
+	bot := attached.(*appServerSession)
+	defer bot.Close()
+	bot.stateMu.Lock()
+	active := bot.currentTurn
+	bot.stateMu.Unlock()
+	if active == "" {
+		t.Fatal("owner finished before attach; smoke test inconclusive")
+	}
+	if err := bot.Send("The connection test has succeeded. Replace your final reply with exactly BOT_SHARED_ATTACH_OK. Do not use tools.", "", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	for name, s := range map[string]*appServerSession{"owner": owner, "bot": bot} {
+		if got := sharedSmokeResult(t, ctx, s); !strings.Contains(got, "BOT_SHARED_ATTACH_OK") {
+			t.Fatalf("%s missing steered reply: %s", name, got)
+		}
+	}
+	t.Log("both clients received the steered result from the same active turn")
+	if err := bot.Send("Write a 400-word explanation of prime numbers, ending with exactly OWNER_SURVIVED_DETACH. Do not use tools or do other work.", "", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := bot.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := sharedSmokeResult(t, ctx, owner); !strings.Contains(got, "OWNER_SURVIVED_DETACH") {
+		t.Fatalf("owner lost its task: %s", got)
+	}
+	t.Log("bot started the next turn; owner completed it after bot disconnected")
+}
+
+func sharedSmokeResult(t *testing.T, ctx context.Context, s *appServerSession) string {
+	t.Helper()
+	var result strings.Builder
+	for {
+		select {
+		case ev, ok := <-s.Events():
+			if !ok {
+				t.Fatal("connection closed before completion")
+			}
+			if ev.Type == core.EventError {
+				t.Fatal(ev.Error)
+			}
+			if ev.Type == core.EventPermissionRequest {
+				_ = s.RespondPermission(ev.RequestID, core.PermissionResult{Behavior: "deny"})
+				t.Fatal("unexpected permission request")
+			}
+			if ev.Type == core.EventText {
+				result.WriteString(ev.Content)
+			}
+			if ev.Type == core.EventResult {
+				return result.String() + ev.Content
+			}
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
+}
+
 // Opt-in local account smoke test. Any unexpected permission request is denied.
 func TestIntegration_AppServerResumeAndGo(t *testing.T) {
 	workDir, threadID := os.Getenv("LARK_CODEX_SMOKE_DIR"), os.Getenv("LARK_CODEX_SMOKE_THREAD")

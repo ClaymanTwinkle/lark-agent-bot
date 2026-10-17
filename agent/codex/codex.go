@@ -129,13 +129,12 @@ func normalizeBackend(raw string) string {
 func normalizeAppServerURL(raw string) string {
 	url := strings.TrimSpace(raw)
 	if url == "" {
-		// Default to the stdio transport: lark-agent-bot's app_server backend
-		// speaks JSON-RPC over the stdio pipes, and on codex 0.152+ a ws://
-		// --listen value leaves stdio unresponsive (see cc-connect#1781). Users who
-		// need a WebSocket listener can still set app_server_url explicitly.
-		return "stdio://"
+		return "auto"
 	}
-	if strings.EqualFold(url, "stdio") {
+	if strings.EqualFold(url, "auto") {
+		return "auto"
+	}
+	if strings.EqualFold(url, "stdio") || strings.EqualFold(url, "stdio://") {
 		return "stdio://"
 	}
 	return url
@@ -522,12 +521,17 @@ func developerInstructions(toolInstructions, platformPrompt string) string {
 }
 
 func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentSession, error) {
+	// Rejoin the CLI's live thread before resolving a child executable or
+	// changing provider files. A shared daemon keeps its own environment.
+	if attached, err := a.AttachSession(ctx, sessionID); attached != nil || err != nil {
+		return attached, err
+	}
 	a.mu.Lock()
 	mode := a.mode
 	model := a.model
 	reasoningEffort := a.reasoningEffort
 	backend := normalizeBackend(a.backend)
-	appServerURL := a.appServerURL
+	appServerURL := normalizeAppServerURL(a.appServerURL)
 	codexHome := a.codexHome
 	systemPrompt := a.systemPrompt
 	appendPrompt := a.appendPrompt
@@ -551,6 +555,12 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 	}
 	provName, provAPIKey, provWireAPI, provHeaders := a.activeProviderCodexConfig()
 	a.mu.Unlock()
+	if appServerURL == "auto" {
+		appServerURL = "stdio://"
+	}
+	if backend == "app_server" && appServerURL != "stdio://" {
+		return newAppServerSession(ctx, "", appServerURL, workDir, model, reasoningEffort, mode, sessionID, "", "", nil, codexHome, systemPrompt, appendPrompt, toolInstructions)
+	}
 
 	cliBin, fromDesktop, err := resolveCodexBin(cliBin)
 	if err != nil {
@@ -576,7 +586,14 @@ func (a *Agent) StartSession(ctx context.Context, sessionID string) (core.AgentS
 	}
 
 	if backend == "app_server" {
-		return newAppServerSession(ctx, cliBin, appServerURL, workDir, model, reasoningEffort, mode, sessionID, baseURL, provName, extraEnv, codexHome, systemPrompt, appendPrompt, toolInstructions)
+		s, err := newAppServerSession(ctx, cliBin, appServerURL, workDir, model, reasoningEffort, mode, sessionID, baseURL, provName, extraEnv, codexHome, systemPrompt, appendPrompt, toolInstructions)
+		if err != nil {
+			if strings.Contains(err.Error(), "active writer") {
+				return nil, fmt.Errorf("%w: %v", core.ErrSessionResumeUnavailable, err)
+			}
+			return nil, err
+		}
+		return s, nil
 	}
 	if codexHome != "" {
 		extraEnv = append(extraEnv, "CODEX_HOME="+codexHome)

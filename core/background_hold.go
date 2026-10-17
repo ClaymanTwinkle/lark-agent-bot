@@ -254,7 +254,7 @@ func isAgentActivity(ev Event) bool {
 	switch ev.Type {
 	case EventText, EventThinking:
 		return ev.Content != ""
-	case EventToolUse, EventToolResult, EventPermissionRequest, EventRetry, EventResult:
+	case EventTurnStarted, EventToolUse, EventToolResult, EventPermissionRequest, EventRetry, EventResult:
 		return true
 	}
 	return false
