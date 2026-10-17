@@ -274,8 +274,12 @@ func TestTimerScheduler_FiresOnTime(t *testing.T) {
 		t.Error("timer not registered in sched.timers")
 	}
 
-	// Wait for fire (the job will fail because engine is bare, but that's OK)
-	time.Sleep(300 * time.Millisecond)
+	// Wait for fire (the job will fail because engine is bare, but that's OK).
+	// It runs on the timer's goroutine, so read it under the store lock.
+	waitUntil(t, "the job is marked fired", func() bool {
+		got, _ := timerJobSnapshot(store, "fire1")
+		return got.Fired
+	})
 
 	// Timer entry should be cleaned up
 	sched.mu.RLock()
@@ -283,15 +287,6 @@ func TestTimerScheduler_FiresOnTime(t *testing.T) {
 	sched.mu.RUnlock()
 	if has {
 		t.Error("timer entry not cleaned up after fire")
-	}
-
-	// Job should be marked fired
-	got := store.Get("fire1")
-	if got == nil {
-		t.Fatal("job not found after fire")
-	}
-	if !got.Fired {
-		t.Error("job not marked as fired")
 	}
 }
 
@@ -367,15 +362,10 @@ func TestTimerScheduler_Recovery(t *testing.T) {
 	defer sched.Stop()
 
 	// The job should fire (within grace period)
-	time.Sleep(500 * time.Millisecond)
-
-	got := store.Get("recover1")
-	if got == nil {
-		t.Fatal("job not found after recovery")
-	}
-	if !got.Fired {
-		t.Error("recovered job not fired")
-	}
+	waitUntil(t, "the recovered job is marked fired", func() bool {
+		got, _ := timerJobSnapshot(store, "recover1")
+		return got.Fired
+	})
 }
 
 func TestTimerScheduler_StaleJobSkipped(t *testing.T) {
