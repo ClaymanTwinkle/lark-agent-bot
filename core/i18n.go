@@ -610,6 +610,9 @@ const (
 	MsgConfigWorkspaceConfirmButton   MsgKey = "config_workspace_confirm_button"
 	MsgConfigWorkspacePickDir         MsgKey = "config_workspace_pick_dir"
 	MsgConfigWorkspacePickPlaceholder MsgKey = "config_workspace_pick_placeholder"
+	MsgConfigWorkspaceParentDir       MsgKey = "config_workspace_parent_dir"
+	MsgConfigWorkspaceSubdirPick      MsgKey = "config_workspace_subdir_pick"
+	MsgConfigWorkspaceSubdirsCapped   MsgKey = "config_workspace_subdirs_capped"
 	MsgConfigWorkspaceSaved           MsgKey = "config_workspace_saved"
 	MsgConfigWorkspaceTextConfirm     MsgKey = "config_workspace_text_confirm"
 	MsgConfigWorkspaceUsage           MsgKey = "config_workspace_usage"
@@ -4027,6 +4030,27 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "選擇專案",
 		LangJapanese:           "プロジェクトを選択",
 		LangSpanish:            "Elige un proyecto",
+	},
+	MsgConfigWorkspaceParentDir: {
+		LangEnglish:            "Parent directory",
+		LangChinese:            "上一级目录",
+		LangTraditionalChinese: "上一層目錄",
+		LangJapanese:           "親ディレクトリ",
+		LangSpanish:            "Directorio superior",
+	},
+	MsgConfigWorkspaceSubdirPick: {
+		LangEnglish:            "Use a subdirectory as the root",
+		LangChinese:            "改用其中一个子目录做根目录",
+		LangTraditionalChinese: "改用其中一個子目錄做根目錄",
+		LangJapanese:           "サブディレクトリをルートにする",
+		LangSpanish:            "Usar un subdirectorio como raíz",
+	},
+	MsgConfigWorkspaceSubdirsCapped: {
+		LangEnglish:            "Only the first %d subdirectories are listed.",
+		LangChinese:            "只列出了前 %d 个子目录。",
+		LangTraditionalChinese: "只列出了前 %d 個子目錄。",
+		LangJapanese:           "最初の %d 個のサブディレクトリだけを表示しています。",
+		LangSpanish:            "Solo se muestran los primeros %d subdirectorios.",
 	},
 	MsgConfigWorkspaceSaved: {
 		LangEnglish:            "✅ Workspace mode is saved to the config and takes effect after the restart.",

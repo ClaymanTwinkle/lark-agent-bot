@@ -59,12 +59,24 @@ func (e *Engine) SwitchWorkspaceMode(multi bool, dir string) error {
 	return nil
 }
 
+// SetSavedBaseDir sets the base_dir a single-workspace config kept from
+// multi-workspace mode. Switching back offers it first.
+func (e *Engine) SetSavedBaseDir(dir string) {
+	e.savedBaseDir = dir
+}
+
 // workspaceModeDefaultDir is the directory the switch offers: for
-// multi-workspace mode the parent of the current working directory, for
-// single-workspace mode the project the viewer's chat is bound to. It is ""
-// when there is none.
+// multi-workspace mode the current or saved base_dir, else the parent of the
+// current working directory; for single-workspace mode the project the
+// viewer's chat is bound to. It is "" when there is none.
 func (e *Engine) workspaceModeDefaultDir(multi bool, viewer *Message) string {
 	if multi {
+		if e.multiWorkspace {
+			return e.baseDir
+		}
+		if info, err := os.Stat(e.savedBaseDir); e.savedBaseDir != "" && err == nil && info.IsDir() {
+			return e.savedBaseDir
+		}
 		wd, ok := e.agent.(interface{ GetWorkDir() string })
 		if !ok {
 			return ""
@@ -127,7 +139,8 @@ func (e *Engine) renderWorkspaceModeRow(cb *CardBuilder) {
 // renderWorkspaceModeConfirm is the card for "nav:/config workspace
 // multi|single [b64 dir]": what the switch does, with confirm and cancel.
 // Switching to single-workspace mode without a directory offers the
-// projects under base_dir.
+// projects under base_dir; switching to multi-workspace mode offers the
+// directories around the project root.
 func (e *Engine) renderWorkspaceModeConfirm(args []string, viewer *Message) *Card {
 	cb := NewCard().Title(e.i18n.T(MsgCardTitleConfig), "grey")
 	cancel := DefaultBtn(e.i18n.T(MsgConfigCancel), "nav:/config project")
@@ -141,7 +154,11 @@ func (e *Engine) renderWorkspaceModeConfirm(args []string, viewer *Message) *Car
 	} else {
 		dir = e.workspaceModeDefaultDir(multi, viewer)
 	}
-	if dir == "" && !multi && e.multiWorkspace {
+	if multi {
+		return e.renderWorkspaceRootConfirm(cb, dir, cancel)
+	}
+	otherDir := e.i18n.Tf(MsgConfigWorkspaceOtherDir, "single")
+	if dir == "" && e.multiWorkspace {
 		names, err := e.availableWorkspaces()
 		if err == nil && len(names) > 0 {
 			options := make([]CardSelectOption, 0, len(names))
@@ -151,23 +168,64 @@ func (e *Engine) renderWorkspaceModeConfirm(args []string, viewer *Message) *Car
 			}
 			return cb.Markdown(e.i18n.T(MsgConfigWorkspacePickDir)).
 				Select(e.i18n.T(MsgConfigWorkspacePickPlaceholder), options, "").
-				Note(e.i18n.Tf(MsgConfigWorkspaceOtherDir, "single")).
+				Note(otherDir).
 				Buttons(cancel).Build()
 		}
 	}
-	modeWord := "single"
-	if multi {
-		modeWord = "multi"
-	}
 	if dir == "" {
-		return cb.Markdown(e.i18n.Tf(MsgConfigWorkspaceOtherDir, modeWord)).Buttons(cancel).Build()
+		return cb.Markdown(otherDir).Buttons(cancel).Build()
 	}
-	return cb.Markdown(e.workspaceModeConfirmText(multi, dir)).
-		Note(e.i18n.Tf(MsgConfigWorkspaceOtherDir, modeWord)).
+	return cb.Markdown(e.workspaceModeConfirmText(false, dir)).
+		Note(otherDir).
 		Buttons(
-			PrimaryBtn(e.i18n.T(MsgConfigWorkspaceConfirmButton), fmt.Sprintf("act:/config workspace confirm %s %s", modeWord, encodeConfigDir(dir))),
+			PrimaryBtn(e.i18n.T(MsgConfigWorkspaceConfirmButton), "act:/config workspace confirm single "+encodeConfigDir(dir)),
 			cancel,
 		).Build()
+}
+
+// workspaceRootBrowseLimit caps the subdirectories the multi-workspace
+// confirmation lists, keeping the card small.
+const workspaceRootBrowseLimit = 50
+
+// renderWorkspaceRootConfirm is the confirmation for switching to
+// multi-workspace mode with the project root dir. It offers dir's parent and
+// subdirectories as other roots, so the card reaches any directory on the
+// volume. Without a dir it starts in the home directory.
+func (e *Engine) renderWorkspaceRootConfirm(cb *CardBuilder, dir string, cancel CardButton) *Card {
+	otherDir := e.i18n.Tf(MsgConfigWorkspaceOtherDir, "multi")
+	if dir == "" {
+		dir, _ = os.UserHomeDir()
+	}
+	if dir == "" {
+		return cb.Markdown(otherDir).Buttons(cancel).Build()
+	}
+	if !filepath.IsAbs(dir) {
+		err := fmt.Errorf("%w: %q is not an absolute path", ErrWorkspaceDirInvalid, dir)
+		return cb.Markdown(e.i18n.Tf(MsgError, err)).Note(otherDir).Buttons(cancel).Build()
+	}
+	dir = filepath.Clean(dir)
+	browse := func(path string) string { return "nav:/config workspace multi " + encodeConfigDir(path) }
+	var up []CardButton
+	if parent := filepath.Dir(dir); parent != dir {
+		up = append(up, DefaultBtn(e.i18n.T(MsgConfigWorkspaceParentDir), browse(parent)))
+	}
+	names, err := visibleSubdirs(dir)
+	if err != nil {
+		return cb.Markdown(e.i18n.Tf(MsgError, err)).Note(otherDir).Buttons(append(up, cancel)...).Build()
+	}
+	cb.Markdown(e.workspaceModeConfirmText(true, dir))
+	listed := names[:min(len(names), workspaceRootBrowseLimit)]
+	options := make([]CardSelectOption, 0, len(listed))
+	for _, name := range listed {
+		options = append(options, CardSelectOption{Text: name, Value: browse(filepath.Join(dir, name))})
+	}
+	cb.Select(e.i18n.T(MsgConfigWorkspaceSubdirPick), options, "")
+	if len(names) > len(listed) {
+		cb.Note(e.i18n.Tf(MsgConfigWorkspaceSubdirsCapped, len(listed)))
+	}
+	confirm := PrimaryBtn(e.i18n.T(MsgConfigWorkspaceConfirmButton), "act:/config workspace confirm multi "+encodeConfigDir(dir))
+	buttons := append([]CardButton{confirm}, up...)
+	return cb.Note(otherDir).Buttons(append(buttons, cancel)...).Build()
 }
 
 func (e *Engine) workspaceModeConfirmText(multi bool, dir string) string {

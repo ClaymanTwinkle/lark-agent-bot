@@ -497,6 +497,7 @@ type Engine struct {
 	// Multi-workspace mode
 	multiWorkspace               bool
 	baseDir                      string
+	savedBaseDir                 string // base_dir a single-workspace config keeps for switching back
 	skipGit                      bool
 	workspaceInitAllowLocalPaths bool
 	workspaceBindings            *WorkspaceBindingManager
