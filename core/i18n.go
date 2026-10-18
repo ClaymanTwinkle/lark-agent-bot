@@ -2009,36 +2009,31 @@ var messages = map[MsgKey]map[Language]string{
 			"/mode [name] — View/switch permission mode\n" +
 			"/provider [list|add|...] — Manage API providers\n" +
 			"/memory [add|global|...] — View/edit memory files\n" +
-			"/allow <tool> — Pre-allow a tool\n" +
-			"/lang [en|zh|...] — View/switch language",
+			"/allow <tool> — Pre-allow a tool",
 		LangChinese: "**Agent 配置**\n" +
 			"/model [switch <名称>] — 查看/切换模型\n" +
 			"/mode [名称] — 查看/切换权限模式\n" +
 			"/provider [list|add|...] — 管理 API Provider\n" +
 			"/memory [add|global|...] — 查看/编辑记忆文件\n" +
-			"/allow <工具名> — 预授权工具\n" +
-			"/lang [en|zh|...] — 查看/切换语言",
+			"/allow <工具名> — 预授权工具",
 		LangTraditionalChinese: "**Agent 配置**\n" +
 			"/model [switch <名稱>] — 查看/切換模型\n" +
 			"/mode [名稱] — 查看/切換權限模式\n" +
 			"/provider [list|add|...] — 管理 API Provider\n" +
 			"/memory [add|global|...] — 查看/編輯記憶檔案\n" +
-			"/allow <工具名> — 預授權工具\n" +
-			"/lang [en|zh|...] — 查看/切換語言",
+			"/allow <工具名> — 預授權工具",
 		LangJapanese: "**エージェント設定**\n" +
 			"/model [switch <名前>] — モデルの表示/切り替え\n" +
 			"/mode [名前] — 権限モードの表示/切り替え\n" +
 			"/provider [list|add|...] — API プロバイダ管理\n" +
 			"/memory [add|global|...] — メモリの表示/編集\n" +
-			"/allow <ツール名> — ツールを事前許可\n" +
-			"/lang [en|zh|...] — 言語の表示/切り替え",
+			"/allow <ツール名> — ツールを事前許可",
 		LangSpanish: "**Configuración del agente**\n" +
 			"/model [switch <nombre>] — Ver/cambiar modelo\n" +
 			"/mode [nombre] — Ver/cambiar modo de permisos\n" +
 			"/provider [list|add|...] — Gestionar proveedores\n" +
 			"/memory [add|global|...] — Ver/editar memoria\n" +
-			"/allow <herramienta> — Pre-autorizar herramienta\n" +
-			"/lang [en|zh|...] — Ver/cambiar idioma",
+			"/allow <herramienta> — Pre-autorizar herramienta",
 	},
 	MsgHelpToolsSection: {
 		LangEnglish: "**Tools & Automation**\n" +
@@ -2100,6 +2095,7 @@ var messages = map[MsgKey]map[Language]string{
 	MsgHelpSystemSection: {
 		LangEnglish: "**System**\n" +
 			"/config [get|set|reload] — Runtime configuration\n" +
+			"/lang [en|zh|...] — View/switch language\n" +
 			"/doctor — System diagnostics\n" +
 			"/usage — Account/model quota usage\n" +
 			"/whoami — Show your User ID\n" +
@@ -2109,6 +2105,7 @@ var messages = map[MsgKey]map[Language]string{
 			"/version — Show version",
 		LangChinese: "**系统**\n" +
 			"/config [get|set|reload] — 运行时配置\n" +
+			"/lang [en|zh|...] — 查看/切换语言\n" +
 			"/doctor — 系统诊断\n" +
 			"/usage — 账号/模型限额\n" +
 			"/whoami — 查看你的 User ID\n" +
@@ -2118,6 +2115,7 @@ var messages = map[MsgKey]map[Language]string{
 			"/version — 查看版本",
 		LangTraditionalChinese: "**系統**\n" +
 			"/config [get|set|reload] — 執行階段配置\n" +
+			"/lang [en|zh|...] — 查看/切換語言\n" +
 			"/doctor — 系統診斷\n" +
 			"/usage — 帳號/模型限額\n" +
 			"/whoami — 查看你的 User ID\n" +
@@ -2127,6 +2125,7 @@ var messages = map[MsgKey]map[Language]string{
 			"/version — 查看版本",
 		LangJapanese: "**システム**\n" +
 			"/config [get|set|reload] — ランタイム設定\n" +
+			"/lang [en|zh|...] — 言語の表示/切り替え\n" +
 			"/doctor — システム診断\n" +
 			"/usage — アカウント/モデル使用量\n" +
 			"/whoami — User ID を表示\n" +
@@ -2136,6 +2135,7 @@ var messages = map[MsgKey]map[Language]string{
 			"/version — バージョン表示",
 		LangSpanish: "**Sistema**\n" +
 			"/config [get|set|reload] — Configuración\n" +
+			"/lang [en|zh|...] — Ver/cambiar idioma\n" +
 			"/doctor — Diagnósticos del sistema\n" +
 			"/usage — Uso de cuota de cuenta/modelo\n" +
 			"/whoami — Mostrar tu User ID\n" +
