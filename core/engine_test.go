@@ -6478,6 +6478,17 @@ func TestHandleCardNav_HelpSwitchesTabs(t *testing.T) {
 	}
 }
 
+func TestHandleCardNav_HelpListsLangUnderSystem(t *testing.T) {
+	e := NewEngine("test", &stubAgent{}, []Platform{&stubPlatformEngine{n: "test"}}, "", LangEnglish)
+
+	if text := e.handleCardNav("nav:/help system", "test:user1").RenderText(); !strings.Contains(text, "**/lang**") {
+		t.Fatalf("system help text = %q, want /lang", text)
+	}
+	if text := e.handleCardNav("nav:/help agent", "test:user1").RenderText(); strings.Contains(text, "**/lang**") {
+		t.Fatalf("agent help text = %q, should not include /lang", text)
+	}
+}
+
 func TestHandleCardNav_HelpToolsShowsCronExecUsage(t *testing.T) {
 	e := NewEngine("test", &stubAgent{}, []Platform{&stubPlatformEngine{n: "test"}}, "", LangEnglish)
 
