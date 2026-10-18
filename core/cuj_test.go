@@ -1213,20 +1213,17 @@ func TestCUJ_A2_MultiTurnAgentReceivesHistory(t *testing.T) {
 	env.userSends("alex", "my name is alex")
 	env.waitFor("turn1 reply", 2*time.Second, func() bool { return len(env.plat.getSent()) >= 1 })
 	env.userSends("alex", "what is my name")
-	env.waitFor("turn2 reply", 2*time.Second, func() bool { return len(env.plat.getSent()) >= 2 })
 
-	// Verify the agent has stored at least 2 user prompts; this guards
-	// against any regression that drops history from the agent's input.
-	env.agent.mu.Lock()
-	defer env.agent.mu.Unlock()
-	if len(env.agent.sessions) == 0 {
-		t.Fatal("agent did not receive a session")
-	}
-	sess := env.agent.sessions[0]
-	prompts := sess.getSentPrompts()
-	if len(prompts) < 2 {
-		t.Fatalf("agent received %d prompts across 2 turns, want ≥2", len(prompts))
-	}
+	// Verify the agent receives at least 2 user prompts; this guards against
+	// any regression that drops history from the agent's input. Waiting for a
+	// second sent message is not enough: turn 1's reply can go out before the
+	// session is released, so turn 2 is queued and its queue notice is the
+	// second message while the prompt has not reached the agent yet.
+	env.waitFor("turn2 prompt reaches the agent", 2*time.Second, func() bool {
+		env.agent.mu.Lock()
+		defer env.agent.mu.Unlock()
+		return len(env.agent.sessions) > 0 && len(env.agent.sessions[0].getSentPrompts()) >= 2
+	})
 }
 
 // CUJ-A3 · User sends text with an image, an image alone, then text alone.
