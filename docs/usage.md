@@ -1149,6 +1149,7 @@ Admins can also switch modes on the project page of `/config` (in `/help`). Swit
 /workspace available [page]   Browse available project directories
 /workspace init <git-url>     Clone and bind repo
 /workspace unbind             Remove binding
+/workspace group              In a topic: make the topic's project the whole group's
 /workspace list               List all bindings
 /ws wt                        List the repository's worktrees
 /ws wt <name>                 Create or reuse worktree <name> and switch this chat to it
@@ -1159,6 +1160,10 @@ In the help menu's System tab, click `/bind` or `/workspace` to choose a project
 The picker lists visible immediate subdirectories of `base_dir`, with pagination
 and the current binding marked. Directory links are excluded. Selecting a project
 changes only the current chat's binding (or the current topic with thread isolation).
+After binding a project in a topic (picker, `/workspace bind`, `/workspace init`, ...), the bot asks whether
+to apply it to the whole group: **Apply to the whole group** makes new topics start with it, while other
+topics that already have a project keep theirs; **Only this topic**, or no answer, keeps it to the topic.
+`/workspace group` in the topic applies it later.
 The current project is pinned first, followed by other projects in name order. Opening the menu, paging, and selecting update the same card; selection returns to page one to show the pinned project.
 `/workspace list` still lists existing bindings; `/bind <bot>` still manages bot relay bindings.
 

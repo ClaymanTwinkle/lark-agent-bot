@@ -832,6 +832,12 @@ const (
 	MsgWsRouteNotFound           MsgKey = "ws_route_not_found"
 	MsgWsRouteNotDirectory       MsgKey = "ws_route_not_directory"
 	MsgWsUnbindSuccess           MsgKey = "ws_unbind_success"
+	MsgWsGroupOffer              MsgKey = "ws_group_offer"
+	MsgWsGroupApply              MsgKey = "ws_group_apply"
+	MsgWsGroupTopicOnly          MsgKey = "ws_group_topic_only"
+	MsgWsGroupApplied            MsgKey = "ws_group_applied"
+	MsgWsGroupTextHint           MsgKey = "ws_group_text_hint"
+	MsgWsGroupNotTopic           MsgKey = "ws_group_not_topic"
 	MsgWsListEmpty               MsgKey = "ws_list_empty"
 	MsgWsListTitle               MsgKey = "ws_list_title"
 	MsgWsSharedNoBinding         MsgKey = "ws_shared_no_binding"
@@ -5245,11 +5251,11 @@ var messages = map[MsgKey]map[Language]string{
 		LangSpanish:            "Workspace: `%s`\nVinculado: %s\nOrigen: shared",
 	},
 	MsgWsUsage: {
-		LangEnglish:            "Usage: `/workspace [bind <name> | route <absolute-path> | init <url> | unbind | list | worktree ... | shared ...]`",
-		LangChinese:            "用法: `/workspace [bind <名称> | route <绝对路径> | init <仓库地址> | unbind | list | worktree ... | shared ...]`",
-		LangTraditionalChinese: "用法: `/workspace [bind <名稱> | route <絕對路徑> | init <倉庫地址> | unbind | list | worktree ... | shared ...]`",
-		LangJapanese:           "使い方: `/workspace [bind <名前> | route <絶対パス> | init <url> | unbind | list | worktree ... | shared ...]`",
-		LangSpanish:            "Uso: `/workspace [bind <nombre> | route <ruta-absoluta> | init <url> | unbind | list | worktree ... | shared ...]`",
+		LangEnglish:            "Usage: `/workspace [bind <name> | route <absolute-path> | init <url> | unbind | group | list | worktree ... | shared ...]`",
+		LangChinese:            "用法: `/workspace [bind <名称> | route <绝对路径> | init <仓库地址> | unbind | group | list | worktree ... | shared ...]`",
+		LangTraditionalChinese: "用法: `/workspace [bind <名稱> | route <絕對路徑> | init <倉庫地址> | unbind | group | list | worktree ... | shared ...]`",
+		LangJapanese:           "使い方: `/workspace [bind <名前> | route <絶対パス> | init <url> | unbind | group | list | worktree ... | shared ...]`",
+		LangSpanish:            "Uso: `/workspace [bind <nombre> | route <ruta-absoluta> | init <url> | unbind | group | list | worktree ... | shared ...]`",
 	},
 	MsgWsInitUsage: {
 		LangEnglish:            "Usage: `/workspace init <git-url or directory-path>`",
@@ -5320,6 +5326,48 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "✅ 已解除工作區綁定。",
 		LangJapanese:           "✅ ワークスペースのバインドを解除しました。",
 		LangSpanish:            "✅ Workspace desvinculado.",
+	},
+	MsgWsGroupOffer: {
+		LangEnglish:            "This binding only applies to this topic. Make `%s` the project of the whole group too? New topics will start with it; other topics that already have a project keep theirs.",
+		LangChinese:            "这个绑定只对当前话题生效。要把 `%s` 也设为整个群的项目吗？之后新开的话题默认用它，已经绑定了项目的其他话题不变。",
+		LangTraditionalChinese: "這個綁定只對目前話題生效。要把 `%s` 也設為整個群的專案嗎？之後新開的話題預設用它，已經綁定了專案的其他話題不變。",
+		LangJapanese:           "このバインドはこのトピックだけに適用されます。`%s` をグループ全体のプロジェクトにもしますか？新しいトピックはこれで始まり、すでにプロジェクトがある他のトピックはそのままです。",
+		LangSpanish:            "Este vínculo solo aplica a este tema. ¿Usar `%s` también como proyecto de todo el grupo? Los temas nuevos empezarán con él; los demás temas que ya tienen proyecto lo conservan.",
+	},
+	MsgWsGroupApply: {
+		LangEnglish:            "Apply to the whole group",
+		LangChinese:            "应用到整个群",
+		LangTraditionalChinese: "套用到整個群",
+		LangJapanese:           "グループ全体に適用",
+		LangSpanish:            "Aplicar a todo el grupo",
+	},
+	MsgWsGroupTopicOnly: {
+		LangEnglish:            "Only this topic",
+		LangChinese:            "只绑定这个话题",
+		LangTraditionalChinese: "只綁定這個話題",
+		LangJapanese:           "このトピックだけ",
+		LangSpanish:            "Solo este tema",
+	},
+	MsgWsGroupApplied: {
+		LangEnglish:            "✅ `%s` is now the project of the whole group. New topics will start with it.",
+		LangChinese:            "✅ 已把 `%s` 设为整个群的项目，之后新开的话题默认用它。",
+		LangTraditionalChinese: "✅ 已把 `%s` 設為整個群的專案，之後新開的話題預設用它。",
+		LangJapanese:           "✅ `%s` をグループ全体のプロジェクトにしました。新しいトピックはこれで始まります。",
+		LangSpanish:            "✅ `%s` es ahora el proyecto de todo el grupo. Los temas nuevos empezarán con él.",
+	},
+	MsgWsGroupTextHint: {
+		LangEnglish:            "Send `/workspace group` to apply it to the whole group.",
+		LangChinese:            "发 `/workspace group` 应用到整个群。",
+		LangTraditionalChinese: "傳送 `/workspace group` 套用到整個群。",
+		LangJapanese:           "グループ全体に適用するには `/workspace group` を送信してください。",
+		LangSpanish:            "Envía `/workspace group` para aplicarlo a todo el grupo.",
+	},
+	MsgWsGroupNotTopic: {
+		LangEnglish:            "`/workspace group` works inside a topic: it makes the topic's project the project of the whole group.",
+		LangChinese:            "`/workspace group` 要在话题里用：把这个话题的项目设为整个群的项目。",
+		LangTraditionalChinese: "`/workspace group` 要在話題裡用：把這個話題的專案設為整個群的專案。",
+		LangJapanese:           "`/workspace group` はトピック内で使います。トピックのプロジェクトをグループ全体のプロジェクトにします。",
+		LangSpanish:            "`/workspace group` se usa dentro de un tema: convierte el proyecto del tema en el de todo el grupo.",
 	},
 	MsgWsListEmpty: {
 		LangEnglish:            "No workspaces bound.",

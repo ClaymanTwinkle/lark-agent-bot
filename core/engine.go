@@ -7018,7 +7018,9 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 			e.replyWorkspacePicker(p, msg, 1)
 			return
 		}
-		bindWorkspace(projectKey, strings.Join(args[1:], " "), MsgWsBindSuccess)
+		if bindWorkspace(projectKey, strings.Join(args[1:], " "), MsgWsBindSuccess) {
+			e.offerGroupWorkspace(p, msg)
+		}
 
 	case "available":
 		page := 1
@@ -7035,14 +7037,26 @@ func (e *Engine) handleWorkspaceCommand(p Platform, msg *Message, args []string)
 			e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsRouteUsage))
 			return
 		}
-		routeWorkspace(projectKey, args[1:], MsgWsRouteUsage, MsgWsRouteSuccess)
+		if routeWorkspace(projectKey, args[1:], MsgWsRouteUsage, MsgWsRouteSuccess) {
+			e.offerGroupWorkspace(p, msg)
+		}
 
 	case "init":
 		if len(args) < 2 {
 			e.reply(p, msg.ReplyCtx, e.i18n.T(MsgWsInitUsage))
 			return
 		}
-		initWorkspace(projectKey, args[1], MsgWsCloneSuccess)
+		if initWorkspace(projectKey, args[1], MsgWsCloneSuccess) {
+			e.offerGroupWorkspace(p, msg)
+		}
+
+	case "group":
+		workspace, err := e.applyWorkspaceToGroup(msg)
+		if err != nil {
+			e.reply(p, msg.ReplyCtx, e.groupWorkspaceError(err))
+			return
+		}
+		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsGroupApplied, workspace))
 
 	case "shared":
 		sharedSubCmd := ""
@@ -7124,7 +7138,7 @@ func workspaceSubCommand(arg string) string {
 	if arg == "wt" {
 		return "worktree"
 	}
-	return matchSubCommand(arg, []string{"init", "bind", "route", "unbind", "list", "shared", "available", "select", "worktree"})
+	return matchSubCommand(arg, []string{"init", "bind", "route", "unbind", "list", "shared", "available", "select", "worktree", "group"})
 }
 
 func (e *Engine) cmdNew(p Platform, msg *Message, args []string) {
@@ -17287,6 +17301,7 @@ func (e *Engine) handleWorkspaceInitFlow(p Platform, msg *Message, channelName s
 			projectKey := "project:" + e.name
 			e.workspaceBindings.Bind(projectKey, channelKey, flow.channelName, normalizeWorkspacePath(dirPath))
 			e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsBindSuccess, dirPath))
+			e.offerGroupWorkspace(p, msg)
 			return true
 		}
 		if !e.workspaceInitAllowLocalPaths && looksLikeLocalDir(content) && !looksLikeGitURL(content) {
@@ -17359,6 +17374,7 @@ func (e *Engine) handleWorkspaceInitFlow(p Platform, msg *Message, channelName s
 		e.initFlowsMu.Unlock()
 
 		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgWsCloneSuccess, flow.cloneTo))
+		e.offerGroupWorkspace(p, msg)
 		return true
 	}
 
