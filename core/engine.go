@@ -4207,6 +4207,9 @@ func (e *Engine) getOrCreateWorkspaceAgent(workspace string) (Agent, *SessionMan
 		if m := e.projectState.WorkspaceModelOverride(workspace); m != "" {
 			opts["model"] = m
 		}
+		if effort := e.projectState.WorkspaceReasoningOverride(workspace); effort != "" {
+			opts["reasoning_effort"] = effort
+		}
 	}
 
 	// Copy model from original agent if possible
@@ -10058,7 +10061,7 @@ func (e *Engine) cmdReasoning(p Platform, msg *Message, args []string) {
 		return
 	}
 
-	e.setReasoningEffort(switcher, sessions, msg.SessionKey, target)
+	e.setReasoningEffort(agent, sessions, msg.SessionKey, target)
 	e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgReasoningChanged, target))
 }
 
@@ -10069,11 +10072,16 @@ func (e *Engine) cmdReasoning(p Platform, msg *Message, args []string) {
 // told, so that turn does not just go quiet. Callers must pass the agent and
 // sessions resolved for sessionKey (the workspace's in multi-workspace mode),
 // not the engine's global ones.
-func (e *Engine) setReasoningEffort(switcher ReasoningEffortSwitcher, sessions *SessionManager, sessionKey, effort string) {
+func (e *Engine) setReasoningEffort(agent Agent, sessions *SessionManager, sessionKey, effort string) {
+	switcher, ok := agent.(ReasoningEffortSwitcher)
+	if !ok {
+		return
+	}
 	interactiveKey := e.interactiveKeyForSessionKey(sessionKey)
 	p, replyCtx, running := e.runningTurnReplyTarget(interactiveKey, sessions.GetOrCreateActive(sessionKey))
 
 	switcher.SetReasoningEffort(effort)
+	e.persistWorkspaceReasoningOverride(interactiveKey, sessionKey, agent, effort)
 	e.cleanupInteractiveState(interactiveKey)
 
 	if running {
@@ -12458,7 +12466,7 @@ func (e *Engine) persistWorkspaceModelOverride(interactiveKey, sessionKey string
 	if agent == e.agent {
 		return
 	}
-	workspace := workspaceModelOverrideKey(interactiveKey, sessionKey, agent)
+	workspace := workspaceOverrideKey(interactiveKey, sessionKey, agent)
 	if workspace == "" {
 		return
 	}
@@ -12466,7 +12474,22 @@ func (e *Engine) persistWorkspaceModelOverride(interactiveKey, sessionKey string
 	e.projectState.Save()
 }
 
-func workspaceModelOverrideKey(interactiveKey, sessionKey string, agent Agent) string {
+// persistWorkspaceReasoningOverride records a workspace agent's reasoning
+// effort so getOrCreateWorkspaceAgent restores it: otherwise the agent
+// recreated after an idle reap or a restart falls back to the global effort.
+func (e *Engine) persistWorkspaceReasoningOverride(interactiveKey, sessionKey string, agent Agent, effort string) {
+	if e.projectState == nil || !e.multiWorkspace || effort == "" || agent == e.agent {
+		return
+	}
+	workspace := workspaceOverrideKey(interactiveKey, sessionKey, agent)
+	if workspace == "" {
+		return
+	}
+	e.projectState.SetWorkspaceReasoningOverride(workspace, effort)
+	e.projectState.Save()
+}
+
+func workspaceOverrideKey(interactiveKey, sessionKey string, agent Agent) string {
 	if wd, ok := agent.(interface{ GetWorkDir() string }); ok {
 		if dir := strings.TrimSpace(wd.GetWorkDir()); dir != "" {
 			return normalizeWorkspacePath(dir)
@@ -12545,7 +12568,7 @@ func (e *Engine) executeCardAction(cmd, args, sessionKey string) {
 		}
 		for _, effort := range efforts {
 			if effort == target {
-				e.setReasoningEffort(switcher, sessions, sessionKey, target)
+				e.setReasoningEffort(agent, sessions, sessionKey, target)
 				return
 			}
 		}

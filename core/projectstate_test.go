@@ -95,3 +95,33 @@ func TestWorkspaceModelOverride(t *testing.T) {
 		t.Fatalf("WorkspaceModelOverride(%q) after clearing other workspace = %q, want %q", workspaceB, got, "sonnet")
 	}
 }
+
+func TestWorkspaceReasoningOverride(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "projects", "demo.state.json")
+	workspaceA := "/tmp/workspace-a"
+	workspaceB := "/tmp/workspace-b"
+
+	store := NewProjectStateStore(statePath)
+	store.SetWorkspaceReasoningOverride(workspaceA, "xhigh")
+	store.SetWorkspaceReasoningOverride(workspaceB, "low")
+	store.Save()
+
+	reloaded := NewProjectStateStore(statePath)
+	if got := reloaded.WorkspaceReasoningOverride(workspaceA); got != "xhigh" {
+		t.Fatalf("WorkspaceReasoningOverride(%q) = %q, want %q", workspaceA, got, "xhigh")
+	}
+	if got := reloaded.WorkspaceReasoningOverride(workspaceB); got != "low" {
+		t.Fatalf("WorkspaceReasoningOverride(%q) = %q, want %q", workspaceB, got, "low")
+	}
+
+	reloaded.SetWorkspaceReasoningOverride(workspaceA, "")
+	reloaded.Save()
+
+	cleared := NewProjectStateStore(statePath)
+	if got := cleared.WorkspaceReasoningOverride(workspaceA); got != "" {
+		t.Fatalf("WorkspaceReasoningOverride(%q) after clear = %q, want empty", workspaceA, got)
+	}
+	if got := cleared.WorkspaceReasoningOverride(workspaceB); got != "low" {
+		t.Fatalf("WorkspaceReasoningOverride(%q) after clearing other workspace = %q, want %q", workspaceB, got, "low")
+	}
+}

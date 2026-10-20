@@ -5466,6 +5466,69 @@ func TestCmdReasoning_MultiWorkspaceSavesToWorkspaceSessions(t *testing.T) {
 	}
 }
 
+// A workspace's /reasoning used to live only on its agent, so the agent
+// rebuilt after the idle reap (or a restart) went back to the global effort.
+func TestSetReasoningEffort_MultiWorkspacePersistsForRecreatedAgent(t *testing.T) {
+	agentName := "test-workspace-reasoning-override"
+	RegisterAgent(agentName, func(opts map[string]any) (Agent, error) {
+		agent := &namedStubModelModeAgent{name: agentName}
+		agent.reasoningEffort, _ = opts["reasoning_effort"].(string)
+		return agent, nil
+	})
+
+	for _, tc := range []struct {
+		name  string
+		apply func(e *Engine, p Platform, sessionKey string)
+	}{
+		{"command", func(e *Engine, p Platform, sessionKey string) {
+			e.cmdReasoning(p, &Message{SessionKey: sessionKey, ReplyCtx: "ctx"}, []string{"xhigh"})
+		}},
+		{"card", func(e *Engine, _ Platform, sessionKey string) {
+			e.executeCardAction("/reasoning", "xhigh", sessionKey)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &stubPlatformEngine{n: "plain"}
+			globalAgent := &namedStubModelModeAgent{name: agentName}
+			e := NewEngine("test", globalAgent, []Platform{p}, filepath.Join(t.TempDir(), "sessions.json"), LangEnglish)
+			statePath := filepath.Join(t.TempDir(), "projects", "test.state.json")
+			e.SetProjectStateStore(NewProjectStateStore(statePath))
+			e.SetMultiWorkspace(t.TempDir(), filepath.Join(t.TempDir(), "bindings.json"))
+
+			wsDir := normalizeWorkspacePath(t.TempDir())
+			channelID := "C-reasoning-override"
+			e.workspaceBindings.Bind("project:test", channelID, "chan", wsDir)
+			sessionKey := "feishu:" + channelID + ":u1"
+			if _, _, err := e.getOrCreateWorkspaceAgent(wsDir); err != nil {
+				t.Fatalf("getOrCreateWorkspaceAgent: %v", err)
+			}
+
+			tc.apply(e, p, sessionKey)
+
+			if globalAgent.reasoningEffort != "" {
+				t.Fatalf("global agent effort = %q, want untouched", globalAgent.reasoningEffort)
+			}
+			if got := NewProjectStateStore(statePath).WorkspaceReasoningOverride(wsDir); got != "xhigh" {
+				t.Fatalf("saved WorkspaceReasoningOverride(%q) = %q, want xhigh", wsDir, got)
+			}
+
+			ws := e.workspacePool.GetOrCreate(wsDir)
+			ws.mu.Lock()
+			ws.agent = nil
+			ws.sessions = nil
+			ws.mu.Unlock()
+
+			recreated, _, err := e.getOrCreateWorkspaceAgent(wsDir)
+			if err != nil {
+				t.Fatalf("getOrCreateWorkspaceAgent after reap: %v", err)
+			}
+			if got := recreated.(*namedStubModelModeAgent).reasoningEffort; got != "xhigh" {
+				t.Fatalf("recreated workspace agent effort = %q, want the persisted xhigh", got)
+			}
+		})
+	}
+}
+
 // TestCmdProvider_ClearMultiWorkspaceUsesWorkspaceSessions is a regression test
 // for the bug where cmdProvider "clear" used e.sessions (global) instead of
 // the workspace-resolved sessions, and called providerSaveFunc in workspace mode.
