@@ -80,7 +80,7 @@ func TestNew_PermissionDefaultsAndExecCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := agent.(*Agent)
-	if a.GetMode() != "default" || a.backend != "app_server" {
+	if a.GetMode() != "auto-review" || a.backend != "app_server" {
 		t.Fatalf("defaults = mode %q backend %q", a.GetMode(), a.backend)
 	}
 	for _, mode := range []string{"default", "auto-review"} {

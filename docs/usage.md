@@ -109,14 +109,14 @@ All agents support permission modes switchable at runtime via `/mode`.
 | Read-only | `read-only` | Read-only sandbox; you approve requests for additional access |
 | Full access | `full-access` | No sandbox restrictions or approval prompts |
 
-Codex defaults to `backend = "app_server"` and `mode = "default"`.
+Codex defaults to `backend = "app_server"` and `mode = "auto-review"`.
 Each mode sets sandbox, approval policy and reviewer together. `/mode` shows the
 same choices and switching away from auto-review restores user review.
 
 ```toml
 [projects.agent.options]
 backend = "app_server"
-mode = "auto-review"
+mode = "default"   # approve permission requests yourself
 ```
 
 This replaces the old permission configuration: `suggest`, `auto-edit`,

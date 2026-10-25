@@ -1585,7 +1585,8 @@ type = "claudecode"   # "claudecode" or "codex"
 
 [projects.agent.options]
 work_dir = "/path/to/your/project"
-# mode: leave unset for each agent's default (Claude Code: "auto", Claude decides when to ask).
+# mode: leave unset for each agent's default (Claude Code: "auto", Claude decides when to ask;
+#       Codex: "auto-review", Codex reviews permission requests itself).
 # mode = "default"
 # model = "opus"   # Claude Code alias: "fable" | "opus" | "sonnet" | "haiku", or a full id like "claude-opus-5-5"
 

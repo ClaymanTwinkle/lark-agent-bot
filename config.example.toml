@@ -1342,7 +1342,7 @@ app_secret = "your-feishu-app-secret"
 # 使用 "stdio://" 强制独立进程；unix/ws/wss 地址连接已有服务，连接失败会报错。
 # New bot conversations still use a private process in auto mode; auto does not start a daemon.
 # auto 模式下 bot 新建会话仍使用独立进程，不会主动启动共享后台。
-# mode = "default"  # "default" | "auto-review" | "read-only" | "full-access"
+# mode = "auto-review"  # Default / 默认；"default" | "auto-review" | "read-only" | "full-access"
 #
 # Mode options / 模式说明:
 # - "default": workspace sandbox, user reviews additional access / 工作区沙箱，额外权限由用户审批

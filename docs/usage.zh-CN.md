@@ -108,14 +108,14 @@ reset_on_idle_mins = 60   # 不设置或设为 0 表示关闭
 | 只读 | `read-only` | 只读沙箱，超出只读权限的操作由用户审批 |
 | 完全访问权限 | `full-access` | 不受沙箱限制，不请求审批 |
 
-Codex 默认使用 `backend = "app_server"`、`mode = "default"`。
+Codex 默认使用 `backend = "app_server"`、`mode = "auto-review"`。
 每个模式同时决定沙箱、审批策略和审核者。`/mode` 菜单显示相同的选项，
 从自动审核切回默认权限或只读时，会恢复用户审批。
 
 ```toml
 [projects.agent.options]
 backend = "app_server"
-mode = "auto-review"
+mode = "default"   # 权限请求由自己审批
 ```
 
 新配置不兼容旧模式：`suggest`、`auto-edit`、`full-auto`、`yolo` 及其别名

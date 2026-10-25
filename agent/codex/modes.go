@@ -13,10 +13,12 @@ type permissionSettings struct {
 	reviewer string
 }
 
+// An unset mode means auto-review: the workspace sandbox stays, and Codex
+// reviews permission requests instead of waiting on the user.
 func normalizeMode(raw string) string {
 	mode := strings.ToLower(strings.TrimSpace(raw))
 	if mode == "" {
-		return "default"
+		return "auto-review"
 	}
 	return mode
 }
