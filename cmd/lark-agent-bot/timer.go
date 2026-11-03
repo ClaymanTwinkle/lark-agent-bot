@@ -224,11 +224,6 @@ func runTimerList(args []string) {
 		os.Exit(1)
 	}
 
-	url := "/timer/list"
-	if project != "" {
-		url += "?project=" + project
-	}
-
 	client := &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
@@ -237,7 +232,7 @@ func runTimerList(args []string) {
 		},
 	}
 
-	resp, err := client.Get("http://unix" + url)
+	resp, err := client.Get("http://unix" + listURL("/timer/list", project))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
