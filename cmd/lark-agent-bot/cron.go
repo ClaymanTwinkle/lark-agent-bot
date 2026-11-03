@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -204,6 +205,17 @@ func runCronAdd(args []string) {
 	}
 }
 
+// listURL builds the GET path for the cron and timer list endpoints. The
+// project name goes through url.Values: a name with spaces (the bot's display
+// name, e.g. "Mac Claude Code") pasted in raw broke the HTTP request line, and
+// the API socket answered 400 Bad Request.
+func listURL(path, project string) string {
+	if project == "" {
+		return path
+	}
+	return path + "?" + url.Values{"project": {project}}.Encode()
+}
+
 func runCronList(args []string) {
 	if helpRequested(args) {
 		printCronUsage()
@@ -235,11 +247,6 @@ func runCronList(args []string) {
 		os.Exit(1)
 	}
 
-	url := "/cron/list"
-	if project != "" {
-		url += "?project=" + project
-	}
-
 	client := &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
@@ -248,7 +255,7 @@ func runCronList(args []string) {
 		},
 	}
 
-	resp, err := client.Get("http://unix" + url)
+	resp, err := client.Get("http://unix" + listURL("/cron/list", project))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
