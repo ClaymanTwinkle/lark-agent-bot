@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -3626,5 +3627,92 @@ port = 9999
 	again, err := EnableWebAdmin("other", "other")
 	if err != nil || !again.AlreadyEnabled || again.ManagementToken != "mgmt-token" {
 		t.Fatalf("second EnableWebAdmin = %+v, %v", again, err)
+	}
+}
+
+func TestSaveAgentReasoningEffort(t *testing.T) {
+	writeTestConfig(t, providerConfigWithCommentsTOML)
+
+	if err := SaveAgentReasoningEffort("demo", "high"); err != nil {
+		t.Fatalf("SaveAgentReasoningEffort() error: %v", err)
+	}
+
+	cfg := readTestConfig(t)
+	if got, _ := cfg.Projects[0].Agent.Options["reasoning_effort"].(string); got != "high" {
+		t.Fatalf("agent.options.reasoning_effort = %q, want high", got)
+	}
+	content, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if !strings.Contains(string(content), `custom_option = "still_here" # keep inline comment`) {
+		t.Fatalf("expected other options and comments to be kept, got:\n%s", content)
+	}
+}
+
+func TestSaveAgentAllowedTools(t *testing.T) {
+	writeTestConfig(t, providerConfigWithCommentsTOML)
+
+	if err := SaveAgentAllowedTools("demo", []string{"Read", `Bash(git "log":*)`}); err != nil {
+		t.Fatalf("SaveAgentAllowedTools() error: %v", err)
+	}
+
+	cfg := readTestConfig(t)
+	got, _ := cfg.Projects[0].Agent.Options["allowed_tools"].([]any)
+	if want := []any{"Read", `Bash(git "log":*)`}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("agent.options.allowed_tools = %#v, want %#v", got, want)
+	}
+	if mode, _ := cfg.Projects[0].Agent.Options["mode"].(string); mode != "default" {
+		t.Fatalf("agent.options.mode = %q, want default kept", mode)
+	}
+}
+
+// An allowed_tools array written over several lines must be replaced as a
+// whole; replacing only its first line would leave the rest dangling.
+func TestSaveAgentAllowedTools_ReplacesMultiLineArray(t *testing.T) {
+	writeTestConfig(t, `[[projects]]
+name = "demo"
+
+[projects.agent]
+type = "claudecode"
+
+[projects.agent.options]
+allowed_tools = [
+  "Read",
+  "Grep", # search
+]
+mode = "default"
+`)
+
+	if err := SaveAgentAllowedTools("demo", []string{"Read", "Grep", "Bash"}); err != nil {
+		t.Fatalf("SaveAgentAllowedTools() error: %v", err)
+	}
+
+	cfg := readTestConfig(t)
+	got, _ := cfg.Projects[0].Agent.Options["allowed_tools"].([]any)
+	if want := []any{"Read", "Grep", "Bash"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("agent.options.allowed_tools = %#v, want %#v", got, want)
+	}
+	if mode, _ := cfg.Projects[0].Agent.Options["mode"].(string); mode != "default" {
+		t.Fatalf("agent.options.mode = %q, want default kept", mode)
+	}
+}
+
+func TestSaveAgentAllowedTools_AddsOptionsTable(t *testing.T) {
+	writeTestConfig(t, `[[projects]]
+name = "demo"
+
+[projects.agent]
+type = "claudecode"
+`)
+
+	if err := SaveAgentAllowedTools("demo", []string{"Bash"}); err != nil {
+		t.Fatalf("SaveAgentAllowedTools() error: %v", err)
+	}
+
+	cfg := readTestConfig(t)
+	got, _ := cfg.Projects[0].Agent.Options["allowed_tools"].([]any)
+	if want := []any{"Bash"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("agent.options.allowed_tools = %#v, want %#v", got, want)
 	}
 }

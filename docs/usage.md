@@ -84,6 +84,15 @@ The next normal message after a long idle period starts in a fresh session autom
 
 `/model` preserves the current session — the agent resumes the conversation with the new model (no extra token cost). Model switching affects the shared agent instance — if multiple platforms use the same project, the model change applies to all of them.
 
+### Settings changed in chat are kept
+
+`/model`, `/mode`, `/reasoning`, `/allow <tool>` and `/lang` (and their card buttons) are saved before they take effect, so they survive a restart:
+
+- On the project's own agent they go to the config file: `model`, `mode`, `reasoning_effort` and `allowed_tools` under `[projects.agent.options]`, and the top-level `language`. `language` is shared by every project in the same config file.
+- In a multi-workspace chat they apply to that workspace only and go to the project state file in `data_dir`. A workspace agent rebuilt after 15 minutes idle or a restart gets them back. Tools allowed with `/allow` are added on top of the project's `allowed_tools`.
+
+If the save fails, the setting is not changed and the chat shows the error.
+
 ---
 
 ## Permission Modes

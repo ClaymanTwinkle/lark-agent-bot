@@ -83,6 +83,15 @@ reset_on_idle_mins = 60   # 不设置或设为 0 表示关闭
 
 `/model` 切换模型时保留当前会话——agent 会在新模型下继续对话（不额外消耗 token）。注意模型切换作用于共享的 agent 实例——如果多个平台使用同一个 project，模型变更会影响所有平台。
 
+### 聊天里改的设置会保存
+
+`/model`、`/mode`、`/reasoning`、`/allow <工具>` 和 `/lang`（以及对应的卡片按钮）先保存再生效，重启后不会丢：
+
+- 改的是项目自身的 agent 时，写进配置文件：`[projects.agent.options]` 下的 `model`、`mode`、`reasoning_effort`、`allowed_tools`，以及顶层的 `language`。`language` 由同一个配置文件里的所有项目共用。
+- 多工作区模式下，在已绑定工作区的聊天里改，只对这个工作区生效，存进 `data_dir` 下的项目状态文件。工作区 agent 闲置 15 分钟被回收或重启后重建时会读回来。`/allow` 加的工具会叠加在项目的 `allowed_tools` 之上。
+
+保存失败时设置不变，聊天里会显示错误原因。
+
 ---
 
 ## 权限模式

@@ -1396,6 +1396,22 @@ func SaveAgentModel(projectName, model string) error {
 	return patchProjectAgentOption(projectName, "model", model)
 }
 
+// SaveAgentReasoningEffort persists the default reasoning effort for a
+// project's agent, editing only that key.
+func SaveAgentReasoningEffort(projectName, effort string) error {
+	configMu.Lock()
+	defer configMu.Unlock()
+	return patchProjectAgentOption(projectName, "reasoning_effort", effort)
+}
+
+// SaveAgentAllowedTools persists the pre-allowed tools of a project's agent
+// as its allowed_tools option, editing only that key.
+func SaveAgentAllowedTools(projectName string, tools []string) error {
+	configMu.Lock()
+	defer configMu.Unlock()
+	return patchProjectAgentOptionRaw(projectName, "allowed_tools", tomlStringArray(tools))
+}
+
 // ResolveProviderRefs merges global [[providers]] into each project that uses
 // provider_refs. Inline [[projects.agent.providers]] entries are appended after
 // resolved refs; if an inline entry has the same name as a global one, the
@@ -2345,6 +2361,24 @@ func cloneStringMap(in map[string]string) map[string]string {
 // comments, unknown fields, and formatting in the config file.
 // The caller must hold configMu.
 func patchProjectAgentOption(projectName, key, value string) error {
+	return editProjectAgentOptions(projectName, func(lines []string, start, end int) []string {
+		return upsertTomlStringKey(lines, start, end, key, value)
+	})
+}
+
+// patchProjectAgentOptionRaw is like patchProjectAgentOption but writes
+// rawValue (an array, say) as is, replacing every line of a multi-line
+// value. The caller must hold configMu.
+func patchProjectAgentOptionRaw(projectName, key, rawValue string) error {
+	return editProjectAgentOptions(projectName, func(lines []string, start, end int) []string {
+		return upsertKeyInRange(lines, start, end, key, rawValue)
+	})
+}
+
+// editProjectAgentOptions lets edit change the lines of the project's
+// [projects.agent.options] table (start..end), adding the table first when
+// the project has none, and writes the file back if it still parses.
+func editProjectAgentOptions(projectName string, edit func(lines []string, start, end int) []string) error {
 	if ConfigPath == "" {
 		return fmt.Errorf("config path not set")
 	}
@@ -2375,8 +2409,12 @@ func patchProjectAgentOption(projectName, key, value string) error {
 	}
 	lines = ensureProjectAgentOptions(lines, projectIdx)
 	projSpan := buildRawProjectSpans(lines)[projectIdx]
-	lines = upsertTomlStringKey(lines, projSpan.agentOptionsStart+1, projSpan.agentOptionsEnd, key, value)
-	return writeRawConfig(joinConfigLines(lines, hadTrailing))
+	lines = edit(lines, projSpan.agentOptionsStart+1, projSpan.agentOptionsEnd)
+	content := joinConfigLines(lines, hadTrailing)
+	if err := toml.Unmarshal([]byte(content), &Config{}); err != nil {
+		return fmt.Errorf("edit project %q agent options: result does not parse: %w", projectName, err)
+	}
+	return writeRawConfig(content)
 }
 
 // ensureProjectAgentOptions adds a [projects.agent.options] table (and
