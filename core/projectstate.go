@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 )
 
@@ -15,6 +16,11 @@ type projectStateData struct {
 	// WorkspaceReasoningOverrides keeps /reasoning per workspace, so a
 	// workspace agent recreated after an idle reap or a restart keeps it.
 	WorkspaceReasoningOverrides map[string]string `json:"workspace_reasoning_overrides,omitempty"`
+	// WorkspaceModeOverrides keeps /mode per workspace for the same reason.
+	WorkspaceModeOverrides map[string]string `json:"workspace_mode_overrides,omitempty"`
+	// WorkspaceAllowedTools keeps the tools /allow added in each workspace.
+	// The recreated agent gets them on top of the project's allowed_tools.
+	WorkspaceAllowedTools map[string][]string `json:"workspace_allowed_tools,omitempty"`
 }
 
 // ProjectStateStore persists lightweight runtime state for one project.
@@ -140,6 +146,48 @@ func (ps *ProjectStateStore) ClearWorkspaceReasoningOverride(workspace string) {
 	if len(ps.state.WorkspaceReasoningOverrides) == 0 {
 		ps.state.WorkspaceReasoningOverrides = nil
 	}
+}
+
+func (ps *ProjectStateStore) WorkspaceModeOverride(workspace string) string {
+	ps.mu.RLock()
+	defer ps.mu.RUnlock()
+	return ps.state.WorkspaceModeOverrides[workspace]
+}
+
+func (ps *ProjectStateStore) SetWorkspaceModeOverride(workspace, mode string) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if mode == "" {
+		delete(ps.state.WorkspaceModeOverrides, workspace)
+		if len(ps.state.WorkspaceModeOverrides) == 0 {
+			ps.state.WorkspaceModeOverrides = nil
+		}
+		return
+	}
+	if ps.state.WorkspaceModeOverrides == nil {
+		ps.state.WorkspaceModeOverrides = make(map[string]string)
+	}
+	ps.state.WorkspaceModeOverrides[workspace] = mode
+}
+
+// WorkspaceAllowedTools returns a copy of the tools /allow added in workspace.
+func (ps *ProjectStateStore) WorkspaceAllowedTools(workspace string) []string {
+	ps.mu.RLock()
+	defer ps.mu.RUnlock()
+	return slices.Clone(ps.state.WorkspaceAllowedTools[workspace])
+}
+
+// AddWorkspaceAllowedTool records tool for workspace, once.
+func (ps *ProjectStateStore) AddWorkspaceAllowedTool(workspace, tool string) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if slices.Contains(ps.state.WorkspaceAllowedTools[workspace], tool) {
+		return
+	}
+	if ps.state.WorkspaceAllowedTools == nil {
+		ps.state.WorkspaceAllowedTools = make(map[string][]string)
+	}
+	ps.state.WorkspaceAllowedTools[workspace] = append(ps.state.WorkspaceAllowedTools[workspace], tool)
 }
 
 func (ps *ProjectStateStore) ClearWorkDirOverride() {

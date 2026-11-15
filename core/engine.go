@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -389,6 +390,11 @@ type Engine struct {
 	providerRefsSaveFunc    func(refs []string) error
 	listGlobalProvidersFunc func(agentType string) ([]ProviderConfig, error)
 	modelSaveFunc           func(model string) error
+	// reasoningSaveFunc and allowedToolsSaveFunc write /reasoning and /allow
+	// of the project's own agent to the config file. Workspace agents keep
+	// theirs in the project state file instead.
+	reasoningSaveFunc    func(effort string) error
+	allowedToolsSaveFunc func(tools []string) error
 
 	ttsSaveFunc func(mode string) error
 
@@ -1170,6 +1176,18 @@ func (e *Engine) SetListGlobalProvidersFunc(fn func(agentType string) ([]Provide
 
 func (e *Engine) SetModelSaveFunc(fn func(model string) error) {
 	e.modelSaveFunc = fn
+}
+
+// SetReasoningSaveFunc sets how /reasoning on the project's own agent is
+// written to the config file.
+func (e *Engine) SetReasoningSaveFunc(fn func(effort string) error) {
+	e.reasoningSaveFunc = fn
+}
+
+// SetAllowedToolsSaveFunc sets how /allow on the project's own agent writes
+// the agent's full allowed-tools list to the config file.
+func (e *Engine) SetAllowedToolsSaveFunc(fn func(tools []string) error) {
+	e.allowedToolsSaveFunc = fn
 }
 
 // AddPlatform appends a platform to the engine after construction.
@@ -4200,6 +4218,12 @@ func (e *Engine) getOrCreateWorkspaceAgent(workspace string) (Agent, *SessionMan
 		}
 		if effort := e.projectState.WorkspaceReasoningOverride(workspace); effort != "" {
 			opts["reasoning_effort"] = effort
+		}
+		if mode := e.projectState.WorkspaceModeOverride(workspace); mode != "" {
+			opts["mode"] = mode
+		}
+		if extra := e.projectState.WorkspaceAllowedTools(workspace); len(extra) > 0 {
+			opts["allowed_tools"] = mergeAllowedToolsOption(opts["allowed_tools"], extra)
 		}
 	}
 
@@ -9573,9 +9597,25 @@ func (e *Engine) cmdLang(p Platform, msg *Message, args []string) {
 		return
 	}
 
-	e.i18n.SetLang(lang)
+	if err := e.setLanguage(lang); err != nil {
+		slog.Error("failed to persist language", "language", lang, "error", err)
+		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgError, err))
+		return
+	}
 	name := langDisplayName(lang)
 	e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgLangChanged, name))
+}
+
+// setLanguage saves lang as the config file's language, then switches to it,
+// so /lang outlives a restart. The language key is global: every project in
+// the same config file starts with it. Auto is saved as "".
+func (e *Engine) setLanguage(lang Language) error {
+	value := string(lang)
+	if err := e.saveProjectSettings(ProjectSettingsUpdate{Language: &value}); err != nil {
+		return err
+	}
+	e.i18n.SetLang(lang)
+	return nil
 }
 
 func langDisplayName(lang Language) string {
@@ -10073,7 +10113,11 @@ func (e *Engine) cmdReasoning(p Platform, msg *Message, args []string) {
 		return
 	}
 
-	e.setReasoningEffort(agent, sessions, msg.SessionKey, target)
+	if err := e.setReasoningEffort(agent, sessions, msg.SessionKey, target); err != nil {
+		slog.Error("failed to persist reasoning effort", "effort", target, "error", err)
+		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgError, err))
+		return
+	}
 	e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgReasoningChanged, target))
 }
 
@@ -10084,10 +10128,18 @@ func (e *Engine) cmdReasoning(p Platform, msg *Message, args []string) {
 // told, so that turn does not just go quiet. Callers must pass the agent and
 // sessions resolved for sessionKey (the workspace's in multi-workspace mode),
 // not the engine's global ones.
-func (e *Engine) setReasoningEffort(agent Agent, sessions *SessionManager, sessionKey, effort string) {
+//
+// The project's own agent saves the effort to the config file first; a
+// failed save changes nothing and returns the error.
+func (e *Engine) setReasoningEffort(agent Agent, sessions *SessionManager, sessionKey, effort string) error {
 	switcher, ok := agent.(ReasoningEffortSwitcher)
 	if !ok {
-		return
+		return nil
+	}
+	if agent == e.agent && e.reasoningSaveFunc != nil {
+		if err := e.reasoningSaveFunc(effort); err != nil {
+			return fmt.Errorf("save reasoning effort: %w", err)
+		}
 	}
 	interactiveKey := e.interactiveKeyForSessionKey(sessionKey)
 	p, replyCtx, running := e.runningTurnReplyTarget(interactiveKey, sessions.GetOrCreateActive(sessionKey))
@@ -10099,6 +10151,7 @@ func (e *Engine) setReasoningEffort(agent Agent, sessions *SessionManager, sessi
 	if running {
 		e.reply(p, replyCtx, e.i18n.T(MsgTurnStoppedBySettingChange))
 	}
+	return nil
 }
 
 // resumeFailureLabel names the conversation that could not be resumed: its
@@ -10227,7 +10280,12 @@ func (e *Engine) cmdMode(p Platform, msg *Message, args []string) {
 		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgAdminRequired, "/mode "+target))
 		return
 	}
-	newMode, appliedLive := e.setSessionMode(switcher, msg.SessionKey, target)
+	newMode, appliedLive, err := e.setSessionMode(agent, msg.SessionKey, target)
+	if err != nil {
+		slog.Error("failed to persist permission mode", "mode", target, "error", err)
+		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgError, err))
+		return
+	}
 
 	modes := switcher.PermissionModes()
 	displayName := newMode
@@ -10254,20 +10312,58 @@ func (e *Engine) modeUsageText(modes []PermissionModeInfo) string {
 
 // Both text commands and card actions must update the workspace's agent and
 // preserve its conversation. Recreate only the process if live updates are unsupported.
-func (e *Engine) setSessionMode(switcher ModeSwitcher, sessionKey, target string) (string, bool) {
+// The mode is saved before it is applied (see persistMode), so a failed save
+// leaves the agent on its old mode and returns the error.
+func (e *Engine) setSessionMode(agent Agent, sessionKey, target string) (string, bool, error) {
+	switcher, ok := agent.(ModeSwitcher)
+	if !ok {
+		return "", false, nil
+	}
 	if validator, ok := switcher.(ModeValidator); ok {
 		if err := validator.ValidateMode(target); err != nil {
 			slog.Warn("permission mode rejected", "error", err)
-			return switcher.GetMode(), false
+			return switcher.GetMode(), false, nil
 		}
 	}
+	mode := target
+	if n, ok := switcher.(ModeNormalizer); ok {
+		mode = n.NormalizeMode(target)
+	}
+	if err := e.persistMode(agent, sessionKey, mode); err != nil {
+		return switcher.GetMode(), false, err
+	}
 	switcher.SetMode(target)
-	mode := switcher.GetMode()
+	mode = switcher.GetMode()
 	live := e.applyLiveModeChange(sessionKey, mode)
 	if !live {
 		e.cleanupInteractiveState(e.interactiveKeyForSessionKey(sessionKey))
 	}
-	return mode, live
+	return mode, live, nil
+}
+
+// persistMode saves a /mode change so it outlives a restart. The project's
+// own agent writes the config file's mode. A workspace agent writes the
+// project state file, which getOrCreateWorkspaceAgent reads when the idle
+// reap or a restart rebuilds the agent.
+func (e *Engine) persistMode(agent Agent, sessionKey, mode string) error {
+	if agent == e.agent {
+		return e.saveProjectSettings(ProjectSettingsUpdate{Mode: &mode})
+	}
+	if workspace := e.workspaceSettingKey(sessionKey, agent); workspace != "" {
+		e.projectState.SetWorkspaceModeOverride(workspace, mode)
+		e.projectState.Save()
+	}
+	return nil
+}
+
+// workspaceSettingKey returns the project state key under which a workspace
+// agent's settings are kept, or "" when agent is the project's own agent or
+// there is no project state to keep them in.
+func (e *Engine) workspaceSettingKey(sessionKey string, agent Agent) string {
+	if e.projectState == nil || !e.multiWorkspace || agent == e.agent {
+		return ""
+	}
+	return workspaceOverrideKey(e.interactiveKeyForSessionKey(sessionKey), sessionKey, agent)
 }
 
 func (e *Engine) applyLiveModeChange(sessionKey, mode string) bool {
@@ -10747,15 +10843,74 @@ func (e *Engine) cmdAllow(p Platform, msg *Message, args []string) {
 	}
 
 	toolName := strings.TrimSpace(args[0])
-	if auth, ok := agent.(ToolAuthorizer); ok {
-		if err := auth.AddAllowedTools(toolName); err != nil {
-			e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgToolAllowFailed), err))
-			return
-		}
-		e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgToolAllowedNew), toolName))
-	} else {
+	auth, ok := agent.(ToolAuthorizer)
+	if !ok {
 		e.reply(p, msg.ReplyCtx, e.i18n.T(MsgToolAuthNotSupported))
+		return
 	}
+	if err := e.persistAllowedTool(agent, auth, msg.SessionKey, toolName); err != nil {
+		slog.Error("failed to persist allowed tool", "tool", toolName, "error", err)
+		e.reply(p, msg.ReplyCtx, e.i18n.Tf(MsgError, err))
+		return
+	}
+	if err := auth.AddAllowedTools(toolName); err != nil {
+		e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgToolAllowFailed), err))
+		return
+	}
+	e.reply(p, msg.ReplyCtx, fmt.Sprintf(e.i18n.T(MsgToolAllowedNew), toolName))
+}
+
+// persistAllowedTool saves a tool /allow adds, before the agent gets it, so
+// it outlives a restart. The project's own agent writes its whole list as
+// the config file's allowed_tools. A workspace agent records the tool in the
+// project state file; getOrCreateWorkspaceAgent adds it back on top of the
+// inherited list when the idle reap or a restart rebuilds the agent.
+func (e *Engine) persistAllowedTool(agent Agent, auth ToolAuthorizer, sessionKey, tool string) error {
+	if agent == e.agent {
+		tools := auth.GetAllowedTools()
+		if e.allowedToolsSaveFunc == nil || slices.Contains(tools, tool) {
+			return nil
+		}
+		if err := e.allowedToolsSaveFunc(append(tools, tool)); err != nil {
+			return fmt.Errorf("save allowed tools: %w", err)
+		}
+		return nil
+	}
+	if workspace := e.workspaceSettingKey(sessionKey, agent); workspace != "" {
+		e.projectState.AddWorkspaceAllowedTool(workspace, tool)
+		e.projectState.Save()
+	}
+	return nil
+}
+
+// mergeAllowedToolsOption returns the allowed_tools agent option base (a
+// []any or []string of tool names) with extra appended, skipping repeats.
+// The result is a []any, the type agents read the option as.
+func mergeAllowedToolsOption(base any, extra []string) []any {
+	var out []any
+	seen := make(map[string]bool)
+	add := func(tool string) {
+		if tool != "" && !seen[tool] {
+			seen[tool] = true
+			out = append(out, tool)
+		}
+	}
+	switch v := base.(type) {
+	case []any:
+		for _, item := range v {
+			if tool, ok := item.(string); ok {
+				add(tool)
+			}
+		}
+	case []string:
+		for _, tool := range v {
+			add(tool)
+		}
+	}
+	for _, tool := range extra {
+		add(tool)
+	}
+	return out
 }
 
 func (e *Engine) cmdProvider(p Platform, msg *Message, args []string) {
@@ -12309,7 +12464,12 @@ func (e *Engine) cardNav(action string, sessionKey string, clicker *Message) *Ca
 	}
 
 	if prefix == "act" {
-		e.executeCardAction(cmd, args, sessionKey)
+		if handled, err := e.settingCardAction(cmd, args, sessionKey); !handled {
+			e.executeCardAction(cmd, args, sessionKey)
+		} else if err != nil {
+			slog.Error("card action: setting not saved", "command", cmd, "error", err)
+			return NewCard().Markdown(e.i18n.Tf(MsgError, err)).Buttons(e.cardBackButton()).Build()
+		}
 	}
 
 	switch cmd {
@@ -12521,9 +12681,76 @@ func workspaceFromInteractiveKey(interactiveKey, sessionKey string) string {
 	return strings.TrimSuffix(interactiveKey, suffix)
 }
 
+// settingCardAction applies the card buttons of /reasoning, /mode and /lang,
+// which save the setting before applying it. handled reports whether cmd was
+// one of them; err is a failed save, after which nothing changed.
+func (e *Engine) settingCardAction(cmd, args, sessionKey string) (handled bool, err error) {
+	switch cmd {
+	case "/reasoning":
+		if args == "" {
+			return true, nil
+		}
+		// The workspace's agent and sessions, like cmdReasoning: the global
+		// ones would change an agent this chat does not use while stopping
+		// the chat's running turn.
+		agent, sessions := e.sessionContextForKey(sessionKey)
+		switcher, ok := agent.(ReasoningEffortSwitcher)
+		if !ok {
+			return true, nil
+		}
+		efforts := switcher.AvailableReasoningEfforts()
+		target := strings.ToLower(strings.TrimSpace(args))
+		if idx, err := strconv.Atoi(target); err == nil && idx >= 1 && idx <= len(efforts) {
+			target = efforts[idx-1]
+		}
+		if !slices.Contains(efforts, target) {
+			return true, nil
+		}
+		return true, e.setReasoningEffort(agent, sessions, sessionKey, target)
+
+	case "/mode":
+		if args == "" {
+			return true, nil
+		}
+		agent, _ := e.sessionContextForKey(sessionKey)
+		_, _, err := e.setSessionMode(agent, sessionKey, strings.ToLower(args))
+		return true, err
+
+	case "/lang":
+		if args == "" {
+			return true, nil
+		}
+		var lang Language
+		switch strings.ToLower(strings.TrimSpace(args)) {
+		case "en", "english":
+			lang = LangEnglish
+		case "zh", "cn", "chinese":
+			lang = LangChinese
+		case "zh-tw", "zh_tw", "zhtw":
+			lang = LangTraditionalChinese
+		case "ja", "jp", "japanese":
+			lang = LangJapanese
+		case "es", "spanish":
+			lang = LangSpanish
+		case "auto":
+			lang = LangAuto
+		default:
+			return true, nil
+		}
+		return true, e.setLanguage(lang)
+	}
+	return false, nil
+}
+
 // executeCardAction performs the side-effect for act: prefixed actions
 // (e.g. switching model/mode/lang) before the card is re-rendered.
 func (e *Engine) executeCardAction(cmd, args, sessionKey string) {
+	if handled, err := e.settingCardAction(cmd, args, sessionKey); handled {
+		if err != nil {
+			slog.Error("card action: setting not saved", "command", cmd, "error", err)
+		}
+		return
+	}
 	interactiveKey := e.interactiveKeyForSessionKey(sessionKey)
 
 	switch cmd {
@@ -12560,65 +12787,6 @@ func (e *Engine) executeCardAction(cmd, args, sessionKey string) {
 		state.modelSwitch = &modelSwitchState{phase: "switching", target: target}
 		state.mu.Unlock()
 		go e.performModelSwitchAsync(sessionKey, state, agent, sessions, target)
-
-	case "/reasoning":
-		if args == "" {
-			return
-		}
-		// The workspace's agent and sessions, like cmdReasoning: the global
-		// ones would change an agent this chat does not use while stopping
-		// the chat's running turn.
-		agent, sessions := e.sessionContextForKey(sessionKey)
-		switcher, ok := agent.(ReasoningEffortSwitcher)
-		if !ok {
-			return
-		}
-		efforts := switcher.AvailableReasoningEfforts()
-		target := strings.ToLower(strings.TrimSpace(args))
-		if idx, err := strconv.Atoi(target); err == nil && idx >= 1 && idx <= len(efforts) {
-			target = efforts[idx-1]
-		}
-		for _, effort := range efforts {
-			if effort == target {
-				e.setReasoningEffort(agent, sessions, sessionKey, target)
-				return
-			}
-		}
-
-	case "/mode":
-		if args == "" {
-			return
-		}
-		agent, _ := e.sessionContextForKey(sessionKey)
-		switcher, ok := agent.(ModeSwitcher)
-		if !ok {
-			return
-		}
-		e.setSessionMode(switcher, sessionKey, strings.ToLower(args))
-
-	case "/lang":
-		if args == "" {
-			return
-		}
-		target := strings.ToLower(strings.TrimSpace(args))
-		var lang Language
-		switch target {
-		case "en", "english":
-			lang = LangEnglish
-		case "zh", "cn", "chinese":
-			lang = LangChinese
-		case "zh-tw", "zh_tw", "zhtw":
-			lang = LangTraditionalChinese
-		case "ja", "jp", "japanese":
-			lang = LangJapanese
-		case "es", "spanish":
-			lang = LangSpanish
-		case "auto":
-			lang = LangAuto
-		default:
-			return
-		}
-		e.i18n.SetLang(lang)
 
 	case "/provider":
 		if args == "" {

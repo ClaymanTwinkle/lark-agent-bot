@@ -940,6 +940,12 @@ func runBot(rootOpts rootCLIOptions, logWriter io.Writer, logCloser io.Closer, o
 		engine.SetModelSaveFunc(func(model string) error {
 			return config.SaveAgentModel(projName, model)
 		})
+		engine.SetReasoningSaveFunc(func(effort string) error {
+			return config.SaveAgentReasoningEffort(projName, effort)
+		})
+		engine.SetAllowedToolsSaveFunc(func(tools []string) error {
+			return config.SaveAgentAllowedTools(projName, tools)
+		})
 
 		// Wire config reload
 		capturedEngine := engine
