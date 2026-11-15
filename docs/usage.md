@@ -932,7 +932,7 @@ Notes:
 - `--image` and `--file` can both be repeated.
 - Absolute paths are recommended so the command does not depend on the agent's current working directory.
 - With `attachment_send = "off"`, image/file send-back is blocked but ordinary text replies still work.
-- Each attachment is capped at **50 MiB** by default. Configure it with `max_attachment_size_mb` (MiB) in config.toml, or override that value with the `CC_MAX_ATTACHMENT_SIZE_MB` env var (same MiB unit; takes precedence when set), e.g. `CC_MAX_ATTACHMENT_SIZE_MB=100 lark-agent-bot send --file big.bin`.
+- Each attachment is capped at **500 MiB** by default. Configure it with `max_attachment_size_mb` (MiB) in config.toml, or override that value with the `CC_MAX_ATTACHMENT_SIZE_MB` env var (same MiB unit; takes precedence when set), e.g. `CC_MAX_ATTACHMENT_SIZE_MB=100 lark-agent-bot send --file big.bin`.
 
 ### Typical use cases
 
@@ -947,6 +947,7 @@ Notes:
 - The files must exist on the local machine where the agent runs.
 - There must be an active session; otherwise the command fails because lark-agent-bot has no chat context to deliver to.
 - The target platform also enforces its own file-size/type limit at delivery; the effective per-attachment ceiling is the smaller of that limit and `max_attachment_size_mb` (a file that passes lark-agent-bot may still be rejected by the platform).
+- Feishu / Lark only accepts files up to 30 MB and images up to 10 MB as messages. Larger files are uploaded to the app's cloud space and sent as a link (see `drive_fallback` in `config.example.toml`), which can take a few minutes for big files; larger images are sent as files.
 
 ---
 

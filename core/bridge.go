@@ -797,11 +797,15 @@ func (bs *BridgeServer) checkOrigin(r *http.Request) bool {
 
 // Read limits for adapter WebSocket messages. The register message is small;
 // a later message can carry base64 images, files or audio, so it may hold one
-// attachment of DefaultMaxAttachmentSize after base64 expansion plus envelope
-// slack, the same allowance the local /send API gives.
+// attachment of bridgeMaxAttachmentSize after base64 expansion plus envelope
+// slack. The bridge listens on the network, so its attachments keep their own
+// 50 MiB cap rather than following DefaultMaxAttachmentSize, the local /send
+// API's: each message is read whole into memory, and a larger cap would let
+// any adapter make the server hold that much per message.
 const (
-	bridgeRegisterReadLimit int64 = 1 << 20 // 1 MiB
-	bridgeMessageReadLimit        = DefaultMaxAttachmentSize*4/3 + sendBodyEnvelope
+	bridgeRegisterReadLimit int64 = 1 << 20  // 1 MiB
+	bridgeMaxAttachmentSize int64 = 50 << 20 // 50 MiB
+	bridgeMessageReadLimit        = bridgeMaxAttachmentSize*4/3 + sendBodyEnvelope
 )
 
 func (bs *BridgeServer) handleWS(w http.ResponseWriter, r *http.Request) {

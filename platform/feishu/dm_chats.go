@@ -63,6 +63,22 @@ func (d *dmChats) chatOf(userID string) string {
 	return d.chats[userID]
 }
 
+// userOf returns the user whose chat with the bot is chatID, or "" while it
+// is not known. A nil dmChats knows no chats.
+func (d *dmChats) userOf(chatID string) string {
+	if d == nil || chatID == "" {
+		return ""
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for userID, c := range d.chats {
+		if c == chatID {
+			return userID
+		}
+	}
+	return ""
+}
+
 // remember records chatID as userID's chat with the bot.
 func (d *dmChats) remember(userID, chatID string) {
 	if d == nil || userID == "" || chatID == "" {
