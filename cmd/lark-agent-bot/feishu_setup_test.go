@@ -26,7 +26,7 @@ func TestSetupRegistrationURL_RoundTripTemplateAndPreset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(addons.Scopes.Tenant) != 38 || len(addons.Scopes.User) != 1 {
+	if len(addons.Scopes.Tenant) != 40 || len(addons.Scopes.User) != 1 {
 		t.Fatal("shared permissions changed; review the template contract")
 	}
 	if !slices.Contains(addons.Scopes.Tenant, "im:message.reactions:write_only") {
@@ -71,6 +71,42 @@ func TestSetupTemplate_IncludesRecallCancellationSubscription(t *testing.T) {
 	}
 	if !slices.Contains(addons.Events.Items.Tenant, "im.message.recalled_v1") {
 		t.Fatal("new bots must subscribe to recalls so queued prompts can be cancelled")
+	}
+}
+
+func TestSetupRegistrationURL_IncludesDriveUploadPermissions(t *testing.T) {
+	addons, err := loadSetupTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := setupRegistrationURL("https://accounts.feishu.cn/confirm", registrationFlowOptions{Addons: addons})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compressed, err := base64.RawURLEncoding.DecodeString(u.Query().Get("addons"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := gzip.NewReader(strings.NewReader(string(compressed)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close() }()
+	var got setupAddons
+	if err := json.NewDecoder(r).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{"drive:file:upload", "drive:drive.metadata:readonly", "docs:permission.member:create"} {
+		if !slices.Contains(got.Scopes.Tenant, scope) {
+			t.Errorf("new bots must request tenant permission %s in the registration URL", scope)
+		}
+	}
+	if slices.Contains(got.Scopes.Tenant, "drive:drive") {
+		t.Error("the default template should request granular drive permissions")
 	}
 }
 
@@ -174,7 +210,7 @@ func TestLoadSetupTemplate_RejectsBrokenOverrides(t *testing.T) {
 
 func TestSetupCheck_VerifiesGrantedIdentityAndSubscriptions(t *testing.T) {
 	addons, _ := loadSetupTemplate("")
-	for _, scenario := range []string{"complete", "pending", "wrong-identity", "missing-feature-scopes", "missing-event", "missing-recall", "missing-chat-entered", "omitted-subscriptions", "owner-is-bot", "denied"} {
+	for _, scenario := range []string{"complete", "pending", "wrong-identity", "missing-feature-scopes", "missing-drive-permissions", "missing-event", "missing-recall", "missing-chat-entered", "omitted-subscriptions", "owner-is-bot", "denied"} {
 		t.Run(scenario, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
@@ -200,6 +236,9 @@ func TestSetupCheck_VerifiesGrantedIdentityAndSubscriptions(t *testing.T) {
 						names []string
 					}{{"tenant", addons.Scopes.Tenant}, {"user", addons.Scopes.User}} {
 						for _, name := range group.names {
+							if scenario == "missing-drive-permissions" && slices.Contains([]string{"drive:file:upload", "docs:permission.member:create"}, name) {
+								continue
+							}
 							if scenario == "missing-feature-scopes" && slices.Contains([]string{"contact:user.base:readonly", "im:chat.members:read", "im:message.group_msg"}, name) {
 								continue
 							}
@@ -259,12 +298,15 @@ func TestSetupCheck_VerifiesGrantedIdentityAndSubscriptions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantMissing := scenario == "pending" || scenario == "wrong-identity" || scenario == "missing-feature-scopes" || scenario == "missing-event" || scenario == "missing-recall" || scenario == "missing-chat-entered"
+			wantMissing := scenario == "pending" || scenario == "wrong-identity" || scenario == "missing-feature-scopes" || scenario == "missing-drive-permissions" || scenario == "missing-event" || scenario == "missing-recall" || scenario == "missing-chat-entered"
 			if (len(check.Missing) > 0) != wantMissing {
 				t.Fatalf("missing: %v", check.Missing)
 			}
 			if scenario == "missing-chat-entered" && !reflect.DeepEqual(check.Missing, []string{"event:im.chat.access_event.bot_p2p_chat_entered_v1"}) {
 				t.Fatalf("bots created before the event joined the template must be told to subscribe it, got %v", check.Missing)
+			}
+			if scenario == "missing-drive-permissions" && !reflect.DeepEqual(check.Missing, []string{"tenant:docs:permission.member:create", "tenant:drive:file:upload"}) {
+				t.Fatalf("existing bots must be told to enable the missing drive permissions, got %v", check.Missing)
 			}
 			if scenario == "missing-feature-scopes" {
 				for _, scope := range []string{"contact:user.base:readonly", "im:chat.members:read", "im:message.group_msg"} {

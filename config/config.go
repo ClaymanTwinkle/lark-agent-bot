@@ -153,7 +153,7 @@ type Config struct {
 	// MaxAttachmentSizeMB is the per-file size limit, in MiB, for attachments
 	// sent through `lark-agent-bot send --file/--image/--audio/--video` and the
 	// /send API. 0 (the default) means use core.DefaultMaxAttachmentSize
-	// (50 MiB). Raise it to send larger files; the request body limit on the
+	// (500 MiB). Raise it to send larger files; the request body limit on the
 	// API side scales with this value to account for base64 expansion.
 	MaxAttachmentSizeMB int `toml:"max_attachment_size_mb,omitempty"`
 }

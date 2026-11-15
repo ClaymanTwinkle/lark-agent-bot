@@ -207,7 +207,7 @@ func TestBridge_RegisterReadLimit(t *testing.T) {
 // The per-message cap must still fit one maximum-size attachment after base64
 // expansion.
 func TestBridge_MessageReadLimitFitsMaxAttachment(t *testing.T) {
-	if min := DefaultMaxAttachmentSize * 4 / 3; bridgeMessageReadLimit <= min {
+	if min := bridgeMaxAttachmentSize * 4 / 3; bridgeMessageReadLimit <= min {
 		t.Fatalf("bridgeMessageReadLimit = %d, must exceed base64 size of a max attachment (%d)", bridgeMessageReadLimit, min)
 	}
 }

@@ -272,6 +272,21 @@ type Platform struct {
 	// typingDeleteBackoff overrides defaultTypingDeleteBackoff. Indirected so
 	// unit tests don't wait seconds between attempts.
 	typingDeleteBackoff []time.Duration
+
+	// noDriveFallback turns off sending files over imFileLimit as
+	// cloud-space links (option drive_fallback = false); see sendViaDrive.
+	noDriveFallback bool
+	// driveFolderToken is the folder those files are uploaded to (option
+	// drive_folder_token); "" uses the root of the app's cloud space,
+	// cached in driveRootToken after the first lookup.
+	driveFolderToken string
+	driveRootMu      sync.Mutex
+	driveRootToken   string
+	// imFileMaxBytes and imImageMaxBytes override defaultIMFileMaxBytes and
+	// defaultIMImageMaxBytes. Only tests set them, so they need not upload
+	// tens of megabytes.
+	imFileMaxBytes  int64
+	imImageMaxBytes int64
 }
 
 // defaultImageBatchWindow is the quiet period after the last image in a
@@ -512,6 +527,17 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		resourceChunkSize = 64 * 1024 * 1024
 	}
 
+	noDriveFallback := false
+	if raw, ok := opts["drive_fallback"]; ok {
+		v, isBool := raw.(bool)
+		if !isBool {
+			return nil, fmt.Errorf("%s: invalid drive_fallback %v: want true or false", name, raw)
+		}
+		noDriveFallback = !v
+	}
+	driveFolderToken, _ := opts["drive_folder_token"].(string)
+	driveFolderToken = strings.TrimSpace(driveFolderToken)
+
 	// Webhook mode configuration (for Lark international version)
 	port, _ := opts["port"].(string)
 	if port == "" {
@@ -564,6 +590,8 @@ func newPlatform(name, domain string, opts map[string]any) (core.Platform, error
 		resourceDownloadHTTP:       &http.Client{Timeout: 60 * time.Second},
 		resourceChunkSize:          resourceChunkSize,
 		resourceMaxBytes:           defaultResourceMaxBytes,
+		noDriveFallback:            noDriveFallback,
+		driveFolderToken:           driveFolderToken,
 		typingLedger:               openTypingReactionLedger(typingReactionLedgerPath(dataDir, name, project, appID)),
 		dmChats:                    openDMChats(dmChatsPath(dataDir, name, project, appID)),
 	}
@@ -3528,6 +3556,9 @@ func (p *Platform) SendImage(ctx context.Context, rctx any, img core.ImageAttach
 	if !ok {
 		return fmt.Errorf("%s: SendImage: invalid reply context type %T", p.tag(), rctx)
 	}
+	if int64(len(img.Data)) > p.imImageLimit() {
+		return p.SendFile(ctx, rc, imageAsFile(img))
+	}
 
 	imageKey, err := p.uploadImageKey(ctx, img.Data)
 	if err != nil {
@@ -3580,6 +3611,9 @@ func (p *Platform) SendFile(ctx context.Context, rctx any, file core.FileAttachm
 	fileName := file.FileName
 	if fileName == "" {
 		fileName = "attachment"
+	}
+	if int64(len(file.Data)) > p.imFileLimit() {
+		return p.sendOversizedFile(ctx, rc, file.Data, fileName)
 	}
 	fileType := detectFeishuFileType(file.MimeType, fileName)
 	if fileType == larkim.FileTypeMp4 {
@@ -3638,6 +3672,9 @@ func (p *Platform) uploadFileKey(ctx context.Context, op string, data []byte, fi
 // and without image_key it has no cover, so both are probed first; a clip
 // whose metadata can't be read is still sent, just without them.
 func (p *Platform) sendVideoMessage(ctx context.Context, rc replyContext, video []byte, fileName string) error {
+	if int64(len(video)) > p.imFileLimit() {
+		return p.sendOversizedFile(ctx, rc, video, fileName)
+	}
 	probe := p.probeVideo
 	if probe == nil {
 		probe = core.ProbeVideo
@@ -5702,6 +5739,9 @@ func (p *Platform) SendAudio(ctx context.Context, rctx any, audio []byte, format
 		}
 		audio = converted
 		format = "opus"
+	}
+	if int64(len(audio)) > p.imFileLimit() {
+		return p.sendOversizedFile(ctx, rc, audio, "audio.opus")
 	}
 
 	var uploadResp *larkim.CreateFileResp

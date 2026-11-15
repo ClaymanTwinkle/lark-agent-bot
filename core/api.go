@@ -16,10 +16,13 @@ import (
 	"time"
 )
 
-// DefaultMaxAttachmentSize is the default per-attachment size limit (50 MiB)
+// DefaultMaxAttachmentSize is the default per-attachment size limit (500 MiB)
 // applied by the /send API and `lark-agent-bot send` when max_attachment_size_mb
-// is unset. Exported so cmd/lark-agent-bot can resolve the same default.
-const DefaultMaxAttachmentSize int64 = 50 << 20
+// is unset. Exported so cmd/lark-agent-bot can resolve the same default. It is
+// a ceiling, not an allocation: a send briefly holds two to three times the
+// file's size in memory while it decodes the base64 request. Platforms may
+// accept less, or deliver large files another way (for example as a link).
+const DefaultMaxAttachmentSize int64 = 500 << 20
 
 // APIServer exposes a local Unix socket API for external tools (e.g. cron jobs)
 // to send messages to active sessions.

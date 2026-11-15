@@ -5595,6 +5595,7 @@ When you generate a local image or file that should be sent to the user, use:
   lark-agent-bot send --file /absolute/path/to/report.pdf --image /absolute/path/to/chart.png
 
 You may repeat --image / --file multiple times. Use this only for generated attachments that need to be delivered to the user.
+Sending a large file (tens of MB or more) can take several minutes: give the command a long timeout (e.g. 10 minutes) or run it in the background. If it times out, do not send the file again right away: the upload keeps going after the command gives up.
 If you include --message, do not repeat the exact same sentence again in your normal reply, because your normal reply is also delivered automatically.
 
 When sending an audio (mp3/wav/m4a/ogg/opus) or video (mp4/mov/webm) clip that should render inline as a native voice bubble or video player — instead of as a generic file download — use the dedicated flags:
@@ -5617,6 +5618,7 @@ After lark-agent-bot send --tts (or --audio) succeeds, reply only with NO_REPLY 
   lark-agent-bot send --file /absolute/path/to/report.pdf --image /absolute/path/to/chart.png
 
 可以重复使用 --image / --file。仅在需要把生成的附件投递到用户时使用这个命令。
+发送大文件(几十 MB 以上)可能要几分钟:给命令设置足够长的超时(例如 10 分钟)或放到后台运行。如果命令超时,不要立即重发:命令超时后上传仍在后台继续。
 如果同时使用了 --message,不要在正常回复里再说一遍完全相同的句子,因为正常回复本身也会自动发送给用户。
 
 发送音频 (mp3/wav/m4a/ogg/opus) 或视频 (mp4/mov/webm) 片段、且希望它们以内联的原生语音气泡或视频播放器形态呈现(而不是作为普通文件下载)时,使用专用参数:
