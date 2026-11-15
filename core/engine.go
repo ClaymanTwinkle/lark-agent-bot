@@ -2000,14 +2000,9 @@ func (e *Engine) executeTimerShell(p Platform, replyCtx any, job *TimerJob) erro
 		workDir, _ = os.Getwd()
 	}
 
-	timeout := job.ExecutionTimeout()
-	if timeout <= 0 {
-		timeout = 60 * time.Second
-	}
-
 	cmdLabel := truncateStr(job.Exec, 60)
 
-	ctx, cancel := context.WithTimeout(e.ctx, timeout)
+	ctx, cancel := shellJobContext(e.ctx, job.ExecutionTimeout())
 	defer cancel()
 
 	var shellCmd *exec.Cmd
@@ -2016,6 +2011,7 @@ func (e *Engine) executeTimerShell(p Platform, replyCtx any, job *TimerJob) erro
 	} else {
 		shellCmd = exec.CommandContext(ctx, "sh", "-c", job.Exec)
 	}
+	setProcessGroup(shellCmd)
 	shellCmd.Dir = workDir
 
 	stdout, err := shellCmd.StdoutPipe()
@@ -2159,14 +2155,9 @@ func (e *Engine) executeCronShell(p Platform, replyCtx any, job *CronJob) error 
 		workDir, _ = os.Getwd()
 	}
 
-	timeout := job.ExecutionTimeout()
-	if timeout <= 0 {
-		timeout = 60 * time.Second
-	}
-
 	cmdLabel := truncateStr(job.Exec, 60)
 
-	ctx, cancel := context.WithTimeout(e.ctx, timeout)
+	ctx, cancel := shellJobContext(e.ctx, job.ExecutionTimeout())
 	defer cancel()
 
 	shellCmd := shellExecCommand(ctx, e.shell, e.shellFlag, e.shellProfile, job.Exec)
@@ -8092,15 +8083,21 @@ const quickFinishTimeout = 500 * time.Millisecond
 // For PowerShell/pwsh, extra flags (-NoProfile, -ExecutionPolicy Bypass) are
 // added automatically. If shellProfile is non-empty, it is prepended to the command
 // with a newline separator (useful for sourcing shell profiles).
+// The command runs in its own process group, so when ctx is done everything it
+// started is stopped too, not only the shell (#70).
 func shellExecCommand(ctx context.Context, shell, flag, shellProfile, command string) *exec.Cmd {
 	if shellProfile != "" {
 		command = shellProfile + "\n" + command
 	}
+	var cmd *exec.Cmd
 	base := strings.ToLower(filepath.Base(shell))
 	if strings.HasPrefix(base, "powershell") || strings.HasPrefix(base, "pwsh") {
-		return exec.CommandContext(ctx, shell, "-NoProfile", "-ExecutionPolicy", "Bypass", flag, command)
+		cmd = exec.CommandContext(ctx, shell, "-NoProfile", "-ExecutionPolicy", "Bypass", flag, command)
+	} else {
+		cmd = exec.CommandContext(ctx, shell, flag, command)
 	}
-	return exec.CommandContext(ctx, shell, flag, command)
+	setProcessGroup(cmd)
+	return cmd
 }
 
 func defaultShell() string {
@@ -8334,10 +8331,25 @@ func (e *Engine) formatShellTimeout(cmdLabel, output string, maxOutput int) stri
 	return fmt.Sprintf("⚠️ `%s` (timeout)\n```\n%s\n```", cmdLabel, display)
 }
 
-func killAndWait(cmd *exec.Cmd, doneCh <-chan struct{}) {
-	if cmd.Process != nil {
-		_ = cmd.Process.Kill()
+// shellKillGrace is how long a stopped shell command's process group gets to
+// exit after SIGTERM before it is SIGKILLed. A var so tests can shorten it.
+var shellKillGrace = 5 * time.Second
+
+// shellJobContext returns the context a cron or timer exec job runs under:
+// bounded by timeout, or only by the engine's lifetime when timeout is 0
+// ("timeout_mins 0 = no limit"; it used to fall back to 60 seconds).
+func shellJobContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		return context.WithCancel(parent)
 	}
+	return context.WithTimeout(parent, timeout)
+}
+
+// killAndWait stops cmd together with everything it started (see
+// stopProcessTree) and waits for its output readers to finish. Killing only
+// cmd.Process left a timed-out job's children running (#70).
+func killAndWait(cmd *exec.Cmd, doneCh <-chan struct{}) {
+	_ = stopProcessTree(cmd)
 	<-doneCh
 }
 

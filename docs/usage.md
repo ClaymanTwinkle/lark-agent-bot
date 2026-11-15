@@ -980,7 +980,7 @@ lark-agent-bot cron exec <job-id>
 lark-agent-bot cron del <job-id>
 ```
 
-Optional: `--session-mode new-per-run` starts a fresh agent session on each run (default is `reuse`, same as before). `--timeout-mins N` sets how long the scheduler waits per run (`0` = no limit; omit = 30 minutes).
+Optional: `--session-mode new-per-run` starts a fresh agent session on each run (default is `reuse`, same as before). `--timeout-mins N` sets how long the scheduler waits per run (`0` = no limit; omit = 30 minutes). When an `--exec` command runs out of time, the command and every process it started get SIGTERM, and whatever is still running 5 seconds later gets SIGKILL (Windows: `taskkill /T /F`).
 
 ### Natural Language (Claude Code)
 

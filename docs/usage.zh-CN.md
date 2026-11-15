@@ -950,7 +950,7 @@ lark-agent-bot cron exec <job-id>
 lark-agent-bot cron del <job-id>
 ```
 
-可选：`--session-mode new-per-run` 每次触发使用新的 agent 会话（默认 `reuse` 与旧行为一致）。`--timeout-mins N` 设置单次调度最长等待分钟数（`0` 表示不限制；省略为 30 分钟）。
+可选：`--session-mode new-per-run` 每次触发使用新的 agent 会话（默认 `reuse` 与旧行为一致）。`--timeout-mins N` 设置单次调度最长等待分钟数（`0` 表示不限制；省略为 30 分钟）。`--exec` 命令超时时，命令本身和它启动的所有进程都会收到 SIGTERM，5 秒后还没退出的再发 SIGKILL（Windows 用 `taskkill /T /F`）。
 
 ### 自然语言（Claude Code）
 
