@@ -8,6 +8,31 @@ import (
 	"testing"
 )
 
+// realUserEnv holds HOME, USERPROFILE and CLAUDE_CONFIG_DIR as they were
+// before TestMain isolated them (nil = unset).
+var realUserEnv = map[string]*string{}
+
+// useRealUserEnv restores the developer's real home for the rest of t, for
+// opt-in smoke tests that must run the real, logged-in claude CLI.
+func useRealUserEnv(t *testing.T) {
+	t.Helper()
+	for key, orig := range realUserEnv {
+		cur, had := os.LookupEnv(key)
+		if orig == nil {
+			os.Unsetenv(key)
+		} else {
+			os.Setenv(key, *orig)
+		}
+		t.Cleanup(func() {
+			if had {
+				os.Setenv(key, cur)
+			} else {
+				os.Unsetenv(key)
+			}
+		})
+	}
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(runTestsWithIsolatedHome(m))
 }
@@ -27,6 +52,11 @@ func runTestsWithIsolatedHome(m *testing.M) (code int) {
 		}
 	}()
 	for key, value := range map[string]string{"HOME": home, "USERPROFILE": home, "CLAUDE_CONFIG_DIR": ""} {
+		if orig, ok := os.LookupEnv(key); ok {
+			realUserEnv[key] = &orig
+		} else {
+			realUserEnv[key] = nil
+		}
 		if err := os.Setenv(key, value); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1

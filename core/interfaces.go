@@ -486,7 +486,10 @@ type UsageBucket struct {
 
 // UsageWindow describes a single quota window.
 type UsageWindow struct {
-	Name              string
+	Name string
+	// Scope names what the window is limited to when it is not the whole
+	// account, e.g. a model family ("Fable"). Empty means account-wide.
+	Scope             string
 	UsedPercent       int
 	WindowSeconds     int
 	ResetAfterSeconds int

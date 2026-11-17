@@ -6166,6 +6166,41 @@ func TestFormatUsageReport_SingleSevenDayWindowDoesNotDuplicate(t *testing.T) {
 	}
 }
 
+// A per-model weekly cap (Claude Code 2.1: "Current week (Fable)") can run
+// out before the account-wide one, so /usage lists it as its own labelled
+// block, while the headline windows stay account-wide.
+func TestFormatUsageReport_ListsScopedWindows(t *testing.T) {
+	report := &UsageReport{
+		Buckets: []UsageBucket{{
+			Name:    "Usage",
+			Allowed: true,
+			Windows: []UsageWindow{
+				{Name: "Current week (Fable)", Scope: "Fable", UsedPercent: 82, WindowSeconds: 604800, ResetAfterSeconds: 100000},
+				{Name: "Current week (all models)", UsedPercent: 45, WindowSeconds: 604800, ResetAfterSeconds: 100000},
+			},
+		}},
+	}
+
+	primary, secondary := selectUsageWindows(report)
+	if primary != nil || secondary == nil || secondary.Scope != "" || secondary.UsedPercent != 45 {
+		t.Fatalf("selectUsageWindows = (%+v, %+v), want only the account-wide weekly window", primary, secondary)
+	}
+
+	got := formatUsageReport(report, LangEnglish)
+	for _, want := range []string{"7d limit\nRemaining: 55%", "7d limit (Fable)\nRemaining: 18%"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("usage text = %q, want substring %q", got, want)
+		}
+	}
+	if c := strings.Count(got, "7d limit"); c != 2 {
+		t.Fatalf("7d limit rendered %d times, want 2: %q", c, got)
+	}
+
+	if zh := formatUsageReport(report, LangChinese); !strings.Contains(zh, "7日限额（Fable）") {
+		t.Fatalf("zh usage text = %q, want full-width scope label", zh)
+	}
+}
+
 func TestCmdCommands_UsesLegacyTextOnPlatformWithoutCardSupport(t *testing.T) {
 	p := &stubPlatformEngine{n: "plain"}
 	e := NewEngine("test", &stubAgent{}, []Platform{p}, "", LangEnglish)
