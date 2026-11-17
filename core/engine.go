@@ -90,6 +90,9 @@ const closeTimeout = 150 * time.Second
 const (
 	replyFooterUsageTimeout  = 1500 * time.Millisecond
 	replyFooterUsageCacheTTL = 30 * time.Second
+	// usageFetchTimeout bounds /usage. Agents that read usage by running
+	// their CLI can take ~15s.
+	usageFetchTimeout = 60 * time.Second
 )
 
 const (
@@ -8993,7 +8996,13 @@ func (e *Engine) cmdUsage(p Platform, msg *Message) {
 		return
 	}
 
-	fetchCtx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
+	// Some agents need a while (a CLI run of ~15s); show the platform's
+	// processing indicator meanwhile.
+	if ti, ok := p.(TypingIndicator); ok {
+		stopTyping := ti.StartTyping(e.ctx, msg.ReplyCtx)
+		defer stopTyping()
+	}
+	fetchCtx, cancel := context.WithTimeout(e.ctx, usageFetchTimeout)
 	defer cancel()
 
 	report, err := reporter.GetUsage(fetchCtx)
@@ -9032,6 +9041,15 @@ func formatUsageBlocks(report *UsageReport, lang Language) string {
 	if secondary != nil {
 		sections = append(sections, formatUsageBlock(lang, secondary))
 	}
+	// Windows limited to one model (e.g. a per-model weekly cap) can run out
+	// before the account-wide ones, so list every one of them too.
+	for _, bucket := range report.Buckets {
+		for i := range bucket.Windows {
+			if bucket.Windows[i].Scope != "" {
+				sections = append(sections, formatUsageBlock(lang, &bucket.Windows[i]))
+			}
+		}
+	}
 	if len(sections) == 0 {
 		return ""
 	}
@@ -9063,6 +9081,11 @@ func selectUsageWindows(report *UsageReport) (*UsageWindow, *UsageWindow) {
 		var primary, secondary *UsageWindow
 		for i := range bucket.Windows {
 			window := &bucket.Windows[i]
+			if window.Scope != "" {
+				// Headline numbers are account-wide; scoped windows are
+				// listed separately by formatUsageBlocks.
+				continue
+			}
 			switch window.WindowSeconds {
 			case 18000:
 				primary = window
@@ -9077,11 +9100,11 @@ func selectUsageWindows(report *UsageReport) (*UsageWindow, *UsageWindow) {
 			// (e.g. Codex accounts whose first bucket only exposes a 7-day
 			// window). Skip it if the slot is already occupied by the 7-day
 			// window so the same block is not rendered twice.
-			if secondary != &bucket.Windows[0] {
+			if secondary != &bucket.Windows[0] && bucket.Windows[0].Scope == "" {
 				primary = &bucket.Windows[0]
 			}
 		}
-		if secondary == nil && len(bucket.Windows) > 1 && &bucket.Windows[1] != primary {
+		if secondary == nil && len(bucket.Windows) > 1 && &bucket.Windows[1] != primary && bucket.Windows[1].Scope == "" {
 			secondary = &bucket.Windows[1]
 		}
 		if primary != nil || secondary != nil {
@@ -9098,6 +9121,14 @@ func formatUsageBlock(lang Language, window *UsageWindow) string {
 	}
 	var sb strings.Builder
 	sb.WriteString(usageWindowLabel(lang, window.WindowSeconds))
+	if window.Scope != "" {
+		switch lang {
+		case LangChinese, LangTraditionalChinese, LangJapanese:
+			sb.WriteString("（" + window.Scope + "）")
+		default:
+			sb.WriteString(" (" + window.Scope + ")")
+		}
+	}
 	sb.WriteString("\n")
 	sb.WriteString(usageRemainingLabel(lang))
 	sb.WriteString(usageColon(lang))

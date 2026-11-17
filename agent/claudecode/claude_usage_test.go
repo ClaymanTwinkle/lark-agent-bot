@@ -3,240 +3,222 @@ package claudecode
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ClaymanTwinkle/lark-agent-bot/core"
 )
 
-func TestSanitizeClaudeUsageOutput_RendersCursorMoves(t *testing.T) {
-	raw := "" +
-		"\x1b[?2026h\rSettings:\x1b[1CStatus\x1b[1CConfig\x1b[1CUsage (tab to cycle)\r\n" +
-		"\x1b]8;;https://code.claude.com/docs/en/security\aSecurity guide\x1b]8;;\a\r\n" +
-		"Current session\r\n" +
-		"\x1b[32m1% used\x1b[0m\r\n"
+// Trimmed `claude -p /usage --output-format json` output from Claude Code
+// 2.1.325 on a Max plan: no 5-hour line, plus a per-model weekly window.
+const claudeUsageJSON2_1_325 = `{"is_error":false,"duration_api_ms":0,"num_turns":0,"session_id":"748892fa-7e9e-49f4-a787-80a3c1aac8b2","total_cost_usd":0,"subtype":"success","result":"You are currently using your subscription to power your Claude Code usage\n\nCurrent week (all models): 45% used · resets Nov 23 at 1:59am (Asia/Singapore)\nCurrent week (Fable): 82% used · resets Nov 23 at 1:59am (Asia/Singapore)\n\nWhat's contributing to your usage?\nApproximate · sessions on this machine only · shares overlap\n\nLast 24h · 1918 requests · 7 sessions\n  100%  Check which models your subagents use · share covers whole sessions, not only subagents\n  89%  Start fresh when you switch tasks · run /clear\n","local_command":"usage","type":"result"}`
 
-	terminal := newClaudeUsageTerminal()
-	terminal.Write([]byte(raw))
-	got := normalizeClaudeUsageText(terminal.String())
-	if strings.Contains(got, "\x1b") {
-		t.Fatalf("sanitizeClaudeUsageOutput still contains escape codes: %q", got)
-	}
-	if !strings.Contains(got, "Settings: Status Config Usage (tab to cycle)") {
-		t.Fatalf("sanitized output missing spaced header: %q", got)
-	}
-	if !strings.Contains(got, "Security guide") {
-		t.Fatalf("sanitized output missing link text: %q", got)
-	}
-}
+func TestParseClaudeUsageOutput_CLI2_1_325(t *testing.T) {
+	sg := mustLoadLocation(t, "Asia/Singapore")
+	now := time.Date(2026, time.November, 17, 16, 0, 0, 0, sg)
 
-func TestParseClaudeUsageReport_Success(t *testing.T) {
-	loc := mustLoadLocation(t, "Asia/Seoul")
-	now := time.Date(2026, time.December, 22, 12, 0, 0, 0, loc)
-	text := strings.TrimSpace(`
-Current session
-1% used
-Resets 3:59pm (Asia/Seoul)
-
-Current week (all models)
-2% used
-Resets Dec 23, 4:59pm (Asia/Seoul)
-
-Extra usage
-Extra usage not enabled
-`)
-
-	report, err := parseClaudeUsageReport(text, now)
+	report, err := parseClaudeUsageOutput([]byte(claudeUsageJSON2_1_325), now)
 	if err != nil {
-		t.Fatalf("parseClaudeUsageReport returned error: %v", err)
-	}
-	if report.Provider != "claudecode" {
-		t.Fatalf("Provider = %q, want claudecode", report.Provider)
+		t.Fatalf("parseClaudeUsageOutput: %v", err)
 	}
 	if len(report.Buckets) != 1 {
-		t.Fatalf("Buckets = %d, want 1", len(report.Buckets))
+		t.Fatalf("buckets = %+v, want 1", report.Buckets)
 	}
-	if len(report.Buckets[0].Windows) != 2 {
-		t.Fatalf("Windows = %d, want 2", len(report.Buckets[0].Windows))
+	resetAt := time.Date(2026, time.November, 23, 1, 59, 0, 0, sg)
+	want := []core.UsageWindow{
+		{Name: "Current week (all models)", UsedPercent: 45, WindowSeconds: 604800, ResetAtUnix: resetAt.Unix(), ResetAfterSeconds: int(resetAt.Sub(now).Seconds())},
+		{Name: "Current week (Fable)", Scope: "Fable", UsedPercent: 82, WindowSeconds: 604800, ResetAtUnix: resetAt.Unix(), ResetAfterSeconds: int(resetAt.Sub(now).Seconds())},
 	}
-
-	session := report.Buckets[0].Windows[0]
-	if session.Name != "Current session" {
-		t.Fatalf("session.Name = %q", session.Name)
+	got := report.Buckets[0].Windows
+	if len(got) != len(want) {
+		t.Fatalf("windows = %+v, want %+v", got, want)
 	}
-	if session.WindowSeconds != 18000 {
-		t.Fatalf("session.WindowSeconds = %d, want 18000", session.WindowSeconds)
-	}
-	if session.UsedPercent != 1 {
-		t.Fatalf("session.UsedPercent = %d, want 1", session.UsedPercent)
-	}
-	if session.ResetAfterSeconds != 14340 {
-		t.Fatalf("session.ResetAfterSeconds = %d, want 14340", session.ResetAfterSeconds)
-	}
-
-	week := report.Buckets[0].Windows[1]
-	if week.Name != "Current week" {
-		t.Fatalf("week.Name = %q", week.Name)
-	}
-	if week.WindowSeconds != 604800 {
-		t.Fatalf("week.WindowSeconds = %d, want 604800", week.WindowSeconds)
-	}
-	if week.UsedPercent != 2 {
-		t.Fatalf("week.UsedPercent = %d, want 2", week.UsedPercent)
-	}
-	if week.ResetAfterSeconds != 104340 {
-		t.Fatalf("week.ResetAfterSeconds = %d, want 104340", week.ResetAfterSeconds)
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("window[%d] = %+v, want %+v", i, got[i], want[i])
+		}
 	}
 }
 
-func TestParseClaudeUsageReport_MissingOptionalFields(t *testing.T) {
-	loc := mustLoadLocation(t, "Asia/Seoul")
-	now := time.Date(2026, time.December, 22, 12, 0, 0, 0, loc)
-	text := strings.TrimSpace(`
-Current session
-15% used
-Resets 3:00pm (Asia/Seoul)
+// Account-wide windows come first whatever order the CLI prints them in, so
+// the card's headline numbers are the account's, not one model's.
+func TestParseClaudeUsageText_SessionLineAndOrdering(t *testing.T) {
+	sg := mustLoadLocation(t, "Asia/Singapore")
+	now := time.Date(2026, time.November, 17, 16, 0, 0, 0, sg)
+	text := "Current week (Sonnet only): 3% used · resets Nov 23 at 2am (Asia/Singapore)\n" +
+		"Current session: 12% used · resets 5pm (Asia/Singapore)\n" +
+		"Current week (all models): 45% used · resets Nov 23 at 2am (Asia/Singapore)\n"
 
-Current week
-47% used
-Resets Dec 23, 11:30am (Asia/Seoul)
+	report, err := parseClaudeUsageText(text, now)
+	if err != nil {
+		t.Fatalf("parseClaudeUsageText: %v", err)
+	}
+	w := report.Buckets[0].Windows
+	if len(w) != 3 {
+		t.Fatalf("windows = %+v, want 3", w)
+	}
+	if w[0].WindowSeconds != 18000 || w[0].UsedPercent != 12 || w[0].Scope != "" || w[0].ResetAfterSeconds != 3600 {
+		t.Fatalf("window[0] = %+v, want 5-hour 12%% resetting in 1h", w[0])
+	}
+	if w[1].WindowSeconds != 604800 || w[1].UsedPercent != 45 || w[1].Scope != "" {
+		t.Fatalf("window[1] = %+v, want account-wide weekly 45%%", w[1])
+	}
+	if w[2].Scope != "Sonnet only" || w[2].UsedPercent != 3 {
+		t.Fatalf("window[2] = %+v, want Sonnet-only weekly 3%%", w[2])
+	}
+}
+
+func TestParseClaudeUsageText_UnparsedResetKeepsWindow(t *testing.T) {
+	report, err := parseClaudeUsageText("Current week (all models): 45% used · resets soon-ish", time.Now())
+	if err != nil {
+		t.Fatalf("parseClaudeUsageText: %v", err)
+	}
+	w := report.Buckets[0].Windows[0]
+	if w.UsedPercent != 45 || w.ResetAtUnix != 0 || w.ResetAfterSeconds != 0 {
+		t.Fatalf("window = %+v, want 45%% without reset time", w)
+	}
+}
+
+// API-key logins and third-party providers have no subscription windows; the
+// CLI explains why, and that text is what the user should see.
+func TestParseClaudeUsageOutput_NoWindowsQuotesCLI(t *testing.T) {
+	out := `{"type":"result","subtype":"success","is_error":false,"result":"You are currently using API usage billing. /usage shows plan limits for Claude subscriptions only."}`
+	_, err := parseClaudeUsageOutput([]byte(out), time.Now())
+	if err == nil || !strings.Contains(err.Error(), "API usage billing") {
+		t.Fatalf("err = %v, want the CLI's explanation", err)
+	}
+}
+
+func TestParseClaudeUsageOutput_Errors(t *testing.T) {
+	cases := map[string]struct {
+		out  string
+		want string
+	}{
+		"is_error": {`{"type":"result","is_error":true,"result":"Not logged in · Please run /login"}`, "Not logged in"},
+		"not json": {"Error: unknown option '--no-session-persistence'", "unknown option"},
+		"empty":    {`{"type":"result","is_error":false,"result":""}`, "no output"},
+	}
+	for name, tc := range cases {
+		_, err := parseClaudeUsageOutput([]byte(tc.out), time.Now())
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s: err = %v, want it to mention %q", name, err, tc.want)
+		}
+	}
+}
+
+func TestParseClaudeUsageResetTime(t *testing.T) {
+	sg := mustLoadLocation(t, "Asia/Singapore")
+	seoul := mustLoadLocation(t, "Asia/Seoul")
+	now := time.Date(2026, time.November, 17, 16, 0, 0, 0, sg)
+	cases := []struct {
+		raw  string
+		want time.Time
+	}{
+		{"Nov 23 at 2am (Asia/Singapore)", time.Date(2026, time.November, 23, 2, 0, 0, 0, sg)},
+		{"Nov 23 at 1:59am (Asia/Singapore)", time.Date(2026, time.November, 23, 1, 59, 0, 0, sg)},
+		{"Dec 23, 4:59pm (Asia/Seoul)", time.Date(2026, time.December, 23, 16, 59, 0, 0, seoul)},
+		{"5pm (Asia/Singapore)", time.Date(2026, time.November, 17, 17, 0, 0, 0, sg)},
+		// Already past today: tomorrow. Already past this year: next year.
+		{"3pm (Asia/Singapore)", time.Date(2026, time.November, 18, 15, 0, 0, 0, sg)},
+		{"Jan 2 at 3am (Asia/Singapore)", time.Date(2027, time.January, 2, 3, 0, 0, 0, sg)},
+	}
+	for _, tc := range cases {
+		got, err := parseClaudeUsageResetTime(tc.raw, now)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.raw, err)
+		}
+		if !got.Equal(tc.want) {
+			t.Fatalf("%q = %v, want %v", tc.raw, got, tc.want)
+		}
+	}
+	if _, err := parseClaudeUsageResetTime("Nov 23 at 2am (Mars/Base)", now); err == nil {
+		t.Fatal("unknown timezone should fail")
+	}
+}
+
+// The /usage command must run the same CLI the sessions run, with the same
+// wrapper args and provider env, and without the nested-session marker.
+func TestClaudeUsageCommand_MatchesSessionSpawn(t *testing.T) {
+	t.Setenv("CLAUDECODE", "1")
+
+	a := &Agent{cmd: "my-claude", cliExtraArgs: []string{"code"}, configEnv: []string{"FOO=bar"}}
+	cmd := a.claudeUsageCommand(context.Background())
+	if got, want := strings.Join(cmd.Args[1:], " "), "code -p /usage --output-format json --no-session-persistence"; got != want {
+		t.Fatalf("args = %q, want %q", got, want)
+	}
+	env := envSliceToMap(cmd.Env)
+	if env["FOO"] != "bar" {
+		t.Fatalf("configured env missing: FOO=%q", env["FOO"])
+	}
+	if _, ok := env["CLAUDECODE"]; ok {
+		t.Fatal("CLAUDECODE must be filtered out")
+	}
+
+	wrapped := &Agent{cmd: "my-cli", cliExtraArgs: []string{"code"}, cmdArgsFlag: "-a"}
+	cmd = wrapped.claudeUsageCommand(context.Background())
+	if got, want := strings.Join(cmd.Args[1:], "|"), "code|-a|-p /usage --output-format json --no-session-persistence"; got != want {
+		t.Fatalf("wrapped args = %q, want %q", got, want)
+	}
+
+	if cmd := (&Agent{}).claudeUsageCommand(context.Background()); filepath.Base(cmd.Args[0]) != "claude" {
+		t.Fatalf("default binary = %q, want claude", cmd.Args[0])
+	}
+}
+
+func writeFakeClaude(t *testing.T, script string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script stand-in for the claude CLI")
+	}
+	path := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestAgentGetUsage_RunsCLI(t *testing.T) {
+	jsonFile := filepath.Join(t.TempDir(), "out.json")
+	if err := os.WriteFile(jsonFile, []byte(claudeUsageJSON2_1_325), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := writeFakeClaude(t, `[ "$1 $2" = "-p /usage" ] || { echo "unexpected args: $*" >&2; exit 2; }
+cat '`+jsonFile+`'
 `)
 
-	report, err := parseClaudeUsageReport(text, now)
+	report, err := (&Agent{cmd: bin}).GetUsage(context.Background())
 	if err != nil {
-		t.Fatalf("parseClaudeUsageReport returned error: %v", err)
+		t.Fatalf("GetUsage: %v", err)
 	}
-	if report.Email != "" {
-		t.Fatalf("Email = %q, want empty", report.Email)
-	}
-	if report.AccountID != "" {
-		t.Fatalf("AccountID = %q, want empty", report.AccountID)
-	}
-	if report.UserID != "" {
-		t.Fatalf("UserID = %q, want empty", report.UserID)
-	}
-	if report.Plan != "" {
-		t.Fatalf("Plan = %q, want empty", report.Plan)
-	}
-	if len(report.Buckets) != 1 || len(report.Buckets[0].Windows) != 2 {
-		t.Fatalf("unexpected bucket layout: %+v", report.Buckets)
+	if w := report.Buckets[0].Windows; len(w) != 2 || w[1].Scope != "Fable" || w[1].UsedPercent != 82 {
+		t.Fatalf("windows = %+v", w)
 	}
 }
 
-func TestParseClaudeUsageReport_UpgradeRequired(t *testing.T) {
-	text := "Unknown command: /usage"
-	_, err := parseClaudeUsageReport(text, time.Now())
-	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "upgrade") {
-		t.Fatalf("err = %v, want upgrade guidance", err)
+func TestAgentGetUsage_CLIFailureQuotesStderr(t *testing.T) {
+	bin := writeFakeClaude(t, "echo 'Invalid API key · Please run /login' >&2\nexit 1\n")
+
+	_, err := (&Agent{cmd: bin}).GetUsage(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "Invalid API key") {
+		t.Fatalf("err = %v, want stderr quoted", err)
 	}
 }
 
-func TestParseClaudeUsageReport_LoginRequired(t *testing.T) {
-	text := "Please run `claude auth login` to continue."
-	_, err := parseClaudeUsageReport(text, time.Now())
-	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "login") {
-		t.Fatalf("err = %v, want login guidance", err)
+func TestAgentGetUsage_TimeoutKillsCLI(t *testing.T) {
+	bin := writeFakeClaude(t, "sleep 30\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := (&Agent{cmd: bin}).GetUsage(ctx)
+	if err == nil || !strings.Contains(err.Error(), "deadline exceeded") {
+		t.Fatalf("err = %v, want deadline exceeded", err)
 	}
-}
-
-func TestParseClaudeUsageReport_MissingWindowFields(t *testing.T) {
-	loc := mustLoadLocation(t, "Asia/Seoul")
-	now := time.Date(2026, time.December, 22, 12, 0, 0, 0, loc)
-	text := strings.TrimSpace(`
-Current session
-Resets 3:00pm (Asia/Seoul)
-
-Current week
-47% used
-Resets Dec 23, 11:30am (Asia/Seoul)
-`)
-
-	_, err := parseClaudeUsageReport(text, now)
-	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "current session") {
-		t.Fatalf("err = %v, want current session parse error", err)
-	}
-}
-
-func TestParseClaudeUsageReport_UnknownResetTimeDoesNotFail(t *testing.T) {
-	loc := mustLoadLocation(t, "America/Los_Angeles")
-	now := time.Date(2026, time.March, 30, 11, 0, 0, 0, loc)
-	text := strings.TrimSpace(`
-Current session
-14% used
-Resets later today somehow
-
-Current week
-33% used
-Resets Apr 2, 4pm (America/Los_Angeles)
-`)
-
-	report, err := parseClaudeUsageReport(text, now)
-	if err != nil {
-		t.Fatalf("parseClaudeUsageReport returned error: %v", err)
-	}
-	if len(report.Buckets) != 1 || len(report.Buckets[0].Windows) != 2 {
-		t.Fatalf("unexpected bucket layout: %+v", report.Buckets)
-	}
-	session := report.Buckets[0].Windows[0]
-	if session.UsedPercent != 14 {
-		t.Fatalf("session.UsedPercent = %d, want 14", session.UsedPercent)
-	}
-	if session.ResetAfterSeconds != 0 || session.ResetAtUnix != 0 {
-		t.Fatalf("session reset should be unknown, got %+v", session)
-	}
-}
-
-func TestParseClaudeUsageReport_MissingResetTimeDoesNotFail(t *testing.T) {
-	loc := mustLoadLocation(t, "America/Los_Angeles")
-	now := time.Date(2026, time.March, 30, 11, 0, 0, 0, loc)
-	text := strings.TrimSpace(`
-Current session
-14% used
-
-Current week
-33% used
-Resets Apr 2, 4pm (America/Los_Angeles)
-`)
-
-	report, err := parseClaudeUsageReport(text, now)
-	if err != nil {
-		t.Fatalf("parseClaudeUsageReport returned error: %v", err)
-	}
-	session := report.Buckets[0].Windows[0]
-	if session.UsedPercent != 14 {
-		t.Fatalf("session.UsedPercent = %d, want 14", session.UsedPercent)
-	}
-	if session.ResetAfterSeconds != 0 || session.ResetAtUnix != 0 {
-		t.Fatalf("session reset should be absent, got %+v", session)
-	}
-}
-
-func TestParseClaudeUsageResetTime_AllowsWholeHourWithTimezone(t *testing.T) {
-	loc := mustLoadLocation(t, "America/Los_Angeles")
-	now := time.Date(2026, time.March, 30, 11, 0, 0, 0, loc)
-
-	resetAt, err := parseClaudeUsageResetTime("2pm (America/Los_Angeles)", now)
-	if err != nil {
-		t.Fatalf("parseClaudeUsageResetTime returned error: %v", err)
-	}
-
-	want := time.Date(2026, time.March, 30, 14, 0, 0, 0, loc)
-	if !resetAt.Equal(want) {
-		t.Fatalf("resetAt = %v, want %v", resetAt, want)
-	}
-}
-
-func TestParseClaudeUsageResetTime_AllowsMonthDayWholeHour(t *testing.T) {
-	loc := mustLoadLocation(t, "America/Los_Angeles")
-	now := time.Date(2026, time.March, 30, 11, 0, 0, 0, loc)
-
-	resetAt, err := parseClaudeUsageResetTime("Apr 2, 4pm (America/Los_Angeles)", now)
-	if err != nil {
-		t.Fatalf("parseClaudeUsageResetTime returned error: %v", err)
-	}
-
-	want := time.Date(2026, time.April, 2, 16, 0, 0, 0, loc)
-	if !resetAt.Equal(want) {
-		t.Fatalf("resetAt = %v, want %v", resetAt, want)
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("GetUsage returned after %v; the CLI was not killed on timeout", elapsed)
 	}
 }
 
@@ -244,21 +226,22 @@ func TestAgentGetUsageSmoke(t *testing.T) {
 	if os.Getenv("LARK_AGENT_BOT_SMOKE_CLAUDE_USAGE") == "" {
 		t.Skip("set LARK_AGENT_BOT_SMOKE_CLAUDE_USAGE=1 to run")
 	}
-	if _, err := os.Stat("/usr/bin/env"); err != nil {
-		t.Skipf("environment not suitable: %v", err)
-	}
+	// TestMain points HOME at an empty dir; the CLI would then see no login
+	// and print the API-billing cost view instead of plan limits.
+	useRealUserEnv(t)
 
 	a := &Agent{workDir: ".", mode: "plan"}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	report, err := a.GetUsage(ctx)
 	if err != nil {
 		t.Fatalf("GetUsage returned error: %v", err)
 	}
-	if report == nil || len(report.Buckets) == 0 {
+	if report == nil || len(report.Buckets) == 0 || len(report.Buckets[0].Windows) == 0 {
 		t.Fatalf("unexpected empty report: %+v", report)
 	}
+	t.Logf("windows: %+v", report.Buckets[0].Windows)
 }
 
 func mustLoadLocation(t *testing.T, name string) *time.Location {
