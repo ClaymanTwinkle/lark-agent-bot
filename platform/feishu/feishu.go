@@ -3462,10 +3462,10 @@ func (p *Platform) formatMergeForwardTree(parentID string, childrenMap map[strin
 				fileData, err := p.downloadResource(msgID, mediaBody.FileKey, "file")
 				if err != nil {
 					slog.Error(p.tag()+": download merge_forward video failed", "error", err)
-					sb.WriteString(fmt.Sprintf("%s[%s] %s: [%s - download failed]\n", indent, ts, senderName, label))
+					fmt.Fprintf(sb, "%s[%s] %s: [%s - download failed]\n", indent, ts, senderName, label)
 				} else {
 					*files = append(*files, newDownloadedFile(fileData, mediaBody.FileName, msgID))
-					sb.WriteString(fmt.Sprintf("%s[%s] %s: [%s]\n", indent, ts, senderName, label))
+					fmt.Fprintf(sb, "%s[%s] %s: [%s]\n", indent, ts, senderName, label)
 				}
 			}
 
