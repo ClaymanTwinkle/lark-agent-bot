@@ -2365,40 +2365,22 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 		})
 
 	case "media":
-		var mediaBody struct {
-			FileKey  string `json:"file_key"`
-			ImageKey string `json:"image_key"`
-			FileName string `json:"file_name"`
-			Duration int    `json:"duration"`
-		}
+		var mediaBody videoBody
 		if err := json.Unmarshal([]byte(content), &mediaBody); err != nil {
 			slog.Error(p.tag()+": failed to parse media content", "error", err)
 			return
 		}
 		slog.Info(p.tag()+": media received", "user", userID, "file_key", mediaBody.FileKey, "file_name", mediaBody.FileName)
-		text := "[video"
-		if mediaBody.FileName != "" {
-			text += ": " + mediaBody.FileName
-		}
-		if mediaBody.Duration > 0 {
-			text += fmt.Sprintf(", %ds", mediaBody.Duration/1000)
-		}
-		text += "]"
-		var images []core.ImageAttachment
-		if mediaBody.ImageKey != "" {
-			if thumbData, thumbMime, err := p.downloadImage(messageID, mediaBody.ImageKey); err == nil {
-				images = append(images, core.ImageAttachment{MimeType: thumbMime, Data: thumbData})
-			} else {
-				slog.Warn(p.tag()+": download media thumbnail failed", "error", err)
-			}
-		}
+		// The agent gets the cover image for a quick look plus the video
+		// file itself, which it can cut into frames or audio with ffmpeg.
+		text, images, files := p.collectVideo(messageID, mediaBody)
 		// Flush any image batch buffered earlier in this session (cc-connect#1686 P1-B).
 		p.flushImageBatchForSession(sessionKey)
 		dispatchCore(&core.Message{
 			SessionKey: sessionKey, Platform: p.platformName,
 			MessageID: messageID,
 			UserID:    userID, UserName: userName, ChatName: chatName,
-			Content: text, ExtraContent: quoted.text, Images: images, ReplyCtx: rctx,
+			Content: text, ExtraContent: quoted.text, Images: images, Files: files, ReplyCtx: rctx,
 			UserMessageTimeMs: createTimeMs,
 		})
 
@@ -3471,6 +3453,22 @@ func (p *Platform) formatMergeForwardTree(parentID string, childrenMap map[strin
 				}
 			}
 
+		case "media":
+			var mediaBody videoBody
+			if err := json.Unmarshal([]byte(content), &mediaBody); err == nil && mediaBody.FileKey != "" {
+				// Only the video itself: one cover image per forwarded
+				// clip would crowd out the forwarded screenshots.
+				label := videoLabel(mediaBody.FileName, mediaBody.Duration)
+				fileData, err := p.downloadResource(msgID, mediaBody.FileKey, "file")
+				if err != nil {
+					slog.Error(p.tag()+": download merge_forward video failed", "error", err)
+					fmt.Fprintf(sb, "%s[%s] %s: [%s - download failed]\n", indent, ts, senderName, label)
+				} else {
+					*files = append(*files, newDownloadedFile(fileData, mediaBody.FileName, msgID))
+					fmt.Fprintf(sb, "%s[%s] %s: [%s]\n", indent, ts, senderName, label)
+				}
+			}
+
 		case "merge_forward":
 			sb.WriteString(fmt.Sprintf("%s[%s] %s: [forwarded messages]\n", indent, ts, senderName))
 			p.formatMergeForwardTree(msgID, childrenMap, nameMap, sb, images, files, depth+1)
@@ -3783,8 +3781,8 @@ func (p *Platform) downloadResource(messageID, fileKey, resType string) ([]byte,
 	// Issue cc-connect#1741: the larkim SDK issues a plain GET that Feishu truncates
 	// with code=234037 for resources above ~2 MiB. downloadResourceChunked
 	// bypasses the SDK, sends Range headers, and reassembles the bytes
-	// client-side. All four existing call sites (audio body, file body,
-	// merge_forward file, cc-connect#1588 quoted file) flow through here unchanged.
+	// client-side. Every message-resource body (audio, file, video, quoted
+	// file, merge_forward file and video) flows through here.
 	data, err := p.downloadResourceChunked(context.Background(), messageID, fileKey, resType)
 	if err != nil {
 		return nil, err
@@ -3807,6 +3805,9 @@ func detectMimeType(data []byte) string {
 		if string(data[:4]) == "RIFF" && string(data[8:12]) == "WEBP" {
 			return "image/webp"
 		}
+	}
+	if mt := detectVideoMimeType(data); mt != "" {
+		return mt
 	}
 	return "image/png"
 }
@@ -4258,11 +4259,7 @@ func (p *Platform) downloadQuotedFiles(ctx context.Context, metas []quotedFileMe
 			)
 			continue
 		}
-		out = append(out, core.FileAttachment{
-			MimeType: detectMimeType(data),
-			Data:     data,
-			FileName: m.fileName,
-		})
+		out = append(out, newDownloadedFile(data, m.fileName, m.messageID))
 	}
 	if len(out) > 0 {
 		slog.Info(p.tag()+": downloaded quoted file(s) for same-user quote",
