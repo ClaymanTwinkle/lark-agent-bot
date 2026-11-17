@@ -21,7 +21,7 @@ import (
 // a Range header for each chunk, and reassemble the bytes client-side.
 //
 // Two download paths share this helper:
-//   - (a) "downloadResource" — generic file/audio/resource bodies (4 call sites)
+//   - (a) "downloadResource" — generic file/audio/video resource bodies
 //   - (b) "downloadImage" — image bodies (1 call site)
 //
 // The helper:
