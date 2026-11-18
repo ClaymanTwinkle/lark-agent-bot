@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 
 	"github.com/ClaymanTwinkle/lark-agent-bot/core"
@@ -243,5 +244,152 @@ func TestFormatMergeForwardTreeAttachesVideo(t *testing.T) {
 	}
 	if len(images) != 0 {
 		t.Fatalf("len(images) = %d, want 0 (no cover for forwarded videos)", len(images))
+	}
+}
+
+// postWithVideo is a post as Feishu sends it when a video is pasted into a
+// rich-text message: the video is a "media" element with no name.
+const postWithVideo = `{"title":"","content":[[{"tag":"text","text":"我发视频给你看看"}],` +
+	`[{"tag":"media","file_key":"file_video","image_key":"img_cover"}]]}`
+
+func TestPostVideos(t *testing.T) {
+	got := postVideos(postWithVideo)
+	if len(got) != 1 || got[0].FileKey != "file_video" || got[0].ImageKey != "img_cover" {
+		t.Fatalf("postVideos(flat) = %+v, want one video file_video/img_cover", got)
+	}
+	langKeyed := `{"zh_cn":{"title":"t","content":[[{"tag":"media","file_key":"fk"}]]}}`
+	if got := postVideos(langKeyed); len(got) != 1 || got[0].FileKey != "fk" {
+		t.Fatalf("postVideos(lang-keyed) = %+v, want one video fk", got)
+	}
+	noKey := `{"content":[[{"tag":"media","image_key":"img"},{"tag":"text","text":"x"}]]}`
+	if got := postVideos(noKey); len(got) != 0 {
+		t.Fatalf("postVideos(no file_key) = %+v, want none", got)
+	}
+	if got := postVideos("not json"); got != nil {
+		t.Fatalf("postVideos(invalid) = %+v, want nil", got)
+	}
+}
+
+func TestDispatchMessagePostAttachesEmbeddedVideo(t *testing.T) {
+	const msgID = "om_post_video"
+	srv, _ := videoServer(t, msgID, "img_cover", "file_video", false)
+	p := newTestPlatformForDownload(srv.URL, 1<<20, 10<<20)
+
+	got := make(chan *core.Message, 1)
+	p.handler = func(_ core.Platform, msg *core.Message) { got <- msg }
+	p.dispatchMessage(context.Background(), "post", postWithVideo, nil, msgID,
+		"feishu:ou_user:ou_user", "", "",
+		replyContext{messageID: msgID, sessionKey: "feishu:ou_user:ou_user"}, "", 0)
+
+	var msg *core.Message
+	select {
+	case msg = <-got:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for dispatched message")
+	}
+	if msg.Content != "我发视频给你看看\n[video]" {
+		t.Fatalf("Content = %q, want the text and a [video] marker", msg.Content)
+	}
+	if len(msg.Images) != 1 || !bytes.Equal(msg.Images[0].Data, testPNG) {
+		t.Fatalf("Images = %d, want the video cover", len(msg.Images))
+	}
+	if len(msg.Files) != 1 || msg.Files[0].FileName != "video_"+msgID+".mp4" || !bytes.Equal(msg.Files[0].Data, testMP4) {
+		t.Fatalf("Files = %+v, want video_%s.mp4 with the served body", msg.Files, msgID)
+	}
+}
+
+func TestDispatchMessagePostVideoDownloadFailure(t *testing.T) {
+	const msgID = "om_post_video_big"
+	srv, _ := videoServer(t, msgID, "img_cover", "file_video", true)
+	p := newTestPlatformForDownload(srv.URL, 1<<20, 10<<20)
+
+	got := make(chan *core.Message, 1)
+	p.handler = func(_ core.Platform, msg *core.Message) { got <- msg }
+	p.dispatchMessage(context.Background(), "post", postWithVideo, nil, msgID,
+		"feishu:ou_user:ou_user", "", "",
+		replyContext{messageID: msgID, sessionKey: "feishu:ou_user:ou_user"}, "", 0)
+
+	var msg *core.Message
+	select {
+	case msg = <-got:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for dispatched message")
+	}
+	if !strings.HasSuffix(msg.Content, "[video - download failed]") {
+		t.Fatalf("Content = %q, want a download-failed marker", msg.Content)
+	}
+	if len(msg.Files) != 0 || len(msg.Images) != 1 {
+		t.Fatalf("Files=%d Images=%d, want 0 files and the cover", len(msg.Files), len(msg.Images))
+	}
+}
+
+func TestFormatMergeForwardTreeAttachesPostVideo(t *testing.T) {
+	const parentID = "om_forward_post"
+	const childID = "om_forward_post_child"
+	srv, _ := videoServer(t, childID, "img_cover", "file_video", false)
+	p := newTestPlatformForDownload(srv.URL, 1<<20, 10<<20)
+
+	child := &larkim.Message{
+		MessageId: strPtr(childID),
+		MsgType:   strPtr("post"),
+		Sender:    &larkim.Sender{Id: strPtr("ou_alice")},
+		Body:      &larkim.MessageBody{Content: strPtr(postWithVideo)},
+	}
+	var sb strings.Builder
+	var images []core.ImageAttachment
+	var files []core.FileAttachment
+	p.formatMergeForwardTree(parentID, map[string][]*larkim.Message{parentID: {child}},
+		map[string]string{"ou_alice": "Alice"}, &sb, &images, &files, 0)
+
+	if !strings.Contains(sb.String(), "[video]") {
+		t.Fatalf("tree text = %q, want a [video] marker", sb.String())
+	}
+	if len(files) != 1 || files[0].FileName != "video_"+childID+".mp4" {
+		t.Fatalf("files = %+v, want video_%s.mp4", files, childID)
+	}
+}
+
+// A quoted post keeps its video as metadata only: the bytes are fetched
+// later, and only when the quoted-file gates allow it.
+func TestFetchSingleMessagePostVideoIsLazy(t *testing.T) {
+	const msgID = "om_quoted_post"
+	var resourceCalls int
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/open-apis/auth/v3/tenant_access_token/internal":
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "success", "expire": 7200, "tenant_access_token": "tok"})
+		case r.URL.Path == "/open-apis/im/v1/messages/"+msgID:
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "success", "data": map[string]any{
+				"items": []map[string]any{{
+					"msg_type": "post",
+					"sender":   map[string]any{"id": "ou_alice", "sender_type": "user"},
+					"body":     map[string]any{"content": postWithVideo},
+				}},
+			}})
+		case strings.Contains(r.URL.Path, "/resources/"):
+			mu.Lock()
+			resourceCalls++
+			mu.Unlock()
+			_, _ = w.Write(testPNG)
+		default:
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "success"})
+		}
+	}))
+	t.Cleanup(srv.Close)
+	p := newTestPlatformForDownload(srv.URL, 1<<20, 10<<20)
+	p.client = lark.NewClient("cli_test", "secret", lark.WithOpenBaseUrl(srv.URL), lark.WithHttpClient(srv.Client()))
+
+	cm := p.fetchSingleMessage(context.Background(), msgID)
+	if cm == nil {
+		t.Fatal("fetchSingleMessage returned nil")
+	}
+	if len(cm.files) != 1 || cm.files[0].fileKey != "file_video" || cm.files[0].senderID != "ou_alice" || cm.files[0].messageID != msgID {
+		t.Fatalf("files = %+v, want one lazy video entry from ou_alice", cm.files)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if resourceCalls != 0 {
+		t.Fatalf("resource calls = %d, want 0 (video must not be fetched eagerly)", resourceCalls)
 	}
 }
