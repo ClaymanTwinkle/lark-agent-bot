@@ -2260,8 +2260,19 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 
 	case "post":
 		textParts, images := p.parsePostContent(messageID, content)
+		// Videos embedded in the post: cover image plus the file, the same
+		// as a video sent on its own.
+		var files []core.FileAttachment
+		for _, v := range postVideos(content) {
+			label, covers, videoFiles := p.collectVideo(messageID, v)
+			images = append(images, covers...)
+			files = append(files, videoFiles...)
+			if len(videoFiles) == 0 {
+				textParts = append(textParts, label)
+			}
+		}
 		text := stripMentions(strings.Join(textParts, "\n"), mentions, p.getBotOpenID())
-		if text == "" && historyText == "" && len(images) == 0 && quoted.text == "" && len(quoted.images) == 0 {
+		if text == "" && historyText == "" && len(images) == 0 && len(files) == 0 && quoted.text == "" && len(quoted.images) == 0 {
 			return
 		}
 		// Flush any image batch buffered earlier in this session (cc-connect#1686 P1-B).
@@ -2270,7 +2281,7 @@ func (p *Platform) dispatchMessageWithHistory(ctx context.Context, msgType, cont
 			SessionKey: sessionKey, Platform: p.platformName,
 			MessageID: messageID,
 			UserID:    userID, UserName: userName, ChatName: chatName,
-			Content: text, ExtraContent: quoted.text, Images: append(quoted.images, images...),
+			Content: text, ExtraContent: quoted.text, Images: append(quoted.images, images...), Files: files,
 			ReplyCtx:          rctx,
 			UserMessageTimeMs: createTimeMs,
 		})
@@ -2762,6 +2773,14 @@ func (p *Platform) fetchSingleMessage(ctx context.Context, messageID string) *ch
 		images = postImages
 		if text == "" && len(images) > 0 {
 			text = "[image]"
+		}
+		// Embedded videos follow the quoted-file gates: metadata only here.
+		for _, v := range postVideos(content) {
+			files = append(files, quotedFileMeta{
+				fileKey:   v.FileKey,
+				messageID: messageID,
+				senderID:  item.Sender.ID,
+			})
 		}
 	case "image":
 		text = "[image]"
@@ -3413,6 +3432,15 @@ func (p *Platform) formatMergeForwardTree(parentID string, childrenMap map[strin
 		case "post":
 			textParts, postImages := p.parsePostContent(msgID, content)
 			*images = append(*images, postImages...)
+			for _, v := range postVideos(content) {
+				fileData, err := p.downloadResource(msgID, v.FileKey, "file")
+				if err != nil {
+					slog.Error(p.tag()+": download merge_forward post video failed", "error", err)
+					textParts = append(textParts, "[video - download failed]")
+					continue
+				}
+				*files = append(*files, newDownloadedFile(fileData, "", msgID))
+			}
 			text := replaceMentions(strings.Join(textParts, "\n"), item.Mentions)
 			if text != "" {
 				sb.WriteString(fmt.Sprintf("%s[%s] %s:\n", indent, ts, senderName))
@@ -5823,6 +5851,7 @@ type postElement struct {
 	Text     string `json:"text,omitempty"`
 	Language string `json:"language,omitempty"`
 	ImageKey string `json:"image_key,omitempty"`
+	FileKey  string `json:"file_key,omitempty"`
 	Href     string `json:"href,omitempty"`
 	UserId   string `json:"user_id,omitempty"`
 	UserName string `json:"user_name,omitempty"`
@@ -5837,20 +5866,46 @@ type postLang struct {
 // 1. {"title":"...", "content":[[...]]}  (receive event)
 // 2. {"zh_cn":{"title":"...", "content":[[...]]}}  (some SDK versions)
 func (p *Platform) parsePostContent(messageID, raw string) ([]string, []core.ImageAttachment) {
-	// try flat format first
+	post, ok := decodePost(raw)
+	if !ok {
+		slog.Error(p.tag()+": failed to parse post content", "raw", raw)
+		return nil, nil
+	}
+	return p.extractPostParts(messageID, post)
+}
+
+// decodePost reads either post content format (see parsePostContent).
+func decodePost(raw string) (*postLang, bool) {
 	var flat postLang
 	if err := json.Unmarshal([]byte(raw), &flat); err == nil && flat.Content != nil {
-		return p.extractPostParts(messageID, &flat)
+		return &flat, true
 	}
-	// try language-keyed format
 	var langMap map[string]postLang
 	if err := json.Unmarshal([]byte(raw), &langMap); err == nil {
 		for _, lang := range langMap {
-			return p.extractPostParts(messageID, &lang)
+			return &lang, true
 		}
 	}
-	slog.Error(p.tag()+": failed to parse post content", "raw", raw)
-	return nil, nil
+	return nil, false
+}
+
+// postVideos lists the videos embedded in a post. extractPostParts only
+// marks their place with "[video]"; callers decide whether to download
+// them (directly sent and forwarded posts) or keep them lazy (quoted posts).
+func postVideos(raw string) []videoBody {
+	post, ok := decodePost(raw)
+	if !ok {
+		return nil
+	}
+	var videos []videoBody
+	for _, line := range post.Content {
+		for _, elem := range line {
+			if elem.Tag == "media" && elem.FileKey != "" {
+				videos = append(videos, videoBody{FileKey: elem.FileKey, ImageKey: elem.ImageKey})
+			}
+		}
+	}
+	return videos
 }
 
 func (p *Platform) extractPostParts(messageID string, post *postLang) ([]string, []core.ImageAttachment) {
@@ -5902,6 +5957,8 @@ func (p *Platform) extractPostParts(messageID string, post *postLang) ([]string,
 					}
 					images = append(images, core.ImageAttachment{MimeType: mimeType, Data: imgData})
 				}
+			case "media":
+				textParts = append(textParts, "[video]")
 			}
 		}
 	}
