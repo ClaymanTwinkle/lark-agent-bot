@@ -718,12 +718,14 @@ func (p *Platform) Start(handler core.MessageHandler) error {
 			// the rest of the process lifetime. Now we fail closed: mark the
 			// filter as degraded (group chats silently drop messages without
 			// @bot; DM traffic is unaffected), upgrade the log to ERROR, and
-			// start a background supervisor that retries every 5 minutes so
-			// transient proxy/DNS/VPN issues self-heal without a process restart.
+			// start a background supervisor that retries with backoff (10s
+			// doubling up to 5m) so transient proxy/DNS/VPN issues — typically
+			// a proxy not yet up right after boot — self-heal quickly without
+			// a process restart.
 			p.markGroupFilterDegraded(err)
 			slog.Error(p.platformName+": failed to get bot open_id; group chat filtering is degraded (group messages without @bot will be silently dropped) — a background supervisor will keep retrying",
 				"error", err,
-				"supervision_interval", groupFilterRetryInterval,
+				"first_retry_in", groupFilterRetryBase,
 			)
 			p.startGroupFilterSupervisor()
 		} else {
@@ -4588,13 +4590,38 @@ func (p *Platform) withTransientRetry(ctx context.Context, operation string, fn 
 //   - mark the filter as "degraded" (rather than "off") when the
 //     retry budget is exhausted, with timestamp + last error captured
 //     for /status surface,
-//   - start a background supervisor that retries every
-//     groupFilterRetryInterval until success or process shutdown so
-//     transient outages self-heal without a restart,
+//   - start a background supervisor that retries with exponential
+//     backoff (groupFilterRetryBase doubling up to groupFilterRetryMax)
+//     until success or process shutdown so transient outages
+//     self-heal without a restart. The short first delay matters at
+//     boot: launchd/systemd often start us before the network or a
+//     local proxy is ready, and a flat 5-minute wait left group chats
+//     dropping messages for minutes after every reboot,
 //   - and keep group-message handling fail-closed (drop, do not
 //     answer) while degraded.
 
-const groupFilterRetryInterval = 5 * time.Minute
+// groupFilterRetryBase / groupFilterRetryMax bound the supervisor's
+// backoff. Vars (not consts) so tests can shrink them.
+var (
+	groupFilterRetryBase = 10 * time.Second
+	groupFilterRetryMax  = 5 * time.Minute
+)
+
+// groupFilterRetryDelay returns the wait before supervisor attempt n
+// (0-based): base, 2*base, 4*base, ... capped at max.
+func groupFilterRetryDelay(n int, base, max time.Duration) time.Duration {
+	d := base
+	for i := 0; i < n; i++ {
+		d *= 2
+		if d >= max {
+			return max
+		}
+	}
+	if d > max {
+		return max
+	}
+	return d
+}
 
 // bgCtxForStartup returns a fresh background context for the initial
 // bot-open_id retry burst. We deliberately do not tie it to p.cancel:
@@ -4663,7 +4690,7 @@ func (p *Platform) snapshotGroupFilter() groupFilterStatus {
 }
 
 // startGroupFilterSupervisor launches a background goroutine that
-// retries the bot-info API every groupFilterRetryInterval until the
+// retries the bot-info API with exponential backoff until the
 // open_id resolves (or the process stops). On success, it populates
 // p.botOpenID and clears the degraded flag so the group mention filter
 // resumes normal operation without a restart.
@@ -4680,16 +4707,19 @@ func (p *Platform) startGroupFilterSupervisor() {
 	p.groupFilterRetryCancel = cancel
 	p.mu.Unlock()
 
+	base, max := groupFilterRetryBase, groupFilterRetryMax
 	go func() {
-		ticker := time.NewTicker(groupFilterRetryInterval)
-		defer ticker.Stop()
-		for {
+		for attempt := 0; ; attempt++ {
+			delay := groupFilterRetryDelay(attempt, base, max)
+			timer := time.NewTimer(delay)
 			select {
 			case <-stop:
+				timer.Stop()
 				return
 			case <-ctx.Done():
+				timer.Stop()
 				return
-			case <-ticker.C:
+			case <-timer.C:
 				id, err := p.fetchBotOpenIDWithRetry(ctx)
 				if err != nil {
 					p.mu.RLock()
@@ -4698,7 +4728,7 @@ func (p *Platform) startGroupFilterSupervisor() {
 					if stale {
 						slog.Error(p.platformName+": bot open_id still unresolved; group filter remains degraded",
 							"error", err,
-							"interval", groupFilterRetryInterval,
+							"next_retry_in", groupFilterRetryDelay(attempt+1, base, max),
 						)
 					}
 					continue
