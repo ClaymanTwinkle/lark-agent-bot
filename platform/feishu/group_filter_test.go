@@ -282,21 +282,18 @@ func TestStartGroupFilterSupervisor_RecoversOnNextAttempt(t *testing.T) {
 		t.Fatal("setup: should be degraded")
 	}
 
-	// Use a fast interval for the test by replacing the ticker
-	// behaviour. We do this by directly calling fetchBotOpenIDWithRetry
-	// (the same call the supervisor's ticker uses) and then patching
-	// the recovered state — which is exactly what the supervisor does.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	openID, err := p.fetchBotOpenIDWithRetry(ctx)
-	if err != nil {
-		t.Fatalf("fetchBotOpenIDWithRetry() error = %v", err)
+	// Shrink the backoff so the real supervisor loop fires quickly.
+	oldBase, oldMax := groupFilterRetryBase, groupFilterRetryMax
+	groupFilterRetryBase, groupFilterRetryMax = 10*time.Millisecond, 20*time.Millisecond
+	defer func() { groupFilterRetryBase, groupFilterRetryMax = oldBase, oldMax }()
+
+	p.startGroupFilterSupervisor()
+	defer p.stopGroupFilterSupervisor()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for p.IsGroupFilterDegraded() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
 	}
-	p.mu.Lock()
-	p.botOpenID = openID
-	p.groupFilterDegraded = false
-	p.groupFilterDegradedErr = ""
-	p.mu.Unlock()
 
 	if p.IsGroupFilterDegraded() {
 		t.Fatal("expected degraded cleared after supervisor recovery")
@@ -329,4 +326,23 @@ func TestPlatformHealth_ImplementsCoreInterface(t *testing.T) {
 	// Compile-time guarantee that *Platform still satisfies
 	// core.PlatformHealth after our changes.
 	var _ core.PlatformHealth = (*Platform)(nil)
+}
+
+// TestGroupFilterRetryDelay_Backoff pins the supervisor schedule: a
+// short first retry (so a proxy that comes up seconds after boot is
+// picked up quickly), doubling, capped at the max.
+func TestGroupFilterRetryDelay_Backoff(t *testing.T) {
+	base, max := 10*time.Second, 5*time.Minute
+	want := []time.Duration{
+		10 * time.Second, 20 * time.Second, 40 * time.Second, 80 * time.Second,
+		160 * time.Second, 5 * time.Minute, 5 * time.Minute,
+	}
+	for n, w := range want {
+		if got := groupFilterRetryDelay(n, base, max); got != w {
+			t.Errorf("groupFilterRetryDelay(%d) = %v, want %v", n, got, w)
+		}
+	}
+	if got := groupFilterRetryDelay(1000, base, max); got != max {
+		t.Errorf("groupFilterRetryDelay(1000) = %v, want cap %v", got, max)
+	}
 }
