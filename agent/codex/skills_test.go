@@ -43,7 +43,8 @@ func TestSkillsMetadataProcess(t *testing.T) {
 		}
 		cwd, _ := os.Getwd()
 		cwds, _ := req.Params["cwds"].([]any)
-		if len(cwds) != 1 || cwds[0] != cwd || req.Params["forceReload"] != true || os.Getenv("CODEX_HOME") != os.Getenv("CC_EXPECT_CODEX_HOME") {
+		sent, _ := firstString(cwds)
+		if len(cwds) != 1 || !sameDir(sent, cwd) || req.Params["forceReload"] != true || os.Getenv("CODEX_HOME") != os.Getenv("CC_EXPECT_CODEX_HOME") {
 			os.Exit(4)
 		}
 		if os.Getenv("CC_SKILLS_HANG") == "1" {
@@ -54,6 +55,26 @@ func TestSkillsMetadataProcess(t *testing.T) {
 	// Remain alive so the caller must clean up the metadata process.
 	scanner.Scan()
 	os.Exit(0)
+}
+
+func firstString(v []any) (string, bool) {
+	if len(v) == 0 {
+		return "", false
+	}
+	s, ok := v[0].(string)
+	return s, ok
+}
+
+// sameDir compares directories after resolving symlinks: os.Getwd returns
+// the resolved path, and on macOS the temp dir /var/folders/... is a link to
+// /private/var/folders/... (#65).
+func sameDir(a, b string) bool {
+	if a == b {
+		return true
+	}
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	return errA == nil && errB == nil && ra == rb
 }
 
 func TestListSkills_ExcludesClaudeDisabledAndCachedSkills(t *testing.T) {

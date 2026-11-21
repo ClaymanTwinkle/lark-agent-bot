@@ -70,6 +70,18 @@ func TestLaunchdStatusUsesUserDomainWhenGUIDomainUnavailable(t *testing.T) {
 	orig := runLaunchctl
 	t.Cleanup(func() { runLaunchctl = orig })
 
+	// Status reports an uninstalled service before asking launchctl, so the
+	// plist must exist; use a temp HOME, not the machine's LaunchAgents
+	// (which may hold only instance-named plists, or none) (#65).
+	t.Setenv("HOME", t.TempDir())
+	plistPath := launchdPlistPath(launchdLabel)
+	if err := os.MkdirAll(filepath.Dir(plistPath), 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(plistPath, []byte("plist"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
 	guiDomain := launchdGUIDomain()
 	userDomain := launchdUserDomain()
 	guiTarget := launchdTarget(guiDomain, launchdLabel)
