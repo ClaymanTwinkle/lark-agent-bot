@@ -407,3 +407,38 @@ func TestListSessions_FiltersToWorkDir(t *testing.T) {
 		t.Errorf("listing created a conversation")
 	}
 }
+
+func TestTailBuffer_SettleWaitsForLateWrites(t *testing.T) {
+	b := newTailBuffer(64)
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		_, _ = b.Write([]byte("late "))
+		time.Sleep(10 * time.Millisecond)
+		_, _ = b.Write([]byte("cause"))
+	}()
+	b.settle(50*time.Millisecond, time.Second)
+	if got := b.String(); got != "late cause" {
+		t.Errorf("after settle = %q, want both late writes", got)
+	}
+
+	// A writer that never stops is cut off at max.
+	busy := newTailBuffer(64)
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = busy.Write([]byte("x"))
+				time.Sleep(5 * time.Millisecond)
+			}
+		}
+	}()
+	start := time.Now()
+	busy.settle(50*time.Millisecond, 150*time.Millisecond)
+	if d := time.Since(start); d > time.Second {
+		t.Errorf("settle took %v, want it capped near 150ms", d)
+	}
+}
