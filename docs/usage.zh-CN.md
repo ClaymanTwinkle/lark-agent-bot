@@ -46,9 +46,9 @@ lark-agent-bot 完整功能使用指南。
 | `/dir [路径]` | 查看或切换 Agent 工作目录 |
 | `/show <引用>` | 按引用查看文件、目录或代码片段 |
 | `/allow <工具名>` | 预授权工具 |
-| `/reasoning [等级]` | 查看或切换推理强度（Codex）|
+| `/reasoning [等级]` | 查看或切换推理强度（Claude Code、Codex、Antigravity）|
 | `/mode [名称]` | 查看或切换权限模式 |
-| `/stop` | 停止当前执行 |
+| `/stop` | 停止正在进行的这一轮；agent 和它已启动的后台任务继续运行。没有正在进行的一轮时，停止 agent 及其后台任务 |
 | `/help` | 显示可用命令 |
 
 会话中 Agent 请求工具权限时，回复 **允许** / **拒绝** / **允许所有**。只有发起这次任务的用户或管理员（`admin_from`）可以回应权限请求，其他人的回复会被拒绝。
@@ -63,7 +63,7 @@ lark-agent-bot 完整功能使用指南。
 - `/allow <工具>`（不带参数的 `/allow` 仍可查看已允许的工具）
 - `/alias add|del`（查看别名不受限）
 - `/memory global`（查看和添加）
-- `/mode` 切到没有审批、没有沙箱的模式（Claude Code 的 `bypassPermissions`/`yolo`，Codex 的 `full-access`）
+- `/mode` 切到没有审批、没有沙箱的模式（Claude Code 的 `bypassPermissions`/`yolo`，Codex 的 `full-access`，Antigravity 的 `yolo`）
 - `/workspace route|init|worktree`、`/workspace shared route|init`，以及在未绑定的群里发送仓库地址或路径来初始化
 - `/bind <项目>`（把群关联到另一个机器人；中继任务会自动批准工具调用）
 
@@ -1317,7 +1317,7 @@ WebSocket 支持双向通信 —— 向 Agent 发送消息，并实时接收 Age
 name = "my-project"
 
 [projects.agent]
-type = "claudecode"  # 或 codex
+type = "claudecode"  # 或 codex / antigravity
 
 [projects.agent.options]
 work_dir = "/path/to/project"
