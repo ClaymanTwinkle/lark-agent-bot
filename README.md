@@ -19,9 +19,9 @@ Drive the AI coding agent on your own machine from Feishu / Lark.
 
 > Formerly `lark-connect`. Renamed to `lark-agent-bot` in v0.3.0; the command, npm package and config directory (`~/.lark-agent-bot`) changed with it, and the `LARK_CONNECT_*` environment variables became `LARK_AGENT_BOT_*`. The `CC_*` environment variables (`CC_PROJECT`, `CC_SESSION`, `CC_DATA_DIR`, `CC_LOG_FILE`, ...) kept their names.
 
-lark-agent-bot bridges locally running Claude Code and Codex to a Feishu / Lark bot. It talks to Feishu over a WebSocket long connection, so **no public IP is needed**. Review code, fix bugs, research, or run scheduled jobs from your phone.
+lark-agent-bot bridges locally running Claude Code, Codex and Antigravity CLI to a Feishu / Lark bot. It talks to Feishu over a WebSocket long connection, so **no public IP is needed**. Review code, fix bugs, research, or run scheduled jobs from your phone.
 
-> Derived from [chenhg5/cc-connect](https://github.com/chenhg5/cc-connect) (MIT), trimmed down to the Feishu / Lark platform only. All other messaging platforms were removed, and only the Claude Code and Codex agents are kept.
+> Derived from [chenhg5/cc-connect](https://github.com/chenhg5/cc-connect) (MIT), trimmed down to the Feishu / Lark platform only. All other messaging platforms were removed, and only the Claude Code and Codex agents are kept, plus Antigravity CLI added since.
 
 <p align="center">
   <img src="docs/images/screenshot/feishu.jpg" alt="Feishu screenshot" width="36%"/>
@@ -29,7 +29,7 @@ lark-agent-bot bridges locally running Claude Code and Codex to a Feishu / Lark 
 
 ## Features
 
-- **Two agents**: Claude Code and Codex
+- **Three agents**: Claude Code, Codex and Antigravity CLI
 - **Native Feishu / Lark UX**: interactive cards, streaming replies, permission buttons, images / files / voice, one-scan bot creation
 - **Chat as the control plane**: `/model`, `/mode`, `/new` `/list` `/switch`, `/dir`
 - **Scheduled tasks**: `/cron add 0 9 * * * summarize yesterday's commits`, or ask the agent in plain language
@@ -60,6 +60,7 @@ You also need at least one agent CLI installed and logged in, for example:
 ```bash
 npm install -g @anthropic-ai/claude-code   # Claude Code
 npm install -g @openai/codex               # Codex
+# Antigravity CLI (agy): see https://antigravity.google/docs/install
 ```
 
 ## Quick start
@@ -73,7 +74,7 @@ cd /path/to/your/repo
 lark-agent-bot feishu setup --project my-project
 ```
 
-Scan the QR code with the Feishu app. The bot is created and its `app_id` / `app_secret` are written to `~/.lark-agent-bot/config.toml` (a missing project is created with the current directory as its work dir). A first project uses Claude Code if `claude` is installed, otherwise Codex if `codex` is; pass `--agent claudecode` or `--agent codex` to choose. To bind an existing app instead:
+Scan the QR code with the Feishu app. The bot is created and its `app_id` / `app_secret` are written to `~/.lark-agent-bot/config.toml` (a missing project is created with the current directory as its work dir). A first project uses Claude Code if `claude` is installed, otherwise Codex if `codex` is, otherwise Antigravity if `agy` is; pass `--agent claudecode`, `--agent codex` or `--agent antigravity` to choose. To bind an existing app instead:
 
 ```bash
 lark-agent-bot feishu bind --project my-project --app cli_xxx:app_secret_xxx

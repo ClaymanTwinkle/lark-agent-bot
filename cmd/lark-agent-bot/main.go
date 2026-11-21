@@ -1587,7 +1587,7 @@ level = "info"
 name = "my-project"
 
 [projects.agent]
-type = "claudecode"   # "claudecode" or "codex"
+type = "claudecode"   # "claudecode", "codex" or "antigravity"
 
 [projects.agent.options]
 work_dir = "/path/to/your/project"

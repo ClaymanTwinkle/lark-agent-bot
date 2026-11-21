@@ -507,6 +507,8 @@ func TestDefaultSetupAgent_PrefersInstalledCLI(t *testing.T) {
 	}{
 		{[]string{"claude", "codex"}, "claudecode"},
 		{[]string{"codex"}, "codex"},
+		{[]string{"codex", "agy"}, "codex"},
+		{[]string{"agy"}, "antigravity"},
 		{nil, "claudecode"},
 	} {
 		lookPath := func(bin string) (string, error) {

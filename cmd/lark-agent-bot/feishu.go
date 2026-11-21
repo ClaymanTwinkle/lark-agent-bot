@@ -346,6 +346,7 @@ func runFeishuSetup(args []string, requestedMode string) {
 var setupAgentCLIs = []struct{ agent, bin string }{
 	{"claudecode", "claude"},
 	{"codex", "codex"},
+	{"antigravity", "agy"},
 }
 
 // defaultSetupAgent picks the agent for a first project created without
