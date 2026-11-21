@@ -45,9 +45,9 @@ Each user gets an independent session with full conversation context. Manage ses
 | `/model [switch <alias>]` | List available models or switch by alias |
 | `/dir [path]` | Show or switch the agent work directory |
 | `/allow <tool>` | Pre-allow a tool (next session) |
-| `/reasoning [level]` | View or switch reasoning effort (Codex) |
+| `/reasoning [level]` | View or switch reasoning effort (Claude Code, Codex, Antigravity) |
 | `/mode [name]` | View or switch permission mode |
-| `/stop` | Stop current execution |
+| `/stop` | Stop the running turn; the agent and the background tasks it started keep running. With no turn running, stop the agent and its background tasks |
 | `/help` | Show available commands |
 
 During a session, the agent may request tool permissions. Reply **allow** / **deny** / **allow all**. Only the user whose message started the task, or an admin (`admin_from`), can answer a permission request; replies from anyone else are refused.
@@ -62,7 +62,7 @@ Commands that give host-level power need the sender's user ID in the project's `
 - `/allow <tool>` (bare `/allow` still lists the allowed tools)
 - `/alias add|del` (listing stays open)
 - `/memory global` (show and add)
-- `/mode` to a mode without approvals or sandbox (Claude Code `bypassPermissions`/`yolo`, Codex `full-access`)
+- `/mode` to a mode without approvals or sandbox (Claude Code `bypassPermissions`/`yolo`, Codex `full-access`, Antigravity `yolo`)
 - `/workspace route|init|worktree`, `/workspace shared route|init`, and sending a repo URL or path to set up an unbound chat
 - `/bind <project>` (linking a chat to another bot; relay turns auto-approve tool use)
 
@@ -1359,7 +1359,7 @@ See [config.example.toml](../config.example.toml) for full examples.
 name = "my-project"
 
 [projects.agent]
-type = "claudecode"  # or codex
+type = "claudecode"  # or codex / antigravity
 
 [projects.agent.options]
 work_dir = "/path/to/project"

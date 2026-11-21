@@ -282,12 +282,12 @@ Once running, send messages to your bot in Feishu / Lark. Available slash comman
 /switch <id>     — Resume an existing session
 /current         — Show current active session
 /history [n]     — Show last n messages (default 10)
-/reasoning [level] — View/switch reasoning effort (Codex)
+/reasoning [level] — View/switch reasoning effort (Claude Code, Codex, Antigravity)
 /mode [name]     — View/switch permission mode (default/edit/plan/yolo)
 /quiet           — Toggle thinking/tool progress messages
 /allow <tool>    — Pre-allow a tool (next session)
 /provider [...]  — Manage API providers (list/add/remove/switch)
-/stop            — Stop current execution
+/stop            — Stop the running turn (the agent keeps running; with no turn running, stop the agent)
 /help            — Show available commands
 ```
 
