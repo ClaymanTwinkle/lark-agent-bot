@@ -39,11 +39,27 @@ func TestIntegration_RealAgy(t *testing.T) {
 	}
 	ctx := context.Background()
 
+	// Before any session, /model lists what `agy models` reports; those ids
+	// must be ones the session's model option accepts.
+	listed := map[string]bool{}
+	for _, m := range a.AvailableModels(ctx) {
+		listed[m.Name] = true
+	}
+	if len(listed) == 0 {
+		t.Error("AvailableModels before a session listed no models")
+	}
+
 	s := startReal(t, a, ctx, "")
 	id := s.CurrentSessionID()
 	var models []string
 	for _, m := range a.AvailableModels(ctx) {
 		models = append(models, m.Name)
+		if !listed[m.Name] {
+			t.Errorf("session model %q missing from the pre-session list %v", m.Name, listed)
+		}
+	}
+	if len(models) != len(listed) {
+		t.Errorf("session offers %d models, pre-session list has %d", len(models), len(listed))
 	}
 	t.Logf("session id %s, mode %q, model %q of %v, effort %q of %v", id, a.GetMode(), a.GetModel(), models, a.GetReasoningEffort(), a.AvailableReasoningEfforts())
 	if w := s.StartupWarning(); w != "" {

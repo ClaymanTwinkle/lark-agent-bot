@@ -2464,6 +2464,10 @@ func (e *Engine) Start() error {
 		slog.Info("engine started", "project", e.name, "agent", e.agent.Name(), "platforms", len(e.platforms))
 	}
 
+	if preloader, ok := e.agent.(ModelPreloader); ok {
+		go preloader.PreloadModels(e.ctx)
+	}
+
 	// Only return error if ALL platforms failed
 	if len(startErrs) == len(e.platforms) && len(e.platforms) > 0 {
 		return startErrs[0] // Return first error

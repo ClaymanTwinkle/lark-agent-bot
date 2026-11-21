@@ -57,6 +57,10 @@ func runFakeAgy() {
 	defer logFile.Close()
 	f := &fakeAgy{out: json.NewEncoder(os.Stdout), log: logFile, replies: make(chan fakeMsg, 4), cancelled: make(chan struct{})}
 	f.record("argv", os.Args[1:])
+	if len(os.Args) > 1 && os.Args[1] == "models" {
+		fmt.Print(fakeModelsOutput)
+		return
+	}
 
 	var wg sync.WaitGroup
 	sc := bufio.NewScanner(os.Stdin)

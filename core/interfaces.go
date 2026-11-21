@@ -444,6 +444,14 @@ type ModelSwitcher interface {
 	AvailableModels(ctx context.Context) []ModelOption
 }
 
+// ModelPreloader is an optional interface for ModelSwitcher agents whose model
+// list is too slow to fetch within the few seconds /model waits for it. The
+// engine calls PreloadModels once in the background when it starts, so the
+// list is ready by the time a user opens /model.
+type ModelPreloader interface {
+	PreloadModels(ctx context.Context)
+}
+
 // ReasoningEffortSwitcher is an optional interface for agents that support
 // runtime switching of reasoning effort.
 type ReasoningEffortSwitcher interface {
