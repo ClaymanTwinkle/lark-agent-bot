@@ -238,7 +238,8 @@ func TestSession_DenyPicksRejectOption(t *testing.T) {
 	if !strings.Contains(string(reply.Params), `"optionId":"no"`) {
 		t.Errorf("permission reply = %s, want the reject_once option", reply.Params)
 	}
-	// No mode or model configured: agy's defaults are kept.
+	// No mode or model configured, and the fake offers no auto mode: agy's
+	// defaults are kept, with no startup warning.
 	for _, m := range []string{"session/set_mode", "session/set_model"} {
 		if _, ok := find(log, m); ok {
 			t.Errorf("%s called without a configured value", m)
@@ -246,6 +247,32 @@ func TestSession_DenyPicksRejectOption(t *testing.T) {
 	}
 	if got := a.GetMode(); got != modeDefault {
 		t.Errorf("GetMode = %q, want agy's current mode %q", got, modeDefault)
+	}
+	if w := s.StartupWarning(); w != "" {
+		t.Errorf("unexpected startup warning %q", w)
+	}
+}
+
+func TestSession_UnsetModePrefersAuto(t *testing.T) {
+	a, logPath := newFakeAgent(t, "", "", fakeAutoEnv+"=1")
+	s := startFake(t, a, "")
+
+	call, ok := find(readLog(t, logPath), "session/set_mode")
+	if !ok || !strings.Contains(string(call.Params), `"modeId":"auto"`) {
+		t.Fatalf("set_mode = %s (sent %v), want auto", call.Params, ok)
+	}
+	if got := a.GetMode(); got != modeAuto {
+		t.Errorf("GetMode = %q, want %q", got, modeAuto)
+	}
+	if w := s.StartupWarning(); w != "" {
+		t.Errorf("unexpected startup warning %q", w)
+	}
+	// A configured mode still wins over the auto preference.
+	b, bLog := newFakeAgent(t, "plan", "", fakeAutoEnv+"=1")
+	startFake(t, b, "")
+	call, _ = find(readLog(t, bLog), "session/set_mode")
+	if !strings.Contains(string(call.Params), `"modeId":"plan"`) {
+		t.Errorf("set_mode = %s, want plan", call.Params)
 	}
 }
 
