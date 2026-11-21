@@ -321,9 +321,16 @@ func (a *Agent) GetModel() string {
 	return a.agyModelName
 }
 
-// AvailableModels returns the models agy offered in the latest session;
-// it is empty until a session has started.
-func (a *Agent) AvailableModels(_ context.Context) []core.ModelOption {
+// AvailableModels returns the models agy offered in the latest session, or
+// before any session the ones `agy models` lists.
+func (a *Agent) AvailableModels(ctx context.Context) []core.ModelOption {
+	if out := a.sessionModels(); len(out) > 0 {
+		return out
+	}
+	return a.listedModels(ctx)
+}
+
+func (a *Agent) sessionModels() []core.ModelOption {
 	a.stateMu.RLock()
 	defer a.stateMu.RUnlock()
 	out := make([]core.ModelOption, 0, len(a.agyModels))
