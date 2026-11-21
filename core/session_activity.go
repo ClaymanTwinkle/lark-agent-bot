@@ -64,6 +64,7 @@ func (s *interactiveState) work() sessionWork {
 func (s *interactiveState) beginTurn() (end func()) {
 	s.mu.Lock()
 	s.turns++
+	s.turnSeq++
 	s.idleCloseKeptFor = workIdle
 	s.mu.Unlock()
 	var once sync.Once
@@ -83,6 +84,7 @@ func (s *interactiveState) setAgentTurn(active bool) {
 	s.mu.Lock()
 	s.agentTurn = active
 	if active {
+		s.turnSeq++
 		s.idleCloseKeptFor = workIdle
 	} else {
 		s.workEndedAt = time.Now()

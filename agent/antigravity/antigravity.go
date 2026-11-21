@@ -45,6 +45,7 @@ var (
 	_ core.StartupWarner                   = (*session)(nil)
 	_ core.ContextUsageReporter            = (*session)(nil)
 	_ core.BackgroundTaskReporter          = (*session)(nil)
+	_ core.TurnCanceller                   = (*session)(nil)
 )
 
 // Permission mode keys. All but yolo map to agy's own ACP modes; yolo starts

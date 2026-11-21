@@ -1693,6 +1693,22 @@ func (cs *claudeSession) sendControlRequest(request map[string]any) (map[string]
 	}
 }
 
+// CancelTurn implements core.TurnCanceller with Claude Code's interrupt
+// control request. The CLI stops the turn at once, reports it with a result
+// message (subtype error_during_execution, no text) that ends the turn as
+// usual, and keeps the process and conversation for the next prompt.
+func (cs *claudeSession) CancelTurn() error {
+	if !cs.Alive() {
+		return fmt.Errorf("claudeSession: process is not running")
+	}
+	if _, err := cs.sendControlRequest(map[string]any{"subtype": "interrupt"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+var _ core.TurnCanceller = (*claudeSession)(nil)
+
 // handleControlResponse delivers the CLI's answer to a control request that
 // lark-agent-bot sent (see sendControlRequest).
 func (cs *claudeSession) handleControlResponse(raw map[string]any) {

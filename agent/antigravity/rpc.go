@@ -219,6 +219,15 @@ func (t *transport) call(ctx context.Context, method string, params any) (json.R
 	}
 }
 
+// sendNotification writes a JSON-RPC notification (no response expected).
+func (t *transport) sendNotification(method string, params any) error {
+	return t.writeJSON(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  method,
+		"params":  params,
+	})
+}
+
 func (t *transport) writeJSON(v any) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()

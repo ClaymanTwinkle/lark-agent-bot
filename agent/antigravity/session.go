@@ -172,6 +172,7 @@ type session struct {
 	usage   *core.ContextUsage
 
 	agentTurn    agentTurnTracker
+	endAgentTurn atomic.Bool // CancelTurn asks watchAgentTurns to end an agy-initiated turn now
 	tools        toolTracker
 	exitReported atomic.Bool // agy's exit was reported, by a turn or the exit watcher
 
@@ -613,6 +614,11 @@ func (s *session) watchAgentTurns() {
 			if s.turnActive.Load() {
 				continue
 			}
+			if s.endAgentTurn.Swap(false) {
+				s.agentTurn.reset()
+				s.emit(core.Event{Type: core.EventResult, Done: true})
+				continue
+			}
 			s.permMu.Lock()
 			pending := len(s.perms)
 			s.permMu.Unlock()
@@ -622,6 +628,35 @@ func (s *session) watchAgentTurns() {
 			}
 		}
 	}
+}
+
+// CancelTurn implements core.TurnCanceller with ACP session/cancel: agy
+// stops the turn and answers its session/prompt with stopReason
+// "cancelled", which ends the turn as usual. As ACP requires, permission
+// requests still waiting are answered "cancelled" first. A turn agy started
+// on its own has no session/prompt to answer, so it is ended here.
+func (s *session) CancelTurn() error {
+	if !s.alive.Load() {
+		return fmt.Errorf("antigravity: session is closed")
+	}
+	prompted, ownTurn := s.turnActive.Load(), s.agentTurn.opened()
+	if !prompted && !ownTurn {
+		return fmt.Errorf("antigravity: no turn is running")
+	}
+	s.permMu.Lock()
+	perms := s.perms
+	s.perms = make(map[string]pendingPermission)
+	s.permMu.Unlock()
+	for _, p := range perms {
+		_ = s.tr.respondSuccess(p.rpcID, permissionResponse(""))
+	}
+	if err := s.tr.sendNotification("session/cancel", map[string]any{"sessionId": s.ID()}); err != nil {
+		return fmt.Errorf("antigravity: session/cancel: %w", err)
+	}
+	if !prompted {
+		s.endAgentTurn.Store(true)
+	}
+	return nil
 }
 
 // BackgroundTasks implements core.BackgroundTaskReporter: the tool calls

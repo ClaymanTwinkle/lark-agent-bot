@@ -372,12 +372,17 @@ type RateLimitCfg struct {
 
 // Engine routes messages between platforms and the agent for a single project.
 type Engine struct {
-	name                  string
-	agent                 Agent
-	platforms             []Platform
-	sessions              *SessionManager
-	ctx                   context.Context
-	cancel                context.CancelFunc
+	name      string
+	agent     Agent
+	platforms []Platform
+	sessions  *SessionManager
+	ctx       context.Context
+	cancel    context.CancelFunc
+
+	// Overrides of the /stop wait for a cancelled turn (see cancelTimings);
+	// zero means the default. Set only by tests, before use.
+	cancelledTurnTimeout  time.Duration
+	cancelledTurnPoll     time.Duration
 	i18n                  *I18n
 	speech                SpeechCfg
 	tts                   *TTSCfg
@@ -657,7 +662,15 @@ type interactiveState struct {
 	// What the agent is doing; see sessionWork.
 	turns       int       // user, scheduled, queued or compress turns running
 	agentTurn   bool      // a turn the agent started on its own is running
+	turnSeq     uint64    // counts turns of either kind started; see interruptTurn
 	workEndedAt time.Time // when the last turn of either kind ended
+
+	// turnCancelled is set when /stop asked the agent to end the running
+	// turn (TurnCanceller); the turn's end then sends no empty-response text.
+	// turnCancelSilent is set with it when the turn's message was recalled:
+	// the turn then sends no reply at all.
+	turnCancelled    bool
+	turnCancelSilent bool
 
 	// agentSessionIdleCancel 取消当前会话的 idle 关闭计时器。
 	agentSessionIdleCancel context.CancelFunc
@@ -2708,7 +2721,7 @@ func (e *Engine) stopRecalledMessage(sessionKey, messageID string) bool {
 	p, replyCtx := state.platform, state.replyCtx
 	state.mu.Unlock()
 	e.interactiveMu.Unlock()
-	stopped, dropped := e.stopInteractiveSessionIfCurrent(sessionKey, false, messageID)
+	stopped, dropped := e.stopInteractiveSessionIfCurrent(sessionKey, false, messageID, true)
 	if !stopped {
 		return false
 	}
@@ -5695,6 +5708,8 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 			// Mark clean exit so unsolicited reader preserves buffered events.
 			state.mu.Lock()
 			state.eventsNeedResync = false
+			cancelled, cancelSilent := state.turnCancelled, state.turnCancelSilent
+			state.turnCancelled, state.turnCancelSilent = false, false
 			state.mu.Unlock()
 
 			fullResponse := event.Content
@@ -5709,8 +5724,9 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 			} else if fullResponse == "" && len(textParts) > 0 {
 				fullResponse = strings.Join(textParts, "")
 			}
-			// The agent's own turn with nothing to say stays silent.
-			if fullResponse == "" && at == nil {
+			// The agent's own turn with nothing to say stays silent, and so
+			// does a turn /stop ended before it said anything.
+			if fullResponse == "" && at == nil && !cancelled {
 				fullResponse = e.i18n.T(MsgEmptyResponse)
 			}
 
@@ -5819,7 +5835,7 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 			session.AddHistory("assistant", baseResponse)
 			sessions.Save()
 
-			isSilent := isSilentReply(baseResponse) || (at != nil && strings.TrimSpace(baseResponse) == "")
+			isSilent := cancelSilent || isSilentReply(baseResponse) || ((at != nil || cancelled) && strings.TrimSpace(baseResponse) == "")
 			if !isSilent {
 				if stripped, ok := stripTrailingSilent(baseResponse); ok {
 					if strings.TrimSpace(stripped) == "" {
@@ -6250,6 +6266,9 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 		case EventError:
 			cp.Finalize(ProgressCardStateFailed)
 			sp.discard()
+			state.mu.Lock()
+			state.turnCancelled, state.turnCancelSilent = false, false
+			state.mu.Unlock()
 			// A backend can create its resumable session before a turn fails
 			// (for example Codex emits thread.started, then turn.failed). Persist
 			// that ID here as well as from event.SessionID so the retry reuses the
@@ -10500,12 +10519,12 @@ func (e *Engine) cmdStop(p Platform, msg *Message) {
 	// latest forked session, so resuming after /stop is safe and no longer
 	// triggers the recycling loop from issue cc-connect#830.
 	iKey := e.interactiveKeyForSessionKey(msg.SessionKey)
-	if !e.stopInteractiveSession(iKey, p, msg.ReplyCtx) {
+	if !e.interruptInteractiveSession(iKey) {
 		// Fallback: try suffix scan in case interactiveKeyForSessionKey
 		// resolved a different key than the one used to store the state
 		// (e.g. workspace binding lookup inconsistency).
 		if found := e.findInteractiveKeyForSession(msg.SessionKey); found != "" && found != iKey {
-			if e.stopInteractiveSession(found, p, msg.ReplyCtx) {
+			if e.interruptInteractiveSession(found) {
 				e.reply(p, msg.ReplyCtx, e.i18n.T(MsgExecutionStopped))
 				return
 			}
@@ -10556,14 +10575,24 @@ func (e *Engine) stopInteractiveSessionSilently(sessionKey string) bool {
 }
 
 func (e *Engine) stopInteractiveSessionWithOptions(sessionKey string, notifyQueued bool) bool {
-	stopped, _ := e.stopInteractiveSessionIfCurrent(sessionKey, notifyQueued, "")
+	stopped, _ := e.stopInteractiveSessionIfCurrent(sessionKey, notifyQueued, "", false)
+	return stopped
+}
+
+// interruptInteractiveSession is /stop: it ends the running turn and keeps
+// the agent process when the session supports it (TurnCanceller), else it
+// stops the session like stopInteractiveSession.
+func (e *Engine) interruptInteractiveSession(sessionKey string) bool {
+	stopped, _ := e.stopInteractiveSessionIfCurrent(sessionKey, true, "", true)
 	return stopped
 }
 
 // stopInteractiveSessionIfCurrent stops the session's turn. With notifyQueued
 // the queued messages are told they were dropped; otherwise they are returned
 // so the caller can decide what to tell their senders.
-func (e *Engine) stopInteractiveSessionIfCurrent(sessionKey string, notifyQueued bool, expectedMessageID string) (stopped bool, dropped []queuedMessage) {
+// With interrupt set, a running turn of a session that supports TurnCanceller
+// is cancelled instead (see interruptTurn); otherwise the session is closed.
+func (e *Engine) stopInteractiveSessionIfCurrent(sessionKey string, notifyQueued bool, expectedMessageID string, interrupt bool) (stopped bool, dropped []queuedMessage) {
 	e.interactiveMu.Lock()
 	state, ok := e.interactiveStates[sessionKey]
 	if !ok || state == nil {
@@ -10581,6 +10610,14 @@ func (e *Engine) stopInteractiveSessionIfCurrent(sessionKey string, notifyQueued
 		}
 		state.currentMessageID = ""
 		state.mu.Unlock()
+	}
+
+	if interrupt {
+		if canceller := turnCancellerFor(state); canceller != nil {
+			e.interactiveMu.Unlock()
+			// A recalled message (expectedMessageID) gets no answer.
+			return e.interruptTurn(sessionKey, state, canceller, notifyQueued, expectedMessageID != "")
+		}
 	}
 
 	// Stop unsolicited reader before touching state to avoid races.
@@ -12938,7 +12975,7 @@ func (e *Engine) executeCardAction(cmd, args, sessionKey string) {
 		}
 
 	case "/stop":
-		e.stopInteractiveSession(interactiveKey, nil, nil)
+		e.interruptInteractiveSession(interactiveKey)
 
 	case "/heartbeat":
 		if e.heartbeatScheduler == nil {
