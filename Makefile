@@ -33,7 +33,7 @@ PLATFORMS := \
 #   make build EXCLUDE=codex
 # ---------------------------------------------------------------------------
 
-ALL_AGENTS    := claudecode codex
+ALL_AGENTS    := claudecode codex antigravity
 ALL_PLATFORMS := feishu
 ALL_EXTRAS    := web
 

@@ -887,6 +887,14 @@ const (
 	MsgAgentRestartToolPrompt MsgKey = "agent_restart_tool_prompt"
 )
 
+// Startup warnings an agent session raises when a configured setting could
+// not be applied and the agent kept its own default instead.
+const (
+	MsgAgentModeNotApplied   MsgKey = "agent_mode_not_applied"
+	MsgAgentModelNotApplied  MsgKey = "agent_model_not_applied"
+	MsgAgentEffortNotApplied MsgKey = "agent_effort_not_applied"
+)
+
 var messages = map[MsgKey]map[Language]string{
 	MsgSetupPrepared: {
 		LangEnglish:            "Shared template: %d app scopes, %d user scopes, plus events and card callbacks. Review and confirm on the scan page.",
@@ -1423,6 +1431,27 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "(空回應)",
 		LangJapanese:           "（空のレスポンス）",
 		LangSpanish:            "(respuesta vacía)",
+	},
+	MsgAgentModeNotApplied: {
+		LangEnglish:            "⚠️ Could not switch the agent to mode %q; it is running in its default mode.",
+		LangChinese:            "⚠️ 无法把 agent 切换到模式 %q，当前使用它的默认模式。",
+		LangTraditionalChinese: "⚠️ 無法把 agent 切換到模式 %q，目前使用它的預設模式。",
+		LangJapanese:           "⚠️ エージェントをモード %q に切り替えられませんでした。既定のモードで動作しています。",
+		LangSpanish:            "⚠️ No se pudo cambiar el agente al modo %q; funciona en su modo predeterminado.",
+	},
+	MsgAgentModelNotApplied: {
+		LangEnglish:            "⚠️ Could not switch the agent to model %q; it is using its default model.",
+		LangChinese:            "⚠️ 无法把 agent 切换到模型 %q，当前使用它的默认模型。",
+		LangTraditionalChinese: "⚠️ 無法把 agent 切換到模型 %q，目前使用它的預設模型。",
+		LangJapanese:           "⚠️ エージェントをモデル %q に切り替えられませんでした。既定のモデルを使用しています。",
+		LangSpanish:            "⚠️ No se pudo cambiar el agente al modelo %q; usa su modelo predeterminado.",
+	},
+	MsgAgentEffortNotApplied: {
+		LangEnglish:            "⚠️ Could not set the agent's reasoning effort to %q; it is using its default.",
+		LangChinese:            "⚠️ 无法把 agent 的推理强度设为 %q，当前使用默认值。",
+		LangTraditionalChinese: "⚠️ 無法把 agent 的推理強度設為 %q，目前使用預設值。",
+		LangJapanese:           "⚠️ エージェントの推論レベルを %q に設定できませんでした。既定値を使用しています。",
+		LangSpanish:            "⚠️ No se pudo fijar el esfuerzo de razonamiento del agente en %q; usa el valor predeterminado.",
 	},
 	MsgPermissionPrompt: {
 		LangEnglish:            "⚠️ **Permission Request**\n\nAgent wants to use **%s**:\n\n```\n%s\n```\n\nReply **allow** / **deny** / **allow all** (skip all future prompts this session).",

@@ -973,7 +973,7 @@ mode = "auto" # "auto" (default when unset) | "default" (manual) | "acceptEdits"
 # When using IM platforms, you can reply "允许"/"allow" to grant permission.
 # 在 IM 平台中，可回复"允许"或"allow"来授权操作。
 
-# Optional: the agent CLI to run (default: "claude"; "codex" for Codex projects).
+# Optional: the agent CLI to run (default: "claude"; "codex" for Codex projects, "agy" for Antigravity).
 # Set it when startup fails with "CLI not found in PATH": a service (daemon)
 # often has a shorter PATH than your shell. Use the absolute path, e.g. from
 # `which claude` (macOS/Linux) or `where claude` (Windows). A string is split
@@ -981,7 +981,7 @@ mode = "auto" # "auto" (default when unset) | "default" (manual) | "acceptEdits"
 # when the path has spaces, use an array, one item per argument, such as
 # ['C:\Program Files\Claude\claude.exe']. cli_path / command are deprecated
 # names for this key.
-# 可选：要运行的 agent CLI（默认 "claude"，Codex 项目为 "codex"）。
+# 可选：要运行的 agent CLI（默认 "claude"，Codex 项目为 "codex"，Antigravity 项目为 "agy"）。
 # 启动报 "CLI not found in PATH" 时设置它：以服务（daemon）方式运行时 PATH 往往比你的
 # shell 短。填绝对路径，可用 `which claude`（macOS/Linux）或 `where claude`（Windows）
 # 查到。字符串按空格拆分，第一段是程序，其余是额外参数；路径含空格时用数组，每项一个
@@ -1411,6 +1411,43 @@ app_secret = "your-feishu-app-secret"
 # api_key = "your-minimax-api-key"
 # base_url = "https://api.minimax.io/v1"
 # model = "MiniMax-M2.7"
+#
+# [[projects.platforms]]
+# type = "feishu"
+#
+# [projects.platforms.options]
+# app_id = "your-feishu-app-id"
+# app_secret = "your-feishu-app-secret"
+
+# =============================================================================
+# Project: Using Antigravity CLI agent / 使用 Antigravity CLI agent (uncomment to enable / 取消注释以启用)
+# =============================================================================
+# Requires the Antigravity CLI (`agy`): https://antigravity.google/docs/install
+# Sign in once by running `agy` in a terminal; the bot reuses that sign-in.
+# 需要安装 Antigravity CLI（`agy`），并在终端运行一次 `agy` 登录，bot 复用这个登录状态。
+# The bot runs `agy acp` (Agent Client Protocol) per session: replies stream in,
+# tool calls that need approval show up as Allow / Deny buttons, and the bot's
+# instructions are added to agy's system prompt, so /bind setup is not needed.
+# bot 为每个会话运行 `agy acp`（Agent Client Protocol）：回复流式显示，需要确认的工具调用
+# 会以"允许 / 拒绝"按钮发到飞书，bot 的指令直接追加到 agy 的系统提示词，不需要 /bind setup。
+
+# [[projects]]
+# name = "my-antigravity-project"
+#
+# [projects.agent]
+# type = "antigravity"
+#
+# [projects.agent.options]
+# work_dir = "/path/to/project"
+# mode = "default"   # Unset: agy's own default. "default" | "accept-edits" | "auto" | "plan" | "yolo"
+#                    # 不设：用 agy 自己的默认模式。yolo = 所有工具调用都不确认（--dangerously-skip-permissions）
+# model = "gemini-4-neon-high"  # Optional; `agy models` lists the ids / 可选，`agy models` 列出可用 id
+# reasoning_effort = "high"      # Optional: agy's Thinking Level, e.g. low | medium | high / 可选：agy 的思考强度
+# Custom commands: .md files in <work_dir>/.agents/workflows/ or ~/.gemini/config/workflows/;
+# skills: <work_dir>/.agents/skills/ or ~/.gemini/config/skills/. /compress runs agy's /compact.
+# 自定义命令：<work_dir>/.agents/workflows/ 或 ~/.gemini/config/workflows/ 下的 .md 文件；
+# 技能：<work_dir>/.agents/skills/ 或 ~/.gemini/config/skills/。/compress 会执行 agy 的 /compact。
+# # cmd = "/Users/you/.local/bin/agy"
 #
 # [[projects.platforms]]
 # type = "feishu"

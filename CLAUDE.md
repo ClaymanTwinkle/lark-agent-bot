@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-lark-agent-bot is a bridge that connects AI coding agents (Claude Code and Codex) with Feishu / Lark. Users interact with their coding agent through a Feishu / Lark bot. It is a Feishu-only fork of [cc-connect](https://github.com/chenhg5/cc-connect); the platform abstraction is kept so the engine stays platform-agnostic.
+lark-agent-bot is a bridge that connects AI coding agents (Claude Code, Codex and Antigravity CLI) with Feishu / Lark. Users interact with their coding agent through a Feishu / Lark bot. It is a Feishu-only fork of [cc-connect](https://github.com/chenhg5/cc-connect); the platform abstraction is kept so the engine stays platform-agnostic.
 
 Comments cite upstream issues and PRs as `cc-connect#N` (https://github.com/chenhg5/cc-connect/issues/N). A plain `#N` means an issue in this repo.
 
@@ -19,7 +19,8 @@ Comments cite upstream issues and PRs as `cc-connect#N` (https://github.com/chen
 ├──────────────────────┬──────────────────────────┤
 │     agent/           │      platform/           │
 │  ├── claudecode/     │  └── feishu/             │
-│  └── codex/          │      (feishu + lark)     │
+│  ├── codex/          │      (feishu + lark)     │
+│  └── antigravity/    │                          │
 ├──────────────────────┴──────────────────────────┤
 │                     daemon/                     │  ← systemd/launchd service
 └─────────────────────────────────────────────────┘
@@ -193,7 +194,7 @@ make build EXCLUDE=codex
 go build -tags 'no_codex' ./cmd/lark-agent-bot
 ```
 
-Available tags: `no_claudecode`, `no_codex`, `no_feishu`, `no_web`.
+Available tags: `no_claudecode`, `no_codex`, `no_antigravity`, `no_feishu`, `no_web`.
 
 ## Pre-Commit Checklist
 

@@ -9,7 +9,7 @@ lark-agent-bot bridges local AI coding assistants to **Feishu / Lark** (platform
 GitHub: https://github.com/ClaymanTwinkle/lark-agent-bot
 
 **IMPORTANT: If you are an AI agent helping a user install lark-agent-bot, use interactive tools (like AskUserQuestion) to guide them through configuration choices:**
-- Agent selection (Claude Code or Codex)
+- Agent selection (Claude Code, Codex or Antigravity CLI)
 - Platform selection (Feishu or Lark)
 - App credentials (App ID / App Secret), API keys and authentication tokens
 - Project paths and preferences
@@ -72,7 +72,7 @@ make build
 
 ## Step 2: Install your AI Agent
 
-lark-agent-bot supports Claude Code and Codex. Install at least one:
+lark-agent-bot supports Claude Code, Codex and Antigravity CLI. Install at least one:
 
 ```bash
 # Claude Code
@@ -80,6 +80,9 @@ npm install -g @anthropic-ai/claude-code
 
 # Codex
 npm install -g @openai/codex
+
+# Antigravity CLI (agy): follow https://antigravity.google/docs/install,
+# then run `agy` once in a terminal to sign in
 ```
 
 Verify your selected agent works:
@@ -87,6 +90,7 @@ Verify your selected agent works:
 ```bash
 claude --version
 codex --version
+agy --help
 ```
 
 ## Step 3: Create config.toml
@@ -131,7 +135,7 @@ level = "info"  # debug, info, warn, error
 name = "my-project"
 
 [projects.agent]
-type = "claudecode"  # or "codex"
+type = "claudecode"  # or "codex" / "antigravity"
 
 [projects.agent.options]
 work_dir = "/absolute/path/to/your/project"
@@ -146,6 +150,12 @@ work_dir = "/absolute/path/to/your/project"
 # --- Codex mode options ---
 # "default" (default), "auto-review", "read-only", "full-access"
 # model = "o3"  # optional: specify model
+
+# --- Antigravity mode options ---
+# unset (agy's own default), "default", "accept-edits", "auto", "plan", "yolo"
+# Approval requests appear in Feishu as Allow / Deny buttons; "yolo" approves everything.
+# model = "gemini-4-neon-high"  # optional: an id from `agy models`
+# reasoning_effort = "high"      # optional: agy's Thinking Level (low / medium / high ...)
 
 # Add one or more platform sections below
 ```
@@ -548,6 +558,7 @@ lark-agent-bot daemon uninstall
 The following additional features are available:
 
 - **Codex Agent**: OpenAI Codex CLI integration (`codex app-server` by default, `codex exec --json` with `backend = "exec"`)
+- **Antigravity Agent**: Google Antigravity CLI integration through its ACP server (`agy acp`), with approvals forwarded to Feishu
 - **Voice Messages (STT)**: Speech-to-text via Whisper API (OpenAI / Groq / SiliconFlow). Requires `ffmpeg` and `[speech]` config.
 - **Voice Reply (TTS)**: Text-to-speech via Qwen / OpenAI / MiniMax / MiMo / local providers. Requires `ffmpeg` and `[tts]` config.
 - **Video Messages**: `lark-agent-bot send --video` sends a native video bubble with its duration; the cover frame requires `ffmpeg`.
