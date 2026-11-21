@@ -303,7 +303,7 @@ func TestEmit_AsyncDoesNotBlock(t *testing.T) {
 		{
 			Event:   "message.received",
 			Type:    "command",
-			Command: "sleep 0.1 && touch " + marker,
+			Command: "sleep 1 && touch " + marker,
 			Async:   boolPtr(true),
 		},
 	}
@@ -313,14 +313,22 @@ func TestEmit_AsyncDoesNotBlock(t *testing.T) {
 	hm.Emit(HookEvent{Event: HookEventMessageReceived})
 	elapsed := time.Since(start)
 
-	if elapsed > 50*time.Millisecond {
+	// A blocking Emit would take the command's full second; the margin
+	// keeps a loaded machine from failing a correct async Emit (#65).
+	if elapsed > 500*time.Millisecond {
 		t.Errorf("async emit took %v, expected near-instant return", elapsed)
 	}
 
-	// Wait for the async command to finish
-	time.Sleep(300 * time.Millisecond)
-	if _, err := os.Stat(marker); os.IsNotExist(err) {
-		t.Error("expected async command to eventually create marker file")
+	// Wait for the async command to finish, however slow the machine is.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("expected async command to eventually create marker file")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

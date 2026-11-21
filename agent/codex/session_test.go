@@ -299,7 +299,9 @@ func TestGetModelAndReasoningEffort_FromRuntimeConfigWhenUnset(t *testing.T) {
 		t.Fatalf("mkdir bin: %v", err)
 	}
 	oldTimeout := codexRuntimeConfigTimeout
-	codexRuntimeConfigTimeout = 5 * time.Second
+	// The fake answers in well under a second; the long limit only matters
+	// when a busy machine (a full `go test ./...`) delays the fake's start (#65).
+	codexRuntimeConfigTimeout = 30 * time.Second
 	t.Cleanup(func() {
 		codexRuntimeConfigTimeout = oldTimeout
 	})
