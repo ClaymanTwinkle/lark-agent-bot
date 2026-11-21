@@ -41,6 +41,7 @@ type codexSession struct {
 	wg             sync.WaitGroup
 	alive          atomic.Bool
 	turnInFlight   atomic.Bool
+	cancelling     atomic.Bool // CancelTurn killed the turn's process; readLoop ends the turn
 	closeOnce      sync.Once
 	cmdMu          sync.Mutex
 	cmds           map[*exec.Cmd]struct{}
@@ -316,7 +317,18 @@ func (cs *codexSession) readLoop(cmd *exec.Cmd, stdout io.ReadCloser, stderrBuf 
 	defer func() {
 		defer cs.turnInFlight.Store(false)
 		defer cs.removeCmd(cmd)
-		if err := cmd.Wait(); err != nil {
+		waitErr := cmd.Wait()
+		if cs.cancelling.Swap(false) {
+			// /stop killed this turn: end it as a normal turn, keeping what
+			// the agent already said, instead of reporting the kill.
+			cs.flushPendingAsText()
+			select {
+			case cs.events <- core.Event{Type: core.EventResult, SessionID: cs.CurrentSessionID(), Done: true}:
+			case <-cs.ctx.Done():
+			}
+			return
+		}
+		if err := waitErr; err != nil {
 			stderrMsg := strings.TrimSpace(stderrBuf.String())
 			if stderrMsg != "" {
 				slog.Error("codexSession: process failed", "error", err, "stderr", stderrMsg)
@@ -959,6 +971,27 @@ func (cs *codexSession) Close() error {
 		}
 	}
 }
+
+// CancelTurn implements core.TurnCanceller for the exec backend, which runs
+// one `codex exec` process per turn: killing that process ends the turn, and
+// the next message resumes the thread with a new process.
+func (cs *codexSession) CancelTurn() error {
+	if !cs.turnInFlight.Load() {
+		return fmt.Errorf("codex session: no turn is running")
+	}
+	cmds := cs.activeCmds()
+	if len(cmds) == 0 {
+		return fmt.Errorf("codex session: no turn process to stop")
+	}
+	cs.cancelling.Store(true)
+	if err := forceKillAllCmds(cmds); err != nil {
+		cs.cancelling.Store(false)
+		return fmt.Errorf("codex session: stop turn process: %w", err)
+	}
+	return nil
+}
+
+var _ core.TurnCanceller = (*codexSession)(nil)
 
 func (cs *codexSession) addCmd(cmd *exec.Cmd) {
 	cs.cmdMu.Lock()

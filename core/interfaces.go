@@ -630,6 +630,17 @@ type WorkspaceAgentOptionSnapshotter interface {
 	WorkspaceAgentOptions() map[string]any
 }
 
+// TurnCanceller is an optional interface for agent sessions that can end the
+// running turn without stopping the agent process. /stop uses it: the
+// process, its conversation and its background work survive, and the next
+// message continues in the same session. After CancelTurn returns nil the
+// session must end the turn soon with its usual terminal event (EventResult,
+// or EventError); output the turn already produced is kept. Sessions without
+// it, or whose turn does not end in time, are stopped by closing them.
+type TurnCanceller interface {
+	CancelTurn() error
+}
+
 // LiveModeSwitcher is an optional interface for running agent sessions that can
 // apply a mode change immediately without restarting the process.
 type LiveModeSwitcher interface {

@@ -89,6 +89,33 @@ func TestIntegration_RealAgy(t *testing.T) {
 		t.Logf("background tasks after waking: %+v", s.BackgroundTasks())
 	}
 
+	// /stop: cancel a long answer mid-way; the session must stay usable.
+	t.Logf(">>> (cancel mid-turn)")
+	if err := s.Send("Write a 1500-word essay on the history of bridges. Do not use tools.", "", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	for ev := range s.Events() {
+		if ev.Type == core.EventText {
+			break
+		}
+	}
+	cancelAt := time.Now()
+	if err := s.CancelTurn(); err != nil {
+		t.Fatalf("CancelTurn: %v", err)
+	}
+	for ev := range s.Events() {
+		if ev.Type == core.EventError {
+			t.Fatalf("cancel ended the turn with an error: %v", ev.Error)
+		}
+		if ev.Type == core.EventResult {
+			t.Logf("  cancelled turn ended after %s", time.Since(cancelAt))
+			break
+		}
+	}
+	if got := textOf(realTurn(t, s, "Reply with exactly: ALIVE"), core.EventText); !strings.Contains(got, "ALIVE") {
+		t.Errorf("session not usable after cancel: %q", got)
+	}
+
 	realTurn(t, s, a.CompressCommand())
 	if u := s.GetContextUsage(); u != nil {
 		t.Logf("context usage after compact: %d of %d tokens", u.UsedTokens, u.ContextWindow)

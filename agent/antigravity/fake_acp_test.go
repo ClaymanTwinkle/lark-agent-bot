@@ -43,6 +43,9 @@ type fakeAgy struct {
 	logMu   sync.Mutex
 	log     *os.File
 	replies chan fakeMsg // responses to the fake's own requests
+
+	cancelOnce sync.Once
+	cancelled  chan struct{} // closed by session/cancel
 }
 
 func runFakeAgy() {
@@ -52,7 +55,7 @@ func runFakeAgy() {
 		os.Exit(1)
 	}
 	defer logFile.Close()
-	f := &fakeAgy{out: json.NewEncoder(os.Stdout), log: logFile, replies: make(chan fakeMsg, 4)}
+	f := &fakeAgy{out: json.NewEncoder(os.Stdout), log: logFile, replies: make(chan fakeMsg, 4), cancelled: make(chan struct{})}
 	f.record("argv", os.Args[1:])
 
 	var wg sync.WaitGroup
@@ -68,6 +71,10 @@ func runFakeAgy() {
 			continue
 		}
 		f.record(msg.Method, msg.Params)
+		if msg.Method == "session/cancel" {
+			f.cancelOnce.Do(func() { close(f.cancelled) })
+			continue
+		}
 		if msg.Method == "session/prompt" {
 			wg.Add(1)
 			go func() {
@@ -247,6 +254,16 @@ func (f *fakeAgy) prompt(msg fakeMsg) {
 		return
 	case strings.Contains(text, "refuse"):
 		f.result(msg.ID, map[string]any{"stopReason": "refusal"})
+		return
+	case strings.Contains(text, "slow"):
+		// Streams a little, then waits until session/cancel arrives.
+		chunk("agent_message_chunk", "partial answer")
+		select {
+		case <-f.cancelled:
+			f.result(msg.ID, map[string]any{"stopReason": "cancelled"})
+		case <-time.After(10 * time.Second):
+			f.result(msg.ID, map[string]any{"stopReason": "end_turn"})
+		}
 		return
 	case strings.Contains(text, "crash"):
 		chunk("agent_message_chunk", "about to crash")

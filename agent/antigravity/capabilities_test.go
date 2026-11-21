@@ -294,3 +294,50 @@ func TestAgentTurnTracker(t *testing.T) {
 		t.Error("did not end once settled")
 	}
 }
+
+func TestSession_CancelTurnKeepsSession(t *testing.T) {
+	a, logPath := newFakeAgent(t, "", "")
+	s := startFake(t, a, "")
+	if err := s.CancelTurn(); err == nil {
+		t.Errorf("CancelTurn with no turn running succeeded")
+	}
+	if err := s.Send("slow please", "", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	first := waitFor(t, s, core.EventText, 5*time.Second)
+	if textOf(first, core.EventText) != "partial answer" {
+		t.Fatalf("events = %+v", first)
+	}
+	start := time.Now()
+	if err := s.CancelTurn(); err != nil {
+		t.Fatalf("CancelTurn: %v", err)
+	}
+	waitFor(t, s, core.EventResult, 5*time.Second)
+	if time.Since(start) > 3*time.Second {
+		t.Errorf("cancel took %s", time.Since(start))
+	}
+	if e, ok := find(readLog(t, logPath), "session/cancel"); !ok || !strings.Contains(string(e.Params), `"sessionId":"conv-1"`) {
+		t.Errorf("session/cancel params = %s", e.Params)
+	}
+	if !s.Alive() {
+		t.Fatal("session died")
+	}
+	if got := textOf(runTurn(t, s, "plain", nil, "allow"), core.EventText); got != "plain reply" {
+		t.Errorf("next turn = %q", got)
+	}
+}
+
+func TestSession_CancelAgentStartedTurn(t *testing.T) {
+	withAgentTurnTimings(t, time.Hour, time.Hour) // only CancelTurn can end it
+	a, _ := newFakeAgent(t, "", "")
+	s := startFake(t, a, "")
+	runTurn(t, s, "background silent", nil, "allow")
+	waitFor(t, s, core.EventText, 5*time.Second) // agy woke up on its own
+	if err := s.CancelTurn(); err != nil {
+		t.Fatalf("CancelTurn: %v", err)
+	}
+	waitFor(t, s, core.EventResult, 3*time.Second)
+	if err := s.CancelTurn(); err == nil {
+		t.Errorf("second CancelTurn succeeded with no turn left")
+	}
+}

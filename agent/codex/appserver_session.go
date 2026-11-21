@@ -1717,6 +1717,25 @@ func rpcIDToInt64(v any) (int64, bool) {
 	return 0, false
 }
 
+// CancelTurn implements core.TurnCanceller with turn/interrupt. Codex stops
+// the turn and reports turn/completed with status "interrupted", which ends
+// it as usual; the thread and the app-server stay up.
+func (s *appServerSession) CancelTurn() error {
+	threadID := s.CurrentSessionID()
+	s.stateMu.Lock()
+	turnID := s.currentTurn
+	s.stateMu.Unlock()
+	if threadID == "" || turnID == "" {
+		return fmt.Errorf("codex app-server: no turn is running")
+	}
+	if err := s.request("turn/interrupt", map[string]any{"threadId": threadID, "turnId": turnID}, nil); err != nil {
+		return fmt.Errorf("codex app-server turn/interrupt: %w", err)
+	}
+	return nil
+}
+
+var _ core.TurnCanceller = (*appServerSession)(nil)
+
 func (s *appServerSession) completeTurn() {
 	s.stateMu.Lock()
 	if s.currentTurn == "" {
