@@ -34,6 +34,7 @@ var (
 	_ core.ModeSwitcher                    = (*Agent)(nil)
 	_ core.ModeNormalizer                  = (*Agent)(nil)
 	_ core.ModelSwitcher                   = (*Agent)(nil)
+	_ core.UsageReporter                   = (*Agent)(nil)
 	_ core.ReasoningEffortSwitcher         = (*Agent)(nil)
 	_ core.WorkspaceAgentOptionSnapshotter = (*Agent)(nil)
 	_ core.ContextCompressor               = (*Agent)(nil)

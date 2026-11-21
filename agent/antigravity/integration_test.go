@@ -49,6 +49,15 @@ func TestIntegration_RealAgy(t *testing.T) {
 	if w := s.StartupWarning(); w != "" {
 		t.Errorf("startup warning: %s", w)
 	}
+	if report, err := a.GetUsage(ctx); err != nil {
+		t.Errorf("GetUsage: %v", err)
+	} else {
+		for _, b := range report.Buckets {
+			for _, w := range b.Windows {
+				t.Logf("usage %s / %s: %d%% used, resets in %ds", w.Scope, w.Name, w.UsedPercent, w.ResetAfterSeconds)
+			}
+		}
+	}
 
 	events := realTurn(t, s, "Run the shell command `echo lab-smoke-ok` and tell me exactly what it printed.")
 	if !strings.Contains(textOf(events, core.EventText), "lab-smoke-ok") {
