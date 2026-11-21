@@ -262,8 +262,11 @@ func (f *fakeAgy) prompt(msg fakeMsg) {
 	}
 	switch {
 	case strings.Contains(text, "fail"):
-		fmt.Fprintln(os.Stderr, "model backend exploded")
+		// Reply first and write the cause to stderr a little later: the
+		// order that made the stderr tail go missing on CI (#87).
 		f.fail(msg.ID, -32603, "internal error")
+		time.Sleep(20 * time.Millisecond)
+		fmt.Fprintln(os.Stderr, "model backend exploded")
 		return
 	case strings.Contains(text, "refuse"):
 		f.result(msg.ID, map[string]any{"stopReason": "refusal"})

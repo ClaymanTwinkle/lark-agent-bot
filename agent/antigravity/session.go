@@ -841,7 +841,10 @@ func (s *session) emit(ev core.Event) {
 }
 
 // withStderr appends the tail of agy's stderr to err, when there is any.
+// agy writes the cause to stderr and the error reply to stdout, two pipes
+// with no order between them, so it first lets stderr catch up (#87).
 func (s *session) withStderr(err error) error {
+	s.stderr.settle(stderrQuiet, stderrSettleMax)
 	if tail := strings.TrimSpace(s.stderr.String()); tail != "" {
 		return fmt.Errorf("%w (agy stderr: %s)", err, truncate(tail, 1000))
 	}
@@ -883,21 +886,56 @@ func (s *session) Close() error {
 
 // tailBuffer keeps the last max bytes written to it.
 type tailBuffer struct {
-	mu  sync.Mutex
-	max int
-	buf []byte
+	mu    sync.Mutex
+	max   int
+	buf   []byte
+	wrote chan struct{} // signalled (without blocking) on every write
 }
 
-func newTailBuffer(max int) *tailBuffer { return &tailBuffer{max: max} }
+func newTailBuffer(max int) *tailBuffer {
+	return &tailBuffer{max: max, wrote: make(chan struct{}, 1)}
+}
 
 func (b *tailBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	b.buf = append(b.buf, p...)
 	if over := len(b.buf) - b.max; over > 0 {
 		b.buf = append([]byte(nil), b.buf[over:]...)
 	}
+	b.mu.Unlock()
+	select {
+	case b.wrote <- struct{}{}:
+	default:
+	}
 	return len(p), nil
+}
+
+// How long withStderr waits for agy's stderr: until nothing new arrives for
+// stderrQuiet, and never longer than stderrSettleMax. Only error paths wait.
+const (
+	stderrQuiet     = 50 * time.Millisecond
+	stderrSettleMax = 300 * time.Millisecond
+)
+
+// settle waits until no write has arrived for quiet, or until max has passed.
+func (b *tailBuffer) settle(quiet, max time.Duration) {
+	deadline := time.NewTimer(max)
+	defer deadline.Stop()
+	idle := time.NewTimer(quiet)
+	defer idle.Stop()
+	for {
+		select {
+		case <-b.wrote:
+			if !idle.Stop() {
+				<-idle.C
+			}
+			idle.Reset(quiet)
+		case <-idle.C:
+			return
+		case <-deadline.C:
+			return
+		}
+	}
 }
 
 func (b *tailBuffer) String() string {
