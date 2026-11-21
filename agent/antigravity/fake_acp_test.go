@@ -20,6 +20,7 @@ const (
 	fakeLogEnv      = "LAB_FAKE_AGY_LOG"
 	fakeNoResumeEnv = "LAB_FAKE_AGY_NO_RESUME" // advertise load but not resume
 	fakeNoAuthEnv   = "LAB_FAKE_AGY_NO_AUTH"   // session/new answers "Authentication required"
+	fakeAutoEnv     = "LAB_FAKE_AGY_AUTO"      // also offer agy's auto mode
 )
 
 func TestMain(m *testing.M) {
@@ -118,13 +119,21 @@ func (f *fakeAgy) update(sessionID string, update map[string]any) {
 	f.send(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": sessionID, "update": update}})
 }
 
-var fakeModes = map[string]any{
-	"currentModeId": "default",
-	"availableModes": []any{
-		map[string]any{"id": "default", "name": "Default"},
-		map[string]any{"id": "accept-edits", "name": "Accept Edits"},
-		map[string]any{"id": "plan", "name": "Plan"},
-	},
+// fakeModes is what the fake offers: agy's modes without auto, which agy
+// offers only to some accounts, unless fakeAutoEnv asks for it.
+func fakeModes() map[string]any {
+	modes := map[string]any{
+		"currentModeId": "default",
+		"availableModes": []any{
+			map[string]any{"id": "default", "name": "Default"},
+			map[string]any{"id": "accept-edits", "name": "Accept Edits"},
+			map[string]any{"id": "plan", "name": "Plan"},
+		},
+	}
+	if os.Getenv(fakeAutoEnv) == "1" {
+		modes["availableModes"] = append(modes["availableModes"].([]any), map[string]any{"id": "auto", "name": "Auto"})
+	}
+	return modes
 }
 
 // Like agy, the legacy models list combines model and effort, while the
@@ -191,14 +200,14 @@ func (f *fakeAgy) handle(msg fakeMsg) {
 			f.fail(msg.ID, -32000, "Authentication required")
 			return
 		}
-		f.result(msg.ID, map[string]any{"sessionId": "conv-1", "modes": fakeModes, "models": fakeModels, "configOptions": fakeConfigOptions()})
+		f.result(msg.ID, map[string]any{"sessionId": "conv-1", "modes": fakeModes(), "models": fakeModels, "configOptions": fakeConfigOptions()})
 	case "session/resume":
-		f.result(msg.ID, map[string]any{"modes": fakeModes, "models": fakeModels})
+		f.result(msg.ID, map[string]any{"modes": fakeModes(), "models": fakeModels})
 	case "session/load":
 		// Replay history before answering, as ACP load does.
 		f.update(p.SessionID, map[string]any{"sessionUpdate": "user_message_chunk", "content": map[string]any{"type": "text", "text": "old question"}})
 		f.update(p.SessionID, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "OLD ANSWER"}})
-		f.result(msg.ID, map[string]any{"modes": fakeModes})
+		f.result(msg.ID, map[string]any{"modes": fakeModes()})
 	case "session/set_model":
 		if p.ModelID == "bad-model" {
 			f.fail(msg.ID, -32602, "unknown model")

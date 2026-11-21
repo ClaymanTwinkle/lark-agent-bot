@@ -33,7 +33,7 @@ type sessionConfig struct {
 	env          []string
 	workDir      string
 	resumeID     string
-	mode         string // canonical mode key; "" keeps agy's default
+	mode         string // canonical mode key; "" prefers auto, else agy's default
 	model        string // model id; "" keeps agy's default
 	effort       string // thought_level value; "" keeps agy's default
 	systemPrompt string // appended to agy's system prompt via _meta
@@ -308,7 +308,10 @@ func (s *session) setup(cfg sessionConfig) error {
 			s.warnings = append(s.warnings, i18n.Tf(core.MsgAgentEffortNotApplied, cfg.effort))
 		}
 	}
-	if cfg.mode != "" && cfg.mode != modeYolo && !s.SetLiveMode(cfg.mode) {
+	switch {
+	case cfg.mode == "":
+		s.applyDefaultMode()
+	case cfg.mode != modeYolo && !s.SetLiveMode(cfg.mode):
 		slog.Warn("antigravity: could not apply mode", "mode", cfg.mode)
 		s.warnings = append(s.warnings, i18n.Tf(core.MsgAgentModeNotApplied, cfg.mode))
 	}
@@ -536,6 +539,23 @@ func (s *session) absorbModels(m *acpModels) {
 
 // SetLiveMode implements core.LiveModeSwitcher. Yolo is a process flag, so
 // switching into or out of it needs a new session and returns false.
+// applyDefaultMode runs when no mode is configured. Like the other agents it
+// prefers auto, so agy reviews its own permission requests. agy offers auto
+// only to some accounts; without it agy's own default mode stays, with no
+// warning, since the user asked for no mode in particular.
+func (s *session) applyDefaultMode() {
+	s.modeMu.RLock()
+	offered := matchMode(modeAuto, s.modes) != ""
+	s.modeMu.RUnlock()
+	if !offered {
+		slog.Info("antigravity: agy offers no auto mode; keeping its default mode")
+		return
+	}
+	if !s.SetLiveMode(modeAuto) {
+		slog.Warn("antigravity: could not switch to auto mode; keeping agy's default mode")
+	}
+}
+
 func (s *session) SetLiveMode(mode string) bool {
 	key := normalizeMode(mode)
 	if !s.alive.Load() || key == modeYolo || s.yolo || key == "" {

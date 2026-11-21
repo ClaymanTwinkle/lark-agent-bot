@@ -1439,8 +1439,10 @@ app_secret = "your-feishu-app-secret"
 #
 # [projects.agent.options]
 # work_dir = "/path/to/project"
-# mode = "default"   # Unset: agy's own default. "default" | "accept-edits" | "auto" | "plan" | "yolo"
-#                    # 不设：用 agy 自己的默认模式。yolo = 所有工具调用都不确认（--dangerously-skip-permissions）
+# mode = "auto"      # "default" | "accept-edits" | "auto" | "plan" | "yolo"
+#                    # Unset: auto when agy offers it (only some accounts get it), else agy's own default.
+#                    # 不设：agy 提供 auto 时用 auto（部分账号才有），否则用 agy 自己的默认模式。
+#                    # yolo = 所有工具调用都不确认（--dangerously-skip-permissions）
 # model = "gemini-4-neon-high"  # Optional; `agy models` lists the ids / 可选，`agy models` 列出可用 id
 # reasoning_effort = "high"      # Optional: agy's Thinking Level, e.g. low | medium | high / 可选：agy 的思考强度
 # Custom commands: .md files in <work_dir>/.agents/workflows/ or ~/.gemini/config/workflows/;

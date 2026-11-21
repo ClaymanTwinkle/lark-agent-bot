@@ -63,7 +63,7 @@ type Agent struct {
 	mu             sync.RWMutex
 	workDir        string
 	model          string
-	mode           string // canonical mode key; "" keeps agy's default
+	mode           string // canonical mode key; "" prefers auto, else agy's default (see applyDefaultMode)
 	effort         string // reasoning effort (agy's thought_level); "" keeps agy's default
 	lang           core.Language
 	cmd            string
@@ -216,7 +216,8 @@ func (a *Agent) GlobalMemoryFile() string {
 
 // ── Modes ────────────────────────────────────────────────────────────
 
-// normalizeMode maps user input to a mode key; "" means agy's default.
+// normalizeMode maps user input to a mode key; "" means no mode configured
+// (the session then prefers auto, see applyDefaultMode).
 func normalizeMode(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "":
