@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -237,8 +238,21 @@ func (a *Agent) configuredModels() []core.ModelOption {
 }
 
 func (a *Agent) AvailableModels(ctx context.Context) []core.ModelOption {
-	if models := readCodexModelCatalog(); len(models) > 0 {
+	// Leave time in the caller's budget for fallback sources.
+	discoveryCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	models, err := a.fetchModelsFromAppServer(discoveryCtx)
+	cancel()
+	if err == nil && len(models) > 0 {
 		return models
+	}
+	if err != nil {
+		a.mu.RLock()
+		message := core.RedactToken(err.Error(), os.Getenv("OPENAI_API_KEY"))
+		for _, p := range a.providers {
+			message = core.RedactToken(message, p.APIKey)
+		}
+		a.mu.RUnlock()
+		slog.Debug("codex: model discovery failed; using fallback", "error", message)
 	}
 	if models := a.configuredModels(); len(models) > 0 {
 		return models
@@ -246,7 +260,13 @@ func (a *Agent) AvailableModels(ctx context.Context) []core.ModelOption {
 	if models := a.fetchModelsFromAPI(ctx); len(models) > 0 {
 		return models
 	}
-	if models := readCodexCachedModels(); len(models) > 0 {
+	a.mu.RLock()
+	home := a.codexHome
+	a.mu.RUnlock()
+	if models := readCodexModelCatalog(home); len(models) > 0 {
+		return models
+	}
+	if models := readCodexCachedModels(home); len(models) > 0 {
 		return models
 	}
 	return defaultCodexModels()
@@ -379,8 +399,11 @@ func (a *Agent) fetchModelsFromAPI(ctx context.Context) []core.ModelOption {
 	return models
 }
 
-func readCodexCachedModels() []core.ModelOption {
+func readCodexCachedModels(home ...string) []core.ModelOption {
 	codexHome, _ := resolveCodexHome(nil)
+	if len(home) > 0 && home[0] != "" {
+		codexHome = resolveCodexHomeDir(home[0])
+	}
 	if codexHome == "" {
 		return nil
 	}
@@ -439,10 +462,12 @@ func parseCodexModelsJSON(data []byte) []core.ModelOption {
 
 // readCodexModelCatalog reads $CODEX_HOME/config.toml to find the
 // model_catalog_json setting, then reads and parses that JSON file.
-// This is the authoritative source of model metadata for Codex CLI,
-// maintained by the Codex distribution itself.
-func readCodexModelCatalog() []core.ModelOption {
+// Used only when live discovery and provider sources are unavailable.
+func readCodexModelCatalog(home ...string) []core.ModelOption {
 	codexHome, _ := resolveCodexHome(nil)
+	if len(home) > 0 && home[0] != "" {
+		codexHome = resolveCodexHomeDir(home[0])
+	}
 	if codexHome == "" {
 		return nil
 	}
