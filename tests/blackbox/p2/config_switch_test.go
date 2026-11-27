@@ -20,7 +20,7 @@ package p2
 //     - P2-40b: rate_limit → throttled immediately by engine
 //
 //   SLOW (agent API call required — verifying output format):
-//     - P2-71: show_context_indicator = false → no [ctx: ~N%] in replies
+//     - P2-71: show_context_indicator = false → no "ctx N% used" in replies
 //     - P2-77: display.mode = "compact" → no thinking/tool messages
 //     - P2-78: thinking_messages = false → no 💭 thinking messages
 //     - P2-79: tool_messages = false → no 🔧 tool messages
@@ -121,7 +121,7 @@ func TestP2_82b_BannedWordsCaseInsensitive(t *testing.T) {
 // ── P2-71: show_context_indicator = false ────────────────────────────────────
 
 // TestP2_71_HideContextIndicator verifies that when show_context_indicator is
-// false, the [ctx: ~N%] suffix is absent from agent replies.
+// false, the "ctx N% used" footer segment is absent from agent replies.
 //
 // This test is SLOW — it requires a real agent turn to produce final output.
 // The context indicator only appears when input_tokens >= 100, so we send
@@ -140,16 +140,16 @@ func TestP2_71_HideContextIndicator_ClaudeCode(t *testing.T) {
 	} {
 		msgs := env.SendComplete(msg)
 		combined := helper.AnyText(msgs)
-		if strings.Contains(combined, "[ctx:") {
-			t.Errorf("P2-71: [ctx: ~N%%] appeared when show_context_indicator=false\nreply: %q",
+		if strings.Contains(combined, "ctx ") {
+			t.Errorf("P2-71: 'ctx N%% used' appeared when show_context_indicator=false\nreply: %q",
 				combined)
 		}
 	}
-	t.Logf("P2-71 OK: no [ctx:] suffix observed with show_context_indicator=false")
+	t.Logf("P2-71 OK: no 'ctx N%% used' suffix observed with show_context_indicator=false")
 }
 
 // TestP2_71b_ShowContextIndicator verifies that with the DEFAULT setting
-// (show_context_indicator = true), the [ctx: ~N%] suffix eventually appears
+// (show_context_indicator = true), the "ctx N% used" footer segment eventually appears
 // after sufficient token accumulation.
 func TestP2_71b_ShowContextIndicator_ClaudeCode(t *testing.T) {
 	t.Parallel()
@@ -163,17 +163,17 @@ func TestP2_71b_ShowContextIndicator_ClaudeCode(t *testing.T) {
 	for i := 0; i < maxTurns; i++ {
 		msgs := env.SendComplete("say one sentence about software testing")
 		combined := helper.AnyText(msgs)
-		if strings.Contains(combined, "[ctx:") {
+		if strings.Contains(combined, "ctx ") {
 			found = true
-			t.Logf("P2-71b: [ctx:] appeared at turn %d: %q", i+1, truncate(combined, 200))
+			t.Logf("P2-71b: 'ctx N%% used' appeared at turn %d: %q", i+1, truncate(combined, 200))
 			break
 		}
 	}
 	if !found {
-		t.Logf("P2-71b: [ctx:] not seen in %d turns — token count may not have reached threshold yet", maxTurns)
+		t.Logf("P2-71b: 'ctx N%% used' not seen in %d turns — token count may not have reached threshold yet", maxTurns)
 		// Not a hard failure — threshold is token-count dependent.
 	} else {
-		t.Logf("P2-71b OK: [ctx:] appears with default show_context_indicator=true")
+		t.Logf("P2-71b OK: 'ctx N%% used' appears with default show_context_indicator=true")
 	}
 }
 
@@ -336,9 +336,9 @@ func TestP2_86_HideReplyFooter_ClaudeCode(t *testing.T) {
 		lines := strings.Split(strings.TrimSpace(text), "\n")
 		if len(lines) > 0 {
 			lastLine := strings.TrimSpace(lines[len(lines)-1])
-			// Footer typically contains: "model · /path/to/dir" or "[ctx: ~N%]"
-			if strings.Contains(lastLine, "[ctx:") {
-				t.Errorf("P2-86: [ctx:] appeared with show_context_indicator=false\nlast line: %q", lastLine)
+			// Footer typically contains: "model · /path/to/dir" or "ctx N% used"
+			if strings.Contains(lastLine, "ctx ") {
+				t.Errorf("P2-86: 'ctx N%% used' appeared with show_context_indicator=false\nlast line: %q", lastLine)
 			}
 		}
 	}

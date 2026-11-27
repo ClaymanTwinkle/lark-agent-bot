@@ -316,7 +316,7 @@ func TestBasicUserTurnContractAcrossInputModalities(t *testing.T) {
 			if len(texts) != 1 {
 				t.Fatalf("texts = %#v, want exactly one final reply", texts)
 			}
-			if strings.Count(texts[0], "[ctx:") != 1 {
+			if strings.Count(texts[0], "ctx ") != 1 {
 				t.Fatalf("final reply = %q, want exactly one context indicator", texts[0])
 			}
 		})
@@ -627,7 +627,7 @@ func TestStreamingPreviewConfigurationMatrix(t *testing.T) {
 				if len(texts) != 0 || len(starts) != 1 || len(updates) == 0 || len(deletes) != 0 {
 					t.Fatalf("preview lifecycle = texts:%#v starts:%#v updates:%#v deletes:%#v, want in-place preview finalize", texts, starts, updates, deletes)
 				}
-				if !strings.Contains(updates[len(updates)-1], "[ctx:") {
+				if !strings.Contains(updates[len(updates)-1], "ctx ") {
 					t.Fatalf("final preview update = %q, want context indicator", updates[len(updates)-1])
 				}
 				return
@@ -635,7 +635,7 @@ func TestStreamingPreviewConfigurationMatrix(t *testing.T) {
 			if len(starts) != 0 || len(updates) != 0 || len(deletes) != 0 {
 				t.Fatalf("preview lifecycle = starts:%#v updates:%#v deletes:%#v, want no preview when disabled", starts, updates, deletes)
 			}
-			if len(texts) != 1 || !strings.Contains(texts[0], strings.TrimSpace(body)) || strings.Count(texts[0], "[ctx:") != 1 {
+			if len(texts) != 1 || !strings.Contains(texts[0], strings.TrimSpace(body)) || strings.Count(texts[0], "ctx ") != 1 {
 				t.Fatalf("texts = %#v, want one final send with context indicator", texts)
 			}
 		})
@@ -690,28 +690,28 @@ func TestReplyMetadataConfigurationMatrix(t *testing.T) {
 			name:       "context_and_footer_on_share_one_line",
 			showCtx:    true,
 			showFooter: true,
-			want:       []string{"answer", "[ctx: ~14%] · glm-5.1 · /tmp/release-agent"},
+			want:       []string{"answer", "glm-5.1 · ctx ~14% used · /tmp/release-agent"},
 		},
 		{
 			name:       "context_off_footer_on_hides_legacy_footer",
 			showCtx:    false,
 			showFooter: true,
 			want:       []string{"answer"},
-			forbid:     []string{"[ctx:", "glm-5.1", "/tmp/release-agent"},
+			forbid:     []string{"ctx ", "glm-5.1", "/tmp/release-agent"},
 		},
 		{
 			name:       "context_on_footer_off_plain_answer",
 			showCtx:    true,
 			showFooter: false,
 			want:       []string{"answer"},
-			forbid:     []string{"[ctx:", "glm-5.1", "/tmp/release-agent"},
+			forbid:     []string{"ctx ", "glm-5.1", "/tmp/release-agent"},
 		},
 		{
 			name:       "context_and_footer_off_plain_answer",
 			showCtx:    false,
 			showFooter: false,
 			want:       []string{"answer"},
-			forbid:     []string{"[ctx:", "glm-5.1", "/tmp/release-agent"},
+			forbid:     []string{"ctx ", "glm-5.1", "/tmp/release-agent"},
 		},
 	}
 
@@ -761,10 +761,10 @@ func TestLongFinalResponseKeepsMetadataOnceAtTail(t *testing.T) {
 		texts, _, _, _, _ := platform.snapshot()
 		if len(texts) >= 2 {
 			joined := strings.Join(texts, "")
-			if strings.Count(joined, "[ctx:") != 1 || strings.Count(joined, "glm-5.1") != 1 {
+			if strings.Count(joined, "ctx ") != 1 || strings.Count(joined, "glm-5.1") != 1 {
 				t.Fatalf("chunks = %#v, want metadata exactly once", texts)
 			}
-			if !strings.Contains(texts[len(texts)-1], "[ctx: ~14%] · glm-5.1") {
+			if !strings.Contains(texts[len(texts)-1], "glm-5.1 · ctx ~14% used") {
 				t.Fatalf("last chunk = %q, want metadata at tail", texts[len(texts)-1])
 			}
 			return
@@ -864,7 +864,7 @@ func TestRichCardModeKeepsToolStepsAndFinalMetadataInOneCard(t *testing.T) {
 		t.Fatalf("rich lifecycle = texts:%#v starts:%#v updates:%#v deletes:%#v, want one editable rich card", texts, starts, updates, deletes)
 	}
 	final := updates[len(updates)-1]
-	for _, want := range []string{"status=done", "step=Bash", "rich output", "markdown=rich final", "[ctx: ~14%] · glm-5.1"} {
+	for _, want := range []string{"status=done", "step=Bash", "rich output", "markdown=rich final", "glm-5.1 · ctx ~14% used"} {
 		if !strings.Contains(final, want) {
 			t.Fatalf("final rich card = %q, want contains %q", final, want)
 		}
@@ -1006,7 +1006,7 @@ func assertStableSideChannelOnly(t *testing.T, platform *turnPlatform, sideText 
 			if strings.Contains(text, sideText) {
 				count++
 			}
-			if strings.Contains(text, "[ctx:") {
+			if strings.Contains(text, "ctx ") {
 				t.Fatalf("unexpected context-only duplicate reply: %#v", texts)
 			}
 		}

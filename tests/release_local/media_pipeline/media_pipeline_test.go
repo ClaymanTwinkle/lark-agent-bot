@@ -425,7 +425,7 @@ func TestSendToSessionWithAttachmentsDoesNotDuplicateEchoedFinalTextWithContextI
 			if strings.Contains(text, sideText) {
 				count++
 			}
-			if strings.Contains(text, "[ctx:") {
+			if strings.Contains(text, "ctx ") {
 				t.Fatalf("unexpected duplicate context indicator reply: %#v", texts)
 			}
 		}
