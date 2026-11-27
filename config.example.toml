@@ -220,7 +220,7 @@ level = "info" # debug, info, warn, error
 # tool_max_len = 500        # Max chars for tool use messages (default: 500) / 工具调用消息最大字符数（默认 500）
 # history_max_len = 1000    # Max chars per /history entry (default: 1000; 0 = no truncation) / 每条历史记录最大字符数（默认 1000；0 表示不截断）
 # tool_messages = false     # Show/hide tool progress messages (default: true in full mode, false otherwise) / 是否显示工具进度消息（full 模式默认 true，其余默认 false）
-# show_context_indicator = true  # Show "[ctx: ~N%]" suffix on assistant replies (default: true)
+# show_context_indicator = true  # Show the footer line: model · quota used · "ctx N% used" (default: true)
 #                                # 在助手回复末尾显示「[ctx: ~N%]」上下文占用提示（默认 true 显示）
 # reply_footer = true            # Show Codex-like footer on assistant replies (default: true)
 #                                # 在助手回复底部显示类似 Codex 的状态行（默认 true 显示）
@@ -721,7 +721,7 @@ level = "info" # debug, info, warn, error
 name = "my-backend"
 # reply_footer = false             # Master toggle for the per-turn reply footer (default: true / show)
 #                                   # 每条助手回复底部状态 footer 总开关（默认 true 显示）
-# show_context_indicator = false   # Hide the footer's first line: model · [effort ·] 5h/week quota used · ctx % (default: true)
+# show_context_indicator = false   # Hide the footer's first line: model · [effort ·] 5h/week quota used · ctx % used (default: true)
 #                                   # 隐藏 footer 第一行：model · [effort ·] 5小时/本周额度用量 · ctx %（默认 true 显示）
 # show_workdir_indicator = false   # Hide the footer's second line: workspace directory and its git branch, "*" marking uncommitted changes (default: true)
 #                                   # 隐藏 footer 第二行：工作区目录和 git 分支，分支后的 * 表示有未提交的修改（默认 true 显示）

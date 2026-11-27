@@ -400,20 +400,20 @@ const (
 	MsgCronBtnUnmute          MsgKey = "cron_btn_unmute"
 	MsgCronBtnDelete          MsgKey = "cron_btn_delete"
 
-	MsgStatusTitle           MsgKey = "status_title"
-	MsgReplyFooterRemaining  MsgKey = "reply_footer_remaining"
-	MsgReplyFooterQuota5h    MsgKey = "reply_footer_quota_5h"
-	MsgReplyFooterQuotaWeek  MsgKey = "reply_footer_quota_week"
-	MsgModelCurrent          MsgKey = "model_current"
-	MsgModelChanged          MsgKey = "model_changed"
-	MsgModelChangeFailed     MsgKey = "model_change_failed"
-	MsgModelCardSwitching    MsgKey = "model_card_switching"
-	MsgModelCardSwitched     MsgKey = "model_card_switched"
-	MsgModelCardSwitchFailed MsgKey = "model_card_switch_failed"
-	MsgModelNotSupported     MsgKey = "model_not_supported"
-	MsgReasoningCurrent      MsgKey = "reasoning_current"
-	MsgReasoningChanged      MsgKey = "reasoning_changed"
-	MsgReasoningNotSupported MsgKey = "reasoning_not_supported"
+	MsgStatusTitle            MsgKey = "status_title"
+	MsgReplyFooterContextUsed MsgKey = "reply_footer_context_used"
+	MsgReplyFooterQuota5h     MsgKey = "reply_footer_quota_5h"
+	MsgReplyFooterQuotaWeek   MsgKey = "reply_footer_quota_week"
+	MsgModelCurrent           MsgKey = "model_current"
+	MsgModelChanged           MsgKey = "model_changed"
+	MsgModelChangeFailed      MsgKey = "model_change_failed"
+	MsgModelCardSwitching     MsgKey = "model_card_switching"
+	MsgModelCardSwitched      MsgKey = "model_card_switched"
+	MsgModelCardSwitchFailed  MsgKey = "model_card_switch_failed"
+	MsgModelNotSupported      MsgKey = "model_not_supported"
+	MsgReasoningCurrent       MsgKey = "reasoning_current"
+	MsgReasoningChanged       MsgKey = "reasoning_changed"
+	MsgReasoningNotSupported  MsgKey = "reasoning_not_supported"
 
 	MsgTurnStoppedBySettingChange MsgKey = "turn_stopped_by_setting_change"
 	MsgResumeFailedNewSession     MsgKey = "resume_failed_new_session"
@@ -2973,12 +2973,13 @@ var messages = map[MsgKey]map[Language]string{
 			"Idioma: %s\n" +
 			"%s" + "%s" + "%s" + "%s" + "%s" + "%s",
 	},
-	MsgReplyFooterRemaining: {
-		LangEnglish:            "%d%% left",
-		LangChinese:            "剩余 %d%%",
-		LangTraditionalChinese: "剩餘 %d%%",
-		LangJapanese:           "残り %d%%",
-		LangSpanish:            "%d%% restante",
+	// %s is a percentage such as "4%", or "~14%" for an estimate.
+	MsgReplyFooterContextUsed: {
+		LangEnglish:            "ctx %s used",
+		LangChinese:            "ctx 已用 %s",
+		LangTraditionalChinese: "ctx 已用 %s",
+		LangJapanese:           "ctx %s 使用",
+		LangSpanish:            "ctx %s usado",
 	},
 	MsgReplyFooterQuota5h: {
 		LangEnglish:            "5h %d%% used",

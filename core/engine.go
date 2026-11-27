@@ -5873,14 +5873,15 @@ func (e *Engine) processTurnEvents(state *interactiveState, session *Session, se
 			var statusFooter string
 			var legacyStatusFooter string
 			if !isSilent {
+				// The session's own context report is exact; the turn's input
+				// tokens leave out cached tokens and assume a fixed window, so
+				// they are only an estimate for agents that report nothing.
 				footerContext := replyFooterContextText(replyFooterSessionContextUsage(state.agentSession), e.i18n)
-				if e.showContextIndicator {
+				if footerContext == "" && e.showContextIndicator {
 					if sdkPlausible {
-						if text := contextIndicatorText(event.InputTokens); text != "" {
-							footerContext = text
-						}
+						footerContext = contextUsedText(e.i18n, estimatedContextPercent(event.InputTokens), true)
 					} else if selfPct > 0 {
-						footerContext = fmt.Sprintf("[ctx: ~%d%%]", selfPct)
+						footerContext = contextUsedText(e.i18n, min(selfPct, 100), true)
 					}
 				}
 				if status := e.buildClaudeStatusLineFooter(replyAgent, state.agentSession, workspaceDir); status != "" {
@@ -7488,7 +7489,7 @@ func (e *Engine) commandWorkDir(agent Agent, msg *Message) string {
 	return ""
 }
 
-func (e *Engine) buildReplyFooter(agent Agent, session AgentSession, workspaceDir string, contextLeft string) string {
+func (e *Engine) buildReplyFooter(agent Agent, session AgentSession, workspaceDir string, contextUsed string) string {
 	if !e.replyFooterEnabled || agent == nil {
 		return ""
 	}
@@ -7496,12 +7497,7 @@ func (e *Engine) buildReplyFooter(agent Agent, session AgentSession, workspaceDi
 	var parts []string
 	hasStatus := false
 	if e.showContextIndicator {
-		contextLeft = strings.TrimSpace(contextLeft)
-		contextFirst := strings.HasPrefix(contextLeft, "[ctx:")
-		if contextFirst {
-			parts = append(parts, contextLeft)
-			hasStatus = true
-		}
+		contextUsed = strings.TrimSpace(contextUsed)
 		if model := replyFooterModel(session, agent); model != "" {
 			parts = append(parts, model)
 			hasStatus = true
@@ -7510,10 +7506,8 @@ func (e *Engine) buildReplyFooter(agent Agent, session AgentSession, workspaceDi
 			parts = append(parts, effort)
 			hasStatus = true
 		}
-		if contextFirst {
-			// Already added before model so "[ctx]" stays on the same footer line.
-		} else if contextLeft != "" {
-			parts = append(parts, contextLeft)
+		if contextUsed != "" {
+			parts = append(parts, contextUsed)
 			hasStatus = true
 		} else if usage := e.replyFooterUsageText(session, agent); usage != "" {
 			parts = append(parts, usage)
@@ -7538,7 +7532,7 @@ func (e *Engine) buildReplyFooter(agent Agent, session AgentSession, workspaceDi
 // RichCardSupporter.BuildRichCard. Layout (skipping any empty line):
 //
 //	line 1: ⏱ <i18n elapsed>                                  (subject to e.replyFooterEnabled)
-//	line 2: model · 5h N% used · week N% used · ctx N%       (subject to e.showContextIndicator)
+//	line 2: model · 5h N% used · week N% used · ctx N% used  (subject to e.showContextIndicator)
 //	line 3: <workdir>                                         (subject to e.showWorkdirIndicator)
 //
 // Returns "" when the master replyFooterEnabled toggle is off, or while the
@@ -7562,7 +7556,7 @@ func (e *Engine) composeRichStatusFooter(streaming bool, turnStart time.Time, ag
 		usage := replyFooterSessionContextUsage(session)
 		model := replyFooterModel(session, agent)
 		effort := replyFooterReasoningEffort(session, agent)
-		if line := buildClaudeStatusLineFooter(model, effort, e.replyFooterQuotaText(session), usage); line != "" {
+		if line := buildClaudeStatusLineFooter(model, effort, e.replyFooterQuotaText(session), usage, e.i18n); line != "" {
 			lines = append(lines, line)
 		} else if fallback := e.replyFooterUsageText(session, agent); fallback != "" {
 			// fallback for non-claudecode agents that still expose UsageReporter
@@ -7590,16 +7584,16 @@ func (e *Engine) composeRichStatusFooter(streaming bool, turnStart time.Time, ag
 
 // buildClaudeStatusLineFooter renders the rich-card line-2 status detail:
 //
-//	claude-opus-4-7[1m] · xhigh · 5h 9% used · week 2% used · ctx 4%
+//	claude-opus-4-7[1m] · xhigh · 5h 9% used · week 2% used · ctx 4% used
 //
 // Sections (each skipped when its data is missing):
 //   - model: from session GetModel() / agent.Name()
 //   - effort: reasoning_effort (Codex / Claude high/medium/low/xhigh/max)
 //   - quota: the session's 5-hour and weekly used % (see replyFooterQuotaText)
-//   - ctx %: UsedTokens / ContextWindow, capped at 100%
+//   - ctx: share of the context window used (see contextUsedPercent)
 //
 // Returns "" when usage is nil and no model is known.
-func buildClaudeStatusLineFooter(model, effort, quota string, usage *ContextUsage) string {
+func buildClaudeStatusLineFooter(model, effort, quota string, usage *ContextUsage, i18n *I18n) string {
 	var parts []string
 	if model != "" {
 		parts = append(parts, model)
@@ -7610,20 +7604,8 @@ func buildClaudeStatusLineFooter(model, effort, quota string, usage *ContextUsag
 	if quota != "" {
 		parts = append(parts, quota)
 	}
-	if usage != nil {
-		if usage.ContextWindow > 0 {
-			used := usage.UsedTokens
-			if used <= 0 && usage.TotalTokens > 0 {
-				used = usage.TotalTokens
-			}
-			if used > 0 {
-				pct := used * 100 / usage.ContextWindow
-				if pct > 100 {
-					pct = 100
-				}
-				parts = append(parts, fmt.Sprintf("ctx %d%%", pct))
-			}
-		}
+	if ctx := replyFooterContextText(usage, i18n); ctx != "" {
+		parts = append(parts, ctx)
 	}
 	return strings.Join(parts, " · ")
 }
@@ -7715,7 +7697,7 @@ func (e *Engine) replyFooterUsageText(session AgentSession, agent Agent) string 
 	if session != nil {
 		if reporter, ok := session.(UsageReporter); ok {
 			if report, err := reporter.GetUsage(ctx); err == nil {
-				return formatReplyFooterUsage(report, e.i18n)
+				return formatReplyFooterQuota(report, e.i18n)
 			}
 		}
 	}
@@ -7734,7 +7716,7 @@ func (e *Engine) replyFooterUsageText(session AgentSession, agent Agent) string 
 
 	text := ""
 	if report, err := reporter.GetUsage(ctx); err == nil {
-		text = formatReplyFooterUsage(report, e.i18n)
+		text = formatReplyFooterQuota(report, e.i18n)
 	} else if !cached.fetchedAt.IsZero() {
 		text = cached.text
 	}
@@ -7794,24 +7776,6 @@ func formatReplyFooterQuota(report *UsageReport, i18n *I18n) string {
 	return strings.Join(parts, " · ")
 }
 
-func formatReplyFooterUsage(report *UsageReport, i18n *I18n) string {
-	if report == nil || i18n == nil {
-		return ""
-	}
-	window, _ := selectUsageWindows(report)
-	if window == nil {
-		return ""
-	}
-	remaining := 100 - window.UsedPercent
-	if remaining < 0 {
-		remaining = 0
-	}
-	if remaining > 100 {
-		remaining = 100
-	}
-	return i18n.Tf(MsgReplyFooterRemaining, remaining)
-}
-
 func replyFooterSessionContextUsage(session AgentSession) *ContextUsage {
 	u, _ := replyFooterContextUsage(session)
 	return u
@@ -7831,52 +7795,56 @@ func replyFooterContextUsage(session AgentSession) (*ContextUsage, bool) {
 	return reporter.GetContextUsage(), true
 }
 
+// replyFooterContextText is the footer's "ctx N% used" segment for the
+// context usage the session itself reports, or "" when there is none.
 func replyFooterContextText(usage *ContextUsage, i18n *I18n) string {
-	if usage == nil || i18n == nil {
+	if i18n == nil {
 		return ""
 	}
-	if usage.ContextWindow <= 0 {
+	pct, ok := contextUsedPercent(usage)
+	if !ok {
 		return ""
 	}
+	return contextUsedText(i18n, pct, false)
+}
 
-	usedTokens := usage.UsedTokens
-	if usedTokens <= 0 {
-		switch {
-		case usage.TotalTokens > 0:
-			usedTokens = usage.TotalTokens
-		case usage.InputTokens > 0 || usage.OutputTokens > 0:
-			usedTokens = usage.InputTokens + usage.OutputTokens
-		default:
-			return ""
-		}
+// contextUsedText renders "ctx N% used"; approx marks an estimate ("~N%").
+// Every footer style shows context as the share used, the same direction as
+// the quota segments next to it, so the numbers never read as opposites.
+func contextUsedText(i18n *I18n, pct int, approx bool) string {
+	n := fmt.Sprintf("%d%%", pct)
+	if approx {
+		n = "~" + n
 	}
+	return i18n.Tf(MsgReplyFooterContextUsed, n)
+}
 
-	baseline := usage.BaselineTokens
-	if baseline < 0 {
-		baseline = 0
+// contextUsedPercent is the share of the context window that usage fills,
+// rounded and capped to 0..100. BaselineTokens, the part always taken by
+// fixed instructions, is left out of both the used count and the window.
+// ok is false when usage has no window or no token count.
+func contextUsedPercent(usage *ContextUsage) (int, bool) {
+	if usage == nil || usage.ContextWindow <= 0 {
+		return 0, false
 	}
+	used := usage.UsedTokens
+	if used <= 0 {
+		used = usage.TotalTokens
+	}
+	if used <= 0 {
+		used = usage.InputTokens + usage.CachedInputTokens + usage.CacheCreationInputTokens + usage.OutputTokens
+	}
+	if used <= 0 {
+		return 0, false
+	}
+	baseline := max(usage.BaselineTokens, 0)
 	if usage.ContextWindow <= baseline {
-		return i18n.Tf(MsgReplyFooterRemaining, 0)
+		return 100, true
 	}
-
-	effectiveWindow := usage.ContextWindow - baseline
-	effectiveUsed := usedTokens - baseline
-	if effectiveUsed < 0 {
-		effectiveUsed = 0
-	}
-	remaining := effectiveWindow - effectiveUsed
-	if remaining < 0 {
-		remaining = 0
-	}
-
-	left := int(math.Round(float64(remaining) / float64(effectiveWindow) * 100))
-	if left < 0 {
-		left = 0
-	}
-	if left > 100 {
-		left = 100
-	}
-	return i18n.Tf(MsgReplyFooterRemaining, left)
+	window := usage.ContextWindow - baseline
+	used = max(used-baseline, 0)
+	pct := int(math.Round(float64(used) * 100 / float64(window)))
+	return min(pct, 100), true
 }
 
 func replyFooterWorkDir(session AgentSession, agent Agent, workspaceDir string) string {
@@ -7955,7 +7923,7 @@ func replyFooterHomeRelativePath(path, home string) (string, bool) {
 // buildClaudeStatusLineFooter renders a CCD-statusline-style footer for the
 // reply, composed of two lines:
 //
-//	line 1 (controlled by show_context_indicator): <model id> · [effort:X ·] out N · in N cw N cr N · ctx N%
+//	line 1 (controlled by show_context_indicator): <model id> · [effort:X ·] [5h N% used · week N% used ·] ctx N% used
 //	line 2 (controlled by show_workdir_indicator): <workspace dir>
 //
 // Returns "" if reply_footer is disabled, or if the active session does not
@@ -7978,20 +7946,8 @@ func (e *Engine) buildClaudeStatusLineFooter(agent Agent, session AgentSession, 
 
 	var line1 string
 	if e.showContextIndicator {
-		used := usage.UsedTokens
-		if used <= 0 {
-			used = usage.InputTokens + usage.CachedInputTokens + usage.CacheCreationInputTokens
-		}
-		pct := int(math.Round(float64(used) * 100 / float64(usage.ContextWindow)))
-		if pct < 0 {
-			pct = 0
-		}
-		if pct > 100 {
-			pct = 100
-		}
-
 		// Compose:
-		//   <model id> · [effort:X ·] [5h N% used · week N% used ·] ctx N%
+		//   <model id> · [effort:X ·] [5h N% used · week N% used ·] ctx N% used
 		// The quota segment shows the subscription windows instead of raw
 		// token counts, and is omitted when the session reports none.
 		// Raw model id is preserved (e.g. "claude-opus-4-7[1m]") for diagnostic
@@ -8006,7 +7962,9 @@ func (e *Engine) buildClaudeStatusLineFooter(agent Agent, session AgentSession, 
 		if quota := e.replyFooterQuotaText(session); quota != "" {
 			line1Parts = append(line1Parts, quota)
 		}
-		line1Parts = append(line1Parts, fmt.Sprintf("ctx %d%%", pct))
+		if ctx := replyFooterContextText(usage, e.i18n); ctx != "" {
+			line1Parts = append(line1Parts, ctx)
+		}
 		line1 = strings.Join(line1Parts, " · ")
 	}
 
@@ -17788,15 +17746,10 @@ func gitClone(repoURL, dest string) error {
 
 const modelContextWindow = 200_000 // generic fallback window for heuristic context estimates
 
-func contextIndicatorText(inputTokens int) string {
-	if inputTokens <= 0 {
-		return ""
-	}
-	pct := inputTokens * 100 / modelContextWindow
-	if pct > 100 {
-		pct = 100
-	}
-	return fmt.Sprintf("[ctx: ~%d%%]", pct)
+// estimatedContextPercent guesses the context share used from one turn's
+// input tokens against modelContextWindow. Callers pass inputTokens > 0.
+func estimatedContextPercent(inputTokens int) int {
+	return min(inputTokens*100/modelContextWindow, 100)
 }
 
 // ctxSelfReportRe matches agent self-reported context lines like "[ctx: ~42%]".

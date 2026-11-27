@@ -74,13 +74,13 @@ func TestBuildClaudeStatusLineFooter_FullRender(t *testing.T) {
 	got := e.buildClaudeStatusLineFooter(nil, session, "/tmp/ws")
 	// 41772 / 1_000_000 = 4.17% → rounds to 4%.
 	// Output is two lines:
-	//   line 1: <model id> · 5h N% used · week N% used · ctx N%
+	//   line 1: <model id> · 5h N% used · week N% used · ctx N% used
 	//   line 2: <workspace dir>
 	lines := strings.Split(got, "\n")
 	if len(lines) != 2 {
 		t.Fatalf("expected 2 lines (metrics + dir), got %d: %q", len(lines), got)
 	}
-	want := []string{"claude-opus-4-7[1m]", "5h 9% used", "week 2% used", "ctx 4%"}
+	want := []string{"claude-opus-4-7[1m]", "5h 9% used", "week 2% used", "ctx 4% used"}
 	if parts := strings.Split(lines[0], " · "); strings.Join(parts, "|") != strings.Join(want, "|") {
 		t.Fatalf("line 1 segments = %q, want %q", parts, want)
 	}
@@ -106,8 +106,8 @@ func TestBuildClaudeStatusLineFooter_NoQuotaNoTokens(t *testing.T) {
 	e := newClaudeFooterEngine()
 	e.SetShowWorkdirIndicator(false)
 	got := e.buildClaudeStatusLineFooter(nil, session, "/tmp/ws")
-	if got != "gpt-6-astra · ctx 68%" {
-		t.Fatalf("footer = %q, want %q", got, "gpt-6-astra · ctx 68%")
+	if got != "gpt-6-astra · ctx 68% used" {
+		t.Fatalf("footer = %q, want %q", got, "gpt-6-astra · ctx 68% used")
 	}
 }
 
@@ -138,7 +138,7 @@ func TestComposeRichStatusFooterShowsQuota(t *testing.T) {
 	e := newClaudeFooterEngine()
 	e.SetShowWorkdirIndicator(false)
 	got := e.composeRichStatusFooter(false, time.Now(), nil, session, "")
-	if !strings.Contains(got, "claude-opus-5-5 · 5h 12% used · week 30% used · ctx 4%") {
+	if !strings.Contains(got, "claude-opus-5-5 · 5h 12% used · week 30% used · ctx 4% used") {
 		t.Fatalf("rich footer = %q, want the quota status line", got)
 	}
 	if strings.Contains(got, "out ") || strings.Contains(got, " cr ") {
@@ -280,8 +280,8 @@ func TestBuildReplyFooter_LegacyAllSegments(t *testing.T) {
 	e := newLegacyFooterEngine()
 	e.i18n = NewI18n(LangEnglish)
 	agent := &stubFooterAgent{model: "gpt-5.4", effort: "xhigh", workDir: "/tmp/ws"}
-	got := e.buildReplyFooter(agent, nil, "/tmp/ws", "100% left")
-	wantSubs := []string{"gpt-5.4", "xhigh", "100% left", "ws"}
+	got := e.buildReplyFooter(agent, nil, "/tmp/ws", "ctx 3% used")
+	wantSubs := []string{"gpt-5.4", "xhigh", "ctx 3% used", "ws"}
 	for _, sub := range wantSubs {
 		if !strings.Contains(got, sub) {
 			t.Errorf("legacy footer = %q, missing %q", got, sub)
@@ -316,7 +316,7 @@ func TestBuildReplyFooter_LegacyHidesContextSegments(t *testing.T) {
 	agent := &stubFooterAgent{model: "gpt-5.4", effort: "xhigh", workDir: "/tmp/ws"}
 	// With model/effort/contextLeft all suppressed, only cwd would remain —
 	// and a workdir-only footer is suppressed entirely (regression cc-connect#701).
-	if got := e.buildReplyFooter(agent, nil, "/tmp/ws", "100% left"); got != "" {
+	if got := e.buildReplyFooter(agent, nil, "/tmp/ws", "ctx 3% used"); got != "" {
 		t.Errorf("legacy footer with show_context_indicator=false = %q, want empty (workdir-only suppressed)", got)
 	}
 }
@@ -326,14 +326,14 @@ func TestBuildReplyFooter_LegacyHidesWorkdirSegment(t *testing.T) {
 	e.SetShowWorkdirIndicator(false)
 	e.i18n = NewI18n(LangEnglish)
 	agent := &stubFooterAgent{model: "gpt-5.4", effort: "xhigh", workDir: "/tmp/ws"}
-	got := e.buildReplyFooter(agent, nil, "/tmp/ws", "100% left")
+	got := e.buildReplyFooter(agent, nil, "/tmp/ws", "ctx 3% used")
 	if got == "" {
 		t.Fatalf("legacy footer should still render line-1 segments")
 	}
 	if strings.Contains(got, "ws") {
 		t.Errorf("legacy footer with show_workdir_indicator=false = %q, must not contain workdir", got)
 	}
-	for _, sub := range []string{"gpt-5.4", "xhigh", "100% left"} {
+	for _, sub := range []string{"gpt-5.4", "xhigh", "ctx 3% used"} {
 		if !strings.Contains(got, sub) {
 			t.Errorf("legacy footer = %q, missing %q (line-1 must remain)", got, sub)
 		}
@@ -345,7 +345,7 @@ func TestBuildReplyFooter_LegacyMasterToggleOff(t *testing.T) {
 	e.SetReplyFooterEnabled(false)
 	e.i18n = NewI18n(LangEnglish)
 	agent := &stubFooterAgent{model: "gpt-5.4", effort: "xhigh", workDir: "/tmp/ws"}
-	if got := e.buildReplyFooter(agent, nil, "/tmp/ws", "100% left"); got != "" {
+	if got := e.buildReplyFooter(agent, nil, "/tmp/ws", "ctx 3% used"); got != "" {
 		t.Errorf("reply_footer=false must short-circuit, got %q", got)
 	}
 }
@@ -468,5 +468,51 @@ func TestAppendReplyFooter_UsesUpstreamWrappedFooterShape(t *testing.T) {
 	// Empty footer is a no-op.
 	if got := appendReplyFooter("body", ""); got != "body" {
 		t.Errorf("empty footer should be no-op, got %q", got)
+	}
+}
+
+func TestContextUsedPercent(t *testing.T) {
+	tests := []struct {
+		name   string
+		usage  *ContextUsage
+		want   int
+		wantOK bool
+	}{
+		{"nil", nil, 0, false},
+		{"no window", &ContextUsage{UsedTokens: 10}, 0, false},
+		{"no tokens", &ContextUsage{ContextWindow: 1000}, 0, false},
+		// Real agy usage_update: used 9862 of a 1048576 window.
+		{"used tokens", &ContextUsage{UsedTokens: 9862, ContextWindow: 1048576}, 1, true},
+		{"total fallback", &ContextUsage{TotalTokens: 500, ContextWindow: 1000}, 50, true},
+		{"parts fallback", &ContextUsage{InputTokens: 100, CachedInputTokens: 200, CacheCreationInputTokens: 50, OutputTokens: 50, ContextWindow: 1000}, 40, true},
+		// Codex: the 12k baseline is left out of both sides.
+		{"baseline", &ContextUsage{UsedTokens: 181424, BaselineTokens: 12000, ContextWindow: 258400}, 69, true},
+		{"below baseline", &ContextUsage{UsedTokens: 5000, BaselineTokens: 12000, ContextWindow: 258400}, 0, true},
+		{"window within baseline", &ContextUsage{UsedTokens: 5000, BaselineTokens: 12000, ContextWindow: 10000}, 100, true},
+		{"capped", &ContextUsage{UsedTokens: 3000, ContextWindow: 1000}, 100, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := contextUsedPercent(tt.usage)
+			if got != tt.want || ok != tt.wantOK {
+				t.Fatalf("contextUsedPercent = (%d, %v), want (%d, %v)", got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}
+
+func TestReplyFooterContextTextSaysUsed(t *testing.T) {
+	usage := &ContextUsage{UsedTokens: 250, ContextWindow: 1000}
+	if got := replyFooterContextText(usage, NewI18n(LangChinese)); got != "ctx 已用 25%" {
+		t.Fatalf("zh = %q, want %q", got, "ctx 已用 25%")
+	}
+	if got := replyFooterContextText(usage, NewI18n(LangEnglish)); got != "ctx 25% used" {
+		t.Fatalf("en = %q, want %q", got, "ctx 25% used")
+	}
+	if got := contextUsedText(NewI18n(LangChinese), 14, true); got != "ctx 已用 ~14%" {
+		t.Fatalf("estimate = %q, want %q", got, "ctx 已用 ~14%")
+	}
+	if got := replyFooterContextText(nil, NewI18n(LangEnglish)); got != "" {
+		t.Fatalf("nil usage = %q, want empty", got)
 	}
 }
